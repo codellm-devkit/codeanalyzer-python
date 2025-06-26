@@ -1,0 +1,49 @@
+[project]
+name = "codeanalyzer"
+version = "0.1.0"
+description = "Static Analysis on Python source code using Jedi, CodeQL and Treesitter."
+readme = "README.md"
+authors = [
+    { name = "Rahul Krishna", email = "i.m.ralk@gmail.com" }
+]
+requires-python = ">=3.12"
+
+dependencies = [
+    "toml>=0.10.2",
+    "typer>=0.16.0",
+]
+
+[dependency-groups]
+test = [
+    "pytest>=8.3.5",
+    "pytest-asyncio>=1.0.0",
+    "pytest-cov>=6.1.1",
+    "pytest-pspec>=0.0.4",
+]
+dev = [
+    "ipdb>=0.13.13",
+]
+
+[project.scripts]
+codeanalyzer = "codeanalyzer.__main__:app" 
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+# Tell hatchling to use the src layout
+sources = ["src"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/codeanalyzer"]
+include = ["src/codeanalyzer/py.typed"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/codeanalyzer",
+    "src/codeanalyzer/py.typed",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+]
