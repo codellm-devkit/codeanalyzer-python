@@ -1,0 +1,18 @@
+This project includes components that are subject to additional license terms.
+
+--- CodeQL License Notice ---
+
+This project uses CodeQL, a product of GitHub, Inc.
+
+CodeQL is licensed under the GitHub CodeQL Terms and Conditions:
+https://securitylab.github.com/tools/codeql/license
+
+Unless you have a separate agreement with GitHub, you may only use CodeQL under one of the following conditions:
+
+- You are an individual using CodeQL for **personal, non-commercial research**.
+- You are using CodeQL as part of an **open source project** hosted on GitHub.com, and your project is not directed by a for-profit company or intended for commercial use.
+
+Any other use of CodeQL, including its use on proprietary code or in closed-source or commercial projects, requires a separate commercial license from GitHub.
+
+You can view the full CodeQL license at:
+https://github.com/github/codeql/blob/main/LICENSE
