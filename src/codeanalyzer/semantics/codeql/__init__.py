@@ -1,5 +1,5 @@
 ################################################################################
-# Copyright IBM Corporation 2024
+# Copyright IBM Corporation 2025
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,6 +18,9 @@
 CodeQL package
 """
 
-from .codeql import JCodeQL
+from .codeql_analysis import CodeQL
+from .codeql_query_runner import CodeQLQueryRunner
+from .codeql_loader import CodeQLLoader
+from .codeql_exceptions import CodeQLExceptions
 
-__all__ = ["JCodeQL"]
+__all__ = ["CodeQL", "CodeQLQueryRunner", "CodeQLLoader", "CodeQLExceptions"]

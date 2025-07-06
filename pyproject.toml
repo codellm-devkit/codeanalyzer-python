@@ -9,7 +9,15 @@ authors = [
 requires-python = ">=3.12"
 
 dependencies = [
+    "asteroid>=0.7.0",
+    "loguru>=0.7.3",
+    "networkx>=3.5",
+    "pandas>=2.3.0",
+    "pydantic>=2.11.7",
+    "requests>=2.32.4",
+    "ruff>=0.12.1",
     "toml>=0.10.2",
+    "tqdm>=4.67.1",
     "typer>=0.16.0",
 ]
 
