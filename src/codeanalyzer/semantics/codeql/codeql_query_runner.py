@@ -1,5 +1,5 @@
 ################################################################################
-# Copyright IBM Corporation 2024
+# Copyright IBM Corporation 2025
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,8 +14,10 @@
 # limitations under the License.
 ################################################################################
 
-"""
-Backend module
+"""Backend module for CodeQL query execution.
+
+This module provides functionality to run CodeQL queries against CodeQL databases
+and process the results.
 """
 
 import subprocess
@@ -26,44 +28,29 @@ from typing import List
 import pandas as pd
 from pandas import DataFrame
 
-from cldk.utils.exceptions import CodeQLQueryExecutionException
+from codeanalyzer.semantics.codeql.codeql_exceptions import (
+    CodeQLQueryExecutionException,
+)
 
 
 class CodeQLQueryRunner:
-    """
-    A class for executing CodeQL queries against a CodeQL database.
+    """A class for executing CodeQL queries against a CodeQL database.
 
-    Parameters
-    ----------
-    database_path : str
-        The path to the CodeQL database.
+    This class provides a context manager interface for executing CodeQL queries
+    and handling temporary resources needed during query execution.
 
-    Attributes
-    ----------
-    database_path : Path
-        The path to the CodeQL database.
-    temp_file_path : Path
-        The path to the temporary query file.
-    csv_output_file : Path
-        The path to the CSV output file.
-    temp_bqrs_file_path : Path
-        The path to the temporary bqrs file.
-    temp_qlpack_file : Path
-        The path to the temporary qlpack file.
+    Args:
+        database_path (str): The path to the CodeQL database.
 
-    Methods
-    -------
-    __enter__()
-        Context entry that creates temporary files to execute a CodeQL query.
-    execute(query_string, column_names)
-        Writes the query to the temporary file and executes it against the specified CodeQL database.
-    __exit__(exc_type, exc_val, exc_tb)
-        Clean up resources used by the CodeQL analysis.
+    Attributes:
+        database_path (Path): The path to the CodeQL database.
+        temp_file_path (Path): The path to the temporary query file.
+        csv_output_file (Path): The path to the CSV output file.
+        temp_bqrs_file_path (Path): The path to the temporary bqrs file.
+        temp_qlpack_file (Path): The path to the temporary qlpack file.
 
-    Raises
-    ------
-    CodeQLQueryExecutionException
-        If there is an error executing the query.
+    Raises:
+        CodeQLQueryExecutionException: If there is an error executing the query.
     """
 
     def __init__(self, database_path: str):
@@ -71,17 +58,13 @@ class CodeQLQueryRunner:
         self.temp_file_path: Path = None
 
     def __enter__(self):
-        """
-        Context entry that creates temporary files to execute a CodeQL query.
+        """Context entry that creates temporary files to execute a CodeQL query.
 
-        Returns
-        -------
-        instance : object
-            The instance of the class.
+        Returns:
+            CodeQLQueryRunner: The instance of the class.
 
-        Notes
-        -----
-        This method creates temporary files to hold the query and store their paths.
+        Note:
+            This method creates temporary files to hold the query and store their paths.
         """
 
         # Create a temporary file to hold the query and store its path
@@ -121,13 +104,16 @@ class CodeQLQueryRunner:
             CodeQLQueryExecutionException: If there is an error executing the query.
         """
         if not self.temp_file_path:
-            raise RuntimeError("Context manager not entered. Use 'with' statement.")
+            raise RuntimeError("CodeQLQueryRunner not entered using 'with' statement.")
 
         # Write the query to the temp file so we can execute it.
         self.temp_file_path.write_text(query_string)
 
         # Construct and execute the CodeQL CLI command asking for a JSON output.
-        codeql_query_cmd = shlex.split(f"codeql query run {self.temp_file_path} --database={self.database_path} --output={self.temp_bqrs_file_path}", posix=False)
+        codeql_query_cmd = shlex.split(
+            f"codeql query run {self.temp_file_path} --database={self.database_path} --output={self.temp_bqrs_file_path}",
+            posix=False,
+        )
 
         call = subprocess.Popen(codeql_query_cmd, stdout=None, stderr=None)
         _, err = call.communicate()
@@ -135,7 +121,10 @@ class CodeQLQueryRunner:
             raise CodeQLQueryExecutionException(f"Error executing query: {err.stderr}")
 
         # Convert the bqrs file to a CSV file
-        bqrs2csv_command = shlex.split(f"codeql bqrs decode --format=csv --output={self.csv_output_file} {self.temp_bqrs_file_path}", posix=False)
+        bqrs2csv_command = shlex.split(
+            f"codeql bqrs decode --format=csv --output={self.csv_output_file} {self.temp_bqrs_file_path}",
+            posix=False,
+        )
 
         # Read the CSV file content and cast it to a DataFrame
 
@@ -152,11 +141,16 @@ class CodeQLQueryRunner:
             )
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """
-        Clean up resources used by the CodeQL analysis.
+        """Clean up resources used by the CodeQL analysis.
 
-        Deletes the temporary files created during the analysis, including the temporary file path,
-        the CSV output file, and the temporary QL pack file.
+        Args:
+            exc_type: The exception type if an exception was raised in the context, otherwise None.
+            exc_val: The exception instance if an exception was raised in the context, otherwise None.
+            exc_tb: The traceback if an exception was raised in the context, otherwise None.
+
+        Note:
+            Deletes the temporary files created during the analysis, including the temporary file path,
+            the CSV output file, and the temporary QL pack file.
         """
         if self.temp_file_path and self.temp_file_path.exists():
             self.temp_file_path.unlink()
