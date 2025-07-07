@@ -25,7 +25,7 @@ from networkx import DiGraph
 from pandas import DataFrame
 from typing import Union
 
-from codeanalyzer.semantics.codeql.codeql_query_runner import CodeQLQueryRunner
+from codeanalyzer.semantic_analysis.codeql.codeql_query_runner import CodeQLQueryRunner
 
 
 class CodeQL:

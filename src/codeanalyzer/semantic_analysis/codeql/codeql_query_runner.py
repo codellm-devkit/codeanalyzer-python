@@ -28,9 +28,7 @@ from typing import List
 import pandas as pd
 from pandas import DataFrame
 
-from codeanalyzer.semantics.codeql.codeql_exceptions import (
-    CodeQLQueryExecutionException,
-)
+from codeanalyzer.semantic_analysis.codeql.codeql_exceptions import CodeQLExceptions
 
 
 class CodeQLQueryRunner:
@@ -118,7 +116,9 @@ class CodeQLQueryRunner:
         call = subprocess.Popen(codeql_query_cmd, stdout=None, stderr=None)
         _, err = call.communicate()
         if call.returncode != 0:
-            raise CodeQLQueryExecutionException(f"Error executing query: {err.stderr}")
+            raise CodeQLExceptions.CodeQLQueryExecutionException(
+                f"Error executing query: {err.stderr}"
+            )
 
         # Convert the bqrs file to a CSV file
         bqrs2csv_command = shlex.split(
@@ -131,7 +131,9 @@ class CodeQLQueryRunner:
         call = subprocess.Popen(bqrs2csv_command, stdout=None, stderr=None)
         _, err = call.communicate()
         if call.returncode != 0:
-            raise CodeQLQueryExecutionException(f"Error executing query: {err.stderr}")
+            raise CodeQLExceptions.CodeQLQueryExecutionException(
+                f"Error executing query: {err.stderr}"
+            )
         else:
             return pd.read_csv(
                 self.csv_output_file,

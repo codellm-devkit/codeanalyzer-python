@@ -1,4 +1,4 @@
-from .schema import (
+from .py_schema import (
     PyApplication,
     PyImport,
     PyComment,

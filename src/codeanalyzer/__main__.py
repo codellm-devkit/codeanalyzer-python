@@ -4,15 +4,7 @@ import typer
 from typing import Optional, Annotated
 from pathlib import Path
 from codeanalyzer.core import AnalyzerCore
-
-app = typer.Typer(
-    name="codeanalyzer",
-    help="Static Analysis on Python source code using Jedi, CodeQL and Tree sitter.",
-    no_args_is_help=True,
-    add_completion=False,
-    rich_markup_mode="rich",
-    pretty_exceptions_show_locals=False,
-)
+import json
 
 
 def _setup_logger(level: str = "INFO") -> None:
@@ -22,7 +14,7 @@ def _setup_logger(level: str = "INFO") -> None:
     Args:
         level (str): The logging level to set. Default is "INFO".
     """
-    if __name__ != "__main__":
+    if __name__ != "__main__" or level == "OFF":
         return  # Avoid reconfiguring logger if not running as a cli application
 
     logger.remove()
@@ -34,29 +26,19 @@ def _setup_logger(level: str = "INFO") -> None:
     )
 
 
-@app.callback()
-def init_logging(
-    verbose: Annotated[
-        bool, typer.Option("--verbose", "-v", help="Enable debug logging.")
-    ] = False,
-    quiet: Annotated[
-        bool, typer.Option("--quiet", "-q", help="Silence all output except errors.")
-    ] = False,
-):
-    if verbose:
-        _setup_logger("DEBUG")
-    elif quiet:
-        _setup_logger("ERROR")
-    else:
-        _setup_logger("INFO")
-
-
 @logger.catch
-@app.command()
 def main(
     input: Annotated[
         Path, typer.Option("-i", "--input", help="Path to the project root directory.")
     ],
+    virtualenv: Annotated[
+        Optional[Path],
+        typer.Option(
+            "-venv",
+            "--virtualenv",
+            help="Path to the virtual environment directory. If not provided, one will be created using the project's requirements.txt (or pyproject.toml). If this fails, the system Python will be used.",
+        ),
+    ] = None,
     output: Annotated[
         Optional[Path],
         typer.Option(
@@ -72,7 +54,7 @@ def main(
             "-ql/-nql",
             help="Use static analysis provided by the CodeQL backend. Default: True",
         ),
-    ] = True,
+    ] = False,
     rebuild_analysis: Annotated[
         bool,
         typer.Option(
@@ -97,11 +79,40 @@ def main(
             help="Level of analysis to perform. Options: 1 (symbol table) or 2 (call graph). Default: 1",
         ),
     ] = 1,
+    verbose: Annotated[
+        bool, typer.Option("--verbose/--quiet", "-v/-q", help="Enable verbose output.")
+    ] = False,
 ):
-    """Static Analysis on Python source code using Jedi, CodeQL and Tree sitter."""
-    with AnalyzerCore(input, using_codeql, analysis_level) as analyzer:
-        print(analyzer.analyze())
+    """Static Analysis on Python source code using Jedi, Asteroid, and Treesitter."""
+    if verbose:
+        _setup_logger("DEBUG")
+    else:
+        _setup_logger("OFF")
 
+    with AnalyzerCore(
+        input, virtualenv, using_codeql, rebuild_analysis, clear_cache, analysis_level
+    ) as analyzer:
+        artifacts = analyzer.analyze()
+        # Default to printing the artifacts to stdout
+        print_stream = sys.stdout
+        # The user has specified an output directory, so we save the artifacts there.
+        if output is not None:
+            output.mkdir(parents=True, exist_ok=True)
+            print_stream = output / "analysis.json"
+
+        print(json.dumps(artifacts, indent=4), file=print_stream)
+
+
+app = typer.Typer(
+    callback=main,
+    name="codeanalyzer",
+    help="Static Analysis on Python source code using Jedi, CodeQL and Tree sitter.",
+    invoke_without_command=True,
+    no_args_is_help=True,
+    add_completion=False,
+    rich_markup_mode="rich",
+    pretty_exceptions_show_locals=False,
+)
 
 if __name__ == "__main__":
     app()
