@@ -10,12 +10,13 @@ requires-python = ">=3.12"
 
 dependencies = [
     "asteroid>=0.7.0",
+    "jedi>=0.19.2",
     "loguru>=0.7.3",
     "networkx>=3.5",
     "pandas>=2.3.0",
     "pydantic>=2.11.7",
     "requests>=2.32.4",
-    "ruff>=0.12.1",
+    "ruff>=0.12.2",
     "toml>=0.10.2",
     "tqdm>=4.67.1",
     "typer>=0.16.0",
@@ -23,9 +24,9 @@ dependencies = [
 
 [dependency-groups]
 test = [
-    "pytest>=8.3.5",
+    "pytest>=8.4.1",
     "pytest-asyncio>=1.0.0",
-    "pytest-cov>=6.1.1",
+    "pytest-cov>=6.2.1",
     "pytest-pspec>=0.0.4",
 ]
 dev = [
@@ -33,7 +34,7 @@ dev = [
 ]
 
 [project.scripts]
-codeanalyzer = "codeanalyzer.__main__:app" 
+codeanalyzer = "codeanalyzer.__main__:app"
 
 [build-system]
 requires = ["hatchling"]
@@ -55,3 +56,6 @@ include = [
     "LICENSE",
     "NOTICE"
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["src/test"]

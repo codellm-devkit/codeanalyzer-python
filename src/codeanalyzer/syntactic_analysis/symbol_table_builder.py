@@ -1,9 +1,10 @@
 from pathlib import Path
 from typing import Dict
 
+import jedi
 from loguru import logger
 
-from codeanalyzer.schema.schema import PyModule
+from codeanalyzer.schema.py_schema import PyModule
 
 
 class SymbolTableBuilder:
@@ -15,6 +16,9 @@ class SymbolTableBuilder:
             project_dir (Path): The path to the root of the Python project.
         """
         self.project_dir = Path(project_dir)
+        self.jedi_project = jedi.Project(
+            path=self.project_dir, sys_path=[str(self.project_dir)]
+        )
 
     def build(self) -> Dict[str, PyModule]:
         """Builds the symbol table for the project.
@@ -44,5 +48,4 @@ class SymbolTableBuilder:
         Returns:
             PyModule object for the input file.
         """
-        # Implementation with jedi/asteroid goes here...
-        pass
+        logger.info("Implementation with jedi/asteroid goes here...")
