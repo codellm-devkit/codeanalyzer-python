@@ -1,4 +1,5 @@
 import hashlib
+from pdb import set_trace
 import shutil
 import subprocess
 from pathlib import Path
@@ -22,44 +23,106 @@ class AnalyzerCore:
         virtualenv (Optional[Path]): Path to the virtual environment directory.
         using_codeql (bool): Whether to use CodeQL for analysis.
         rebuild_analysis (bool): Whether to force rebuild the database.
-        clear_cache (bool): Whether to delete the cached DB after analysis.
+        clear_cache (bool): Whether to delete the cached directory after analysis.
         analysis_depth (int): Depth of analysis (reserved for future use).
     """
 
     def __init__(
         self,
         project_dir: Union[str, Path],
+        analysis_depth: int = 1,
         using_codeql: bool = False,
         rebuild_analysis: bool = False,
-        clear_cache: bool = False,
-        analysis_depth: int = 1,
-        virtualenv: Optional[Path] = None,
+        cache_dir: Optional[Path] = None,
+        clear_cache: bool = True,
     ) -> None:
         self.analysis_depth = analysis_depth
         self.project_dir = Path(project_dir).resolve()
-        self.virtualenv = virtualenv
         self.using_codeql = using_codeql
         self.rebuild_analysis = rebuild_analysis
+        self.cache_dir = (
+            cache_dir.resolve() if cache_dir is not None else self.project_dir 
+        ) / ".codeanalyzer"
         self.clear_cache = clear_cache
-
         self.db_path: Optional[Path] = None
         self.codeql_bin: Optional[Path] = None
+        self.virtualenv: Optional[Path] = None
+
+    @staticmethod
+    def _cmd_exec_helper(
+        cmd: list[str],
+        cwd: Optional[Path] = None,
+        capture_output: bool = True,
+        check: bool = True,
+        suppress_output: bool = False,
+    ) -> subprocess.CompletedProcess:
+        """
+        Runs a subprocess with real-time output streaming to the logger.
+
+        Args:
+            cmd: Command as a list of arguments.
+            cwd: Working directory to run the command in.
+            capture_output: If True, retains and returns the output.
+            check: If True, raises CalledProcessError on non-zero exit.
+            suppress_output: If True, silences log output.
+
+        Returns:
+            subprocess.CompletedProcess
+        """
+        logger.info(f"Running: {' '.join(cmd)}")
+
+        process = subprocess.Popen(
+            cmd,
+            cwd=cwd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            universal_newlines=True,
+        )
+
+        assert process.stdout is not None  # for type checking
+        output_lines = []
+
+        for line in process.stdout:
+            line = line.rstrip()
+            if not suppress_output:
+                logger.debug(line)
+            if capture_output:
+                output_lines.append(line)
+
+        returncode = process.wait()
+
+        if check and returncode != 0:
+            raise subprocess.CalledProcessError(
+                returncode, cmd, output="\n".join(output_lines)
+            )
+
+        return subprocess.CompletedProcess(
+            args=cmd,
+            returncode=returncode,
+            stdout="\n".join(output_lines) if capture_output else None,
+            stderr=None,
+        )
+
 
     def __enter__(self) -> "AnalyzerCore":
-        if self.virtualenv is None:
-            # If no virtualenv is provided, try to create one using requirements.txt or pyproject.toml
-            venv_path = self.project_dir / ".venv"
-            if not venv_path.exists():
-                logger.info(f"Creating virtual environment at {venv_path}")
-                subprocess.run(
-                    [sys.executable, "-m", "venv", str(venv_path)],
-                    check=True,
-                )
+        # If no virtualenv is provided, try to create one using requirements.txt or pyproject.toml
+        venv_path = self.cache_dir / self.project_dir.name / "virtualenv"
+        # Ensure the cache directory exists for this project
+        venv_path.parent.mkdir(parents=True, exist_ok=True)
+        # Create the virtual environment if it does not exist
+        if not venv_path.exists() or self.rebuild_analysis:
+            logger.info(f"(Re-)creating virtual environment at {venv_path}")
+            self._cmd_exec_helper(
+                [sys.executable, "-m", "venv", str(venv_path)],
+                check=True,
+            )
             # Find python in the virtual environment
             venv_python = venv_path / "bin" / "python"
 
             # Upgrade pip + install build backend dependencies
-            subprocess.run(
+            self._cmd_exec_helper(
                 [
                     str(venv_python),
                     "-m",
@@ -75,8 +138,8 @@ class AnalyzerCore:
             )
 
             # Install the project itself (reads pyproject.toml)
-            subprocess.run(
-                [str(venv_python), "-m", "pip", "install", f"{self.project_dir}"],
+            self._cmd_exec_helper(
+                [str(venv_python), "-m", "pip", "install", "-U", f"{self.project_dir}"],
                 cwd=self.project_dir,
                 check=True,
             )
@@ -84,9 +147,8 @@ class AnalyzerCore:
             self.virtualenv = venv_path
 
         if self.using_codeql:
-
-            logger.info(f"Initializing CodeQL analysis for {self.project_dir}")
-            cache_root = Path.home() / ".codeanalyzer" / "cache"
+            logger.info(f"(Re-)initializing CodeQL analysis for {self.project_dir}")
+            cache_root = self.cache_dir / "codeql" 
             cache_root.mkdir(parents=True, exist_ok=True)
             self.db_path = cache_root / f"{self.project_dir.name}-db"
             self.db_path.mkdir(exist_ok=True)
@@ -109,7 +171,7 @@ class AnalyzerCore:
                     self.codeql_bin = Path(codeql_in_path)
                 else:
                     self.codeql_bin = CodeQLLoader.download_and_extract_codeql(
-                        Path.home() / ".codeanalyzer" / "bin"
+                        self.cache_dir / "codeql" / "bin"
                     )
 
                 if not shutil.which(str(self.codeql_bin)):
@@ -145,9 +207,9 @@ class AnalyzerCore:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        if self.clear_cache and self.db_path and self.db_path.exists():
-            logger.info(f"Cleaning up analysis artifacts at {self.db_path}")
-            shutil.rmtree(self.db_path, ignore_errors=True)
+        if self.clear_cache and self.cache_dir.exists():
+            logger.info(f"Clearing cache directory: {self.cache_dir}")
+            shutil.rmtree(self.cache_dir)
 
     def analyze(self) -> PyApplication:
         """Return the path to the CodeQL database."""
@@ -171,7 +233,7 @@ class AnalyzerCore:
 
     def _build_symbol_table(self) -> Dict[str, PyModule]:
         """Retrieve a symbol table of the whole project."""
-        return SymbolTableBuilder(self.project_dir).build()
+        return SymbolTableBuilder(self.project_dir, self.virtualenv).build()
 
     def _get_call_graph(self) -> Dict[str, Any]:
         """Retrieve call graph from CodeQL database."""
