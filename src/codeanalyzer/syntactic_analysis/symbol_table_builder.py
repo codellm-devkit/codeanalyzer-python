@@ -1,11 +1,12 @@
+from io import StringIO
 from pathlib import Path
-import sys
+import tokenize
 from typing import Dict, List, Optional
 import astor
-from ipdb import set_trace
 import jedi
 from loguru import logger
 from jedi.api.project import Project
+from jedi.api import Script
 from codeanalyzer.schema.py_schema import (
     PyCallable,
     PyCallableParameter,
@@ -36,26 +37,8 @@ class SymbolTableBuilder:
                 environment_path=Path(virtualenv) / "bin" / "python",
             )
 
-    def build(self) -> Dict[str, PyModule]:
-        """Builds the symbol table for the project.
-
-        This method scans the project directory, identifies Python files,
-        and constructs a symbol table containing information about classes,
-        functions, and variables defined in those files.
-        """
-        symbol_table: Dict[str, PyModule] = {}
-        for py_file in self.project_dir.rglob("*.py"):
-            if py_file.name.startswith("__"):
-                continue
-            try:
-                py_module: PyModule = self._module(py_file)
-                symbol_table.update({py_module.signature: py_module})
-            except Exception as e:
-                logger.error(f"Failed to process {py_file}: {e}")
-                continue
-
     @staticmethod
-    def _infer_type(script: jedi.api.Script, line: int, column: int) -> str:
+    def _infer_type(script: Script, line: int, column: int) -> str:
         """Tries to infer the type at a given position using Jedi."""
         try:
             inference = script.infer(line=line, column=column)
@@ -66,9 +49,7 @@ class SymbolTableBuilder:
         return None
 
     @staticmethod
-    def _infer_qualified_name(
-        script: jedi.api.Script, line: int, column: int
-    ) -> Optional[str]:
+    def _infer_qualified_name(script: Script, line: int, column: int) -> Optional[str]:
         """
         Tries to infer the fully qualified name (e.g., os.path.join) at the given position using Jedi.
 
@@ -97,73 +78,95 @@ class SymbolTableBuilder:
         Returns:
             PyModule object for the input file.
         """
+        # Get the raw source code from the file
         source = py_file.read_text(encoding="utf-8")
-        script = self.jedi_project.get_script(str(py_file))
+        # Create a Jedi script for the file
+        script: Script = Script(path=str(py_file), project=self.jedi_project)
         tree = ast.parse(source, filename=str(py_file))
 
         module_builder = (
-            PyModule.builder().file_path(str(py_file)).module_name(py_file.stem)
+            PyModule.builder()
+            .file_path(str(py_file))
+            .module_name(py_file.stem)
+            .comments(self._pycomments(tree, source))
+            .imports(self._imports(tree, script))
+            .variables(self._module_variables(tree, script))
         )
 
         for node in ast.iter_child_nodes(tree):
             if isinstance(node, ClassDef):
-                module_builder.classes.update(self._class(node, script))
+                module_builder.classes.update(self._add_class(node, script))
+            elif isinstance(node, ast.FunctionDef):
+                module_builder.callables.update(self._callables(node, script))
 
         return module_builder.build()
 
-    def _class(
-        self, class_node: ast.ClassDef, script: jedi.api.Script
+    def _add_class(
+        self, class_node: ast.ClassDef, script: Script
     ) -> Dict[str, PyClass]:
         """Builds a PyClass from a class definition node.
 
         Args:
             class_node (ast.ClassDef): The AST node representing the class.
-            script (jedi.api.Script): The Jedi script object for the module.
+            script (Script): The Jedi script object for the module.
 
         Returns:
-            Dict[str, PyClass]: Mapping of class name to PyClass object.
+            Dict[str, PyClass]: Mapping of class signature to PyClass object.
         """
         # Try resolving full signature with Jedi
         try:
-            definitions = script.goto(line=class_node.lineno, column=class_node.col_offset)
-            signature = next((d.full_name for d in definitions if d.type == "class"), f"{script.path}.{class_node.name}")
+            definitions = script.goto(
+                line=class_node.lineno, column=class_node.col_offset
+            )
+            signature = next(
+                (d.full_name for d in definitions if d.type == "class"),
+                f"{script.path.replace('/', '.').replace('.py', '')}.{class_node.name}",
+            )
         except Exception:
-            signature = f"{script.path}.{class_node.name}"
+            signature = (
+                f"{script.path.replace('/', '.').replace('.py', '')}.{class_node.name}"
+            )
 
         py_class = (
             PyClass.builder()
             .name(class_node.name)
             .signature(signature)
             .start_line(class_node.lineno)
-            .end_line(getattr(class_node, "end_lineno", class_node.lineno + len(class_node.body)))
-            .docstring(self._pycomment(class_node))
+            .end_line(
+                getattr(
+                    class_node, "end_lineno", class_node.lineno + len(class_node.body)
+                )
+            )
+            .comments(self._pycomments(class_node))
             .code(astor.to_source(class_node).strip())
-            .base_classes([
-                ast.unparse(base)
-                for base in class_node.bases
-                if isinstance(base, ast.expr)
-            ])
+            .base_classes(
+                [
+                    ast.unparse(base)
+                    for base in class_node.bases
+                    if isinstance(base, ast.expr)
+                ]
+            )
             .methods(self._callables(class_node, script))
             .attributes(self._class_attributes(class_node, script))
-            .inner_classes({
-                child.name: self._class(child, script)
-                for child in class_node.body
-                if isinstance(child, ast.ClassDef)
-            })
+            .inner_classes(
+                {
+                    child.name: self._class(child, script)
+                    for child in class_node.body
+                    if isinstance(child, ast.ClassDef)
+                }
+            )
             .build()
         )
 
         return {signature: py_class}
 
-    def _callables(
-        self, node: AST, script: jedi.api.Script
-    ) -> Dict[str, PyCallable]:
+    def _callables(self, node: AST, script: Script) -> Dict[str, PyCallable]:
         """
         Builds PyCallable objects from any AST node that may contain functions.
 
         Args:
             node (AST): The AST node to process (e.g., Module, ClassDef, FunctionDef).
-            script (jedi.api.Script): The Jedi script object for the module.
+            script (Script): The Jedi script object for the module.
 
         Returns:
             Dict[str, PyCallable]: A dictionary mapping function/method names to PyCallable objects.
@@ -208,9 +211,7 @@ class SymbolTableBuilder:
                         .accessed_symbols(self._accessed_symbols(child, script))
                         .call_sites(self._call_sites(child, script))
                         .local_variables(self._local_variables(child))
-                        .cyclomatic_complexity(
-                            self._cyclomatic_complexity(child)
-                        )
+                        .cyclomatic_complexity(self._cyclomatic_complexity(child))
                         .parameters(self._callable_parameters(child))
                         .return_type(
                             ast.unparse(child.returns)
@@ -219,7 +220,7 @@ class SymbolTableBuilder:
                                 script, child.lineno, child.col_offset
                             )
                         )
-                        .docstring(self._pycomment(child))
+                        .comments(self._pycomments(child))
                         .build()
                     )
 
@@ -234,55 +235,79 @@ class SymbolTableBuilder:
         visit(node)
         return callables
 
-    def _pycomment(self, node: ast.AST) -> Optional[PyComment]:
+    def _pycomments(self, node: ast.AST, source: str) -> List[PyComment]:
         """
-        Builds a PyComment from the docstring of a function, class, or module, if present.
+        Extracts all PyComment instances (docstring and # comments) from within a specific AST node's body.
 
         Args:
-            node (AST): The AST node.
+            node (AST): The AST node (e.g., Module, ClassDef, FunctionDef).
+            source (str): Source code of the file.
 
         Returns:
-            PyComment or None
+            List[PyComment]: List of PyComment instances.
         """
-        content = ast.get_docstring(node, clean=False)
-        if not content:
-            return None  # No docstring present
+        comments: List[PyComment] = []
 
-        # The docstring node is guaranteed to be node.body[0].value
-        try:
-            string_node = node.body[0].value
-            start_line = getattr(string_node, "lineno", getattr(node, "lineno", -1))
-            end_line = getattr(string_node, "end_lineno", start_line)
-            start_column = getattr(string_node, "col_offset", -1)
-            end_column = getattr(string_node, "end_col_offset", start_column + len(content))
-        except Exception:
-            # Fallback in weird cases
-            start_line = getattr(node, "lineno", -1)
-            end_line = getattr(node, "end_lineno", start_line)
-            start_column = getattr(node, "col_offset", -1)
-            end_column = start_column + len(content)
+        # 1. Extract docstring (if any)
+        docstring_content = ast.get_docstring(node, clean=False)
+        if docstring_content:
+            try:
+                string_node = node.body[0].value  # type: ignore
+                start_line = getattr(string_node, "lineno", getattr(node, "lineno", -1))
+                end_line = getattr(string_node, "end_lineno", start_line)
+                start_column = getattr(string_node, "col_offset", -1)
+                end_column = getattr(
+                    string_node, "end_col_offset", start_column + len(docstring_content)
+                )
+            except Exception:
+                start_line = getattr(node, "lineno", -1)
+                end_line = getattr(node, "end_lineno", start_line)
+                start_column = getattr(node, "col_offset", -1)
+                end_column = start_column + len(docstring_content)
 
-        return (
-            PyComment.builder()
-            .content(content)
-            .start_line(start_line)
-            .end_line(end_line)
-            .start_column(start_column)
-            .end_column(end_column)
-            .is_docstring(True)
-            .build()
-        )
+            comments.append(
+                PyComment.builder()
+                .content(docstring_content)
+                .start_line(start_line)
+                .end_line(end_line)
+                .start_column(start_column)
+                .end_column(end_column)
+                .is_docstring(True)
+                .build()
+            )
 
+        # 2. Extract # comments scoped within the node's line range
+        node_start = getattr(node, "lineno", -1)
+        node_end = getattr(node, "end_lineno", node_start)
+
+        tokens = tokenize.generate_tokens(StringIO(source).readline)
+        for tok in tokens:
+            if tok.type == tokenize.COMMENT:
+                tok_line, tok_col = tok.start
+                if node_start <= tok_line <= node_end:
+                    comment_text = tok.string.lstrip("#").strip()
+                    comments.append(
+                        PyComment.builder()
+                        .content(comment_text)
+                        .start_line(tok_line)
+                        .end_line(tok_line)
+                        .start_column(tok_col)
+                        .end_column(tok_col + len(tok.string))
+                        .is_docstring(False)
+                        .build()
+                    )
+
+        return comments
 
     def _class_attributes(
-        self, ast_node: ast.AST, script: jedi.api.Script
+        self, ast_node: ast.AST, script: Script
     ) -> Dict[str, PyClassAttribute]:
         """
         Extracts class attributes from the class definition.
 
         Args:
             ast_node (AST): The AST node representing the class.
-            script (jedi.api.Script): The Jedi script object for the module.
+            script (Script): The Jedi script object for the module.
 
         Returns:
             Dict[str, PyClassAttribute]: A dictionary mapping attribute names to their metadata.
@@ -328,10 +353,12 @@ class SymbolTableBuilder:
             # class Foo:
             #     __slots__ = ('x', 'y')
             #
-            # Means that you can only do
+            # Doing so restricts dynamic attribute assignment.
+            # This means that you can do
             # Foo.x = 1
             # Foo.y = 2
-            # and not Foo.z = 3
+            # But, not
+            # Foo.z = 3
             elif isinstance(stmt, ast.Assign) and any(
                 isinstance(t, ast.Name) and t.id == "__slots__" for t in stmt.targets
             ):
@@ -351,7 +378,7 @@ class SymbolTableBuilder:
         return attributes
 
     def _callable_parameters(
-        self, fn_node: ast.FunctionDef, script: jedi.api.Script
+        self, fn_node: ast.FunctionDef, script: Script
     ) -> List[PyCallableParameter]:
         """
         Extracts callable parameters from the function definition.
@@ -360,11 +387,15 @@ class SymbolTableBuilder:
         # Pull full name from Jedi (e.g., mypkg.module.MyClass.my_func)
         try:
             definitions = script.goto(line=fn_node.lineno, column=fn_node.col_offset)
-            full_name = next((d.full_name for d in definitions if d.type == "function"), None)
+            full_name = next(
+                (d.full_name for d in definitions if d.type == "function"), None
+            )
         except Exception:
             full_name = None
 
-        class_name = full_name.split(".")[-2] if full_name and "." in full_name else None
+        class_name = (
+            full_name.split(".")[-2] if full_name and "." in full_name else None
+        )
 
         params: List[PyCallableParameter] = []
         args = fn_node.args
@@ -376,14 +407,18 @@ class SymbolTableBuilder:
                 return class_name
             return self._infer_type(script, arg_node.lineno, arg_node.col_offset)
 
-        def build_param(arg_node: ast.arg, default: Optional[ast.expr]) -> PyCallableParameter:
+        def build_param(
+            arg_node: ast.arg, default: Optional[ast.expr]
+        ) -> PyCallableParameter:
             return (
                 PyCallableParameter.builder()
                 .name(arg_node.arg)
                 .type(resolve_type(arg_node))
                 .default_value(ast.unparse(default) if default else None)
                 .start_line(getattr(arg_node, "lineno", -1))
-                .end_line(getattr(arg_node, "end_lineno", getattr(arg_node, "lineno", -1)))
+                .end_line(
+                    getattr(arg_node, "end_lineno", getattr(arg_node, "lineno", -1))
+                )
                 .start_column(getattr(arg_node, "col_offset", -1))
                 .end_column(getattr(arg_node, "end_col_offset", -1))
                 .build()
@@ -409,10 +444,7 @@ class SymbolTableBuilder:
 
         return params
 
-
-    def _accessed_symbols(
-        self, fn_node: ast.FunctionDef, script: jedi.api.Script
-    ) -> List[str]:
+    def _accessed_symbols(self, fn_node: ast.FunctionDef, script: Script) -> List[str]:
         """Analyzes the function body to extract all accessed symbols."""
         symbols = []
         for node in ast.walk(fn_node):
@@ -423,9 +455,7 @@ class SymbolTableBuilder:
                 symbols.append(symbol)
         return symbols
 
-    def _call_sites(
-        self, fn_node: ast.FunctionDef, script: jedi.api.Script
-    ) -> List[PyCallsite]:
+    def _call_sites(self, fn_node: ast.FunctionDef, script: Script) -> List[PyCallsite]:
         """
         Finds all call sites made from within the function using Jedi for type inference.
 
@@ -492,8 +522,91 @@ class SymbolTableBuilder:
 
         return call_sites
 
+    def _module_variables(
+        self, module: ast.Module, script: Script
+    ) -> List[PyVariableDeclaration]:
+        """
+        Extracts all variable declarations at the module level (excluding functions/classes).
+        Includes variables in `if __name__ == "__main__"` blocks.
+
+        Args:
+            module (ast.Module): The root module AST.
+            script (jedi.Script): For type inference.
+
+        Returns:
+            List[PyVariableDeclaration]
+        """
+        module_vars = []
+
+        def is_nested_in_function_or_class(n: ast.AST) -> bool:
+            while hasattr(n, "parent"):
+                n = n.parent
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    return True
+            return False
+
+        # Add parent pointers (needed for scope check)
+        for node in ast.walk(module):
+            for child in ast.iter_child_nodes(node):
+                child.parent = node  # type: ignore
+
+        for node in ast.walk(module):
+            if isinstance(node, ast.Assign):
+                if is_nested_in_function_or_class(node):
+                    continue
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        module_vars.append(
+                            PyVariableDeclaration.builder()
+                            .name(target.id)
+                            .type(
+                                self._infer_type(
+                                    script, target.lineno, target.col_offset
+                                )
+                            )
+                            .initializer(
+                                ast.unparse(node.value) if node.value else None
+                            )
+                            .value(None)
+                            .scope("module")
+                            .start_line(getattr(target, "lineno", -1))
+                            .end_line(
+                                getattr(node, "end_lineno", getattr(node, "lineno", -1))
+                            )
+                            .start_column(getattr(target, "col_offset", -1))
+                            .end_column(getattr(target, "end_col_offset", -1))
+                            .build()
+                        )
+
+            elif isinstance(node, ast.AnnAssign):
+                if is_nested_in_function_or_class(node):
+                    continue
+                target = node.target
+                if isinstance(target, ast.Name):
+                    module_vars.append(
+                        PyVariableDeclaration.builder()
+                        .name(target.id)
+                        .type(
+                            ast.unparse(node.annotation)
+                            if node.annotation
+                            else self._infer_type(script, node.lineno, node.col_offset)
+                        )
+                        .initializer(ast.unparse(node.value) if node.value else None)
+                        .value(None)
+                        .scope("module")
+                        .start_line(getattr(target, "lineno", -1))
+                        .end_line(
+                            getattr(node, "end_lineno", getattr(node, "lineno", -1))
+                        )
+                        .start_column(getattr(target, "col_offset", -1))
+                        .end_column(getattr(target, "end_col_offset", -1))
+                        .build()
+                    )
+
+        return module_vars
+
     def _local_variables(
-        self, fn_node: ast.FunctionDef, script: jedi.api.Script
+        self, fn_node: ast.FunctionDef, script: Script
     ) -> List[PyVariableDeclaration]:
         """
         Extracts all local variables and instance attribute assignments from the function.
@@ -646,7 +759,7 @@ class SymbolTableBuilder:
     def _symbol_from_name_node(
         self,
         name_node: ast.Name,
-        script: Optional[jedi.api.Script] = None,
+        script: Optional[Script] = None,
         enclosing_scope: Optional[str] = None,  # e.g. "function", "class", "module"
     ) -> PySymbol:
         """
@@ -700,3 +813,22 @@ class SymbolTableBuilder:
             .col_offset(col_offset)
             .build()
         )
+
+    def build(self) -> Dict[str, PyModule]:
+        """Builds the symbol table for the project.
+
+        This method scans the project directory, identifies Python files,
+        and constructs a symbol table containing information about classes,
+        functions, and variables defined in those files.
+        """
+        symbol_table: Dict[str, PyModule] = {}
+        for py_file in self.project_dir.rglob("*.py"):
+            if py_file.name.startswith("__"):
+                continue
+            try:
+                py_module: PyModule = self._module(py_file)
+                symbol_table.update({py_module.signature: py_module})
+            except Exception as e:
+                logger.error(f"Failed to process {py_file}: {e}")
+                continue
+        return symbol_table
