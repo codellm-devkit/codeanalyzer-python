@@ -1,3 +1,6 @@
 {
-    "wca.enable": false
+    "wca.enable": false,
+    "cSpell.words": [
+        "pycomments"
+    ]
 }

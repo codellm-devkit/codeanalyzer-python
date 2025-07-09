@@ -19,9 +19,9 @@ def _setup_logger(level: str = "INFO") -> None:
 
     logger.remove()
 
-    if level=="OFF":
-        return # If logging is turned off, we do not add any handlers.
-    
+    if level == "OFF":
+        return  # If logging is turned off, we do not add any handlers.
+
     logger.add(
         sys.stderr,
         format="{time:YYYY-MM-DD at HH:mm:ss} | {level} | {message}",
@@ -33,36 +33,40 @@ def _setup_logger(level: str = "INFO") -> None:
 @logger.catch
 def main(
     input: Annotated[
-        Path,
-        typer.Option("-i", "--input", help="Path to the project root directory.")
+        Path, typer.Option("-i", "--input", help="Path to the project root directory.")
     ],
     output: Annotated[
         Optional[Path],
-        typer.Option("-o", "--output", help="Output directory for artifacts.")
+        typer.Option("-o", "--output", help="Output directory for artifacts."),
     ] = None,
     analysis_level: Annotated[
         int,
-        typer.Option("-a", "--analysis-level", help="1: symbol table, 2: call graph.")
+        typer.Option("-a", "--analysis-level", help="1: symbol table, 2: call graph."),
     ] = 1,
     using_codeql: Annotated[
-        bool,
-        typer.Option("--codeql/--no-codeql", help="Enable CodeQL-based analysis.")
+        bool, typer.Option("--codeql/--no-codeql", help="Enable CodeQL-based analysis.")
     ] = False,
     rebuild_analysis: Annotated[
         bool,
-        typer.Option("--eager/--lazy", help="Enable eager or lazy analysis. Eager will rebuild the analysis cache at every run and lazy will use the cache if available. Defaults to lazy.")
+        typer.Option(
+            "--eager/--lazy",
+            help="Enable eager or lazy analysis. Eager will rebuild the analysis cache at every run and lazy will use the cache if available. Defaults to lazy.",
+        ),
     ] = False,
     cache_dir: Annotated[
         Optional[Path],
-        typer.Option("-c", "--cache-dir", help="Directory to store analysis cache. If not specified, the cache will be stored in the current working directory under .cache/codeanalyzer. Defaults to None.")
+        typer.Option(
+            "-c",
+            "--cache-dir",
+            help="Directory to store analysis cache. If not specified, the cache will be stored in the current working directory under .cache/codeanalyzer. Defaults to None.",
+        ),
     ] = None,
     clear_cache: Annotated[
         bool,
-        typer.Option("--clear-cache/--keep-cache", help="Clear cache after analysis.")
+        typer.Option("--clear-cache/--keep-cache", help="Clear cache after analysis."),
     ] = True,
     verbose: Annotated[
-        bool,
-        typer.Option("-v/-q", "--verbose/--quiet", help="Enable verbose output.")
+        bool, typer.Option("-v/-q", "--verbose/--quiet", help="Enable verbose output.")
     ] = True,
 ):
     """Static Analysis on Python source code using Jedi, Asteroid, and Treesitter."""
@@ -82,7 +86,7 @@ def main(
             output.mkdir(parents=True, exist_ok=True)
             print_stream = output / "analysis.json"
 
-        print(json.dumps(artifacts, indent=4), file=print_stream)
+        print(artifacts.model_dump_json(indent=4), file=print_stream)
 
 
 app = typer.Typer(

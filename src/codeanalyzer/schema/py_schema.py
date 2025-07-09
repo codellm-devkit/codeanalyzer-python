@@ -142,6 +142,7 @@ class PyComment(BaseModel):
     end_column: int = -1
     is_docstring: bool = False
 
+
 @builder
 class PySymbol(BaseModel):
     """
@@ -157,9 +158,10 @@ class PySymbol(BaseModel):
         lineno (int): Line number where the symbol is accessed or declared.
         col_offset (int): Column offset.
     """
+
     name: str
-    scope: Literal['local', 'nonlocal', 'global', 'class', 'module']
-    kind: Literal['variable', 'parameter', 'attribute', 'function', 'class', 'module']
+    scope: Literal["local", "nonlocal", "global", "class", "module"]
+    kind: Literal["variable", "parameter", "attribute", "function", "class", "module"]
     type: Optional[str] = None
     qualified_name: Optional[str] = None
     is_builtin: bool = False
@@ -207,11 +209,13 @@ class PyCallableParameter(BaseModel):
     start_column: int = -1
     end_column: int = -1
 
+
 @builder
 class PyCallsite(BaseModel):
     """
     Represents a Python call site (function or method invocation) with contextual metadata.
     """
+
     method_name: str
     receiver_expr: Optional[str] = None
     receiver_type: Optional[str] = None
@@ -228,6 +232,7 @@ class PyCallsite(BaseModel):
     start_column: int = -1
     end_line: int = -1
     end_column: int = -1
+
 
 @builder
 class PyCallable(BaseModel):
@@ -253,7 +258,7 @@ class PyCallable(BaseModel):
 
     name: str
     signature: str  # e.g., module.<class_name>.function_name
-    docstring: PyComment = None
+    comments: List[PyComment] = []
     decorators: List[str] = []
     parameters: List[PyCallableParameter] = []
     return_type: Optional[str] = None
@@ -285,7 +290,7 @@ class PyClassAttribute(BaseModel):
 
     name: str
     type: str = None
-    docstring: PyComment = None
+    comments: List[PyComment] = []
     start_line: int = -1
     end_line: int = -1
 
@@ -308,7 +313,7 @@ class PyClass(BaseModel):
 
     name: str
     signature: str  # e.g., module.class_name
-    docstring: PyComment = None
+    comments: List[PyComment] = []
     code: str = None
     base_classes: List[str] = []
     methods: Dict[str, PyCallable] = {}

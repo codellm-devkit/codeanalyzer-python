@@ -41,7 +41,7 @@ class AnalyzerCore:
         self.using_codeql = using_codeql
         self.rebuild_analysis = rebuild_analysis
         self.cache_dir = (
-            cache_dir.resolve() if cache_dir is not None else self.project_dir 
+            cache_dir.resolve() if cache_dir is not None else self.project_dir
         ) / ".codeanalyzer"
         self.clear_cache = clear_cache
         self.db_path: Optional[Path] = None
@@ -105,7 +105,6 @@ class AnalyzerCore:
             stderr=None,
         )
 
-
     def __enter__(self) -> "AnalyzerCore":
         # If no virtualenv is provided, try to create one using requirements.txt or pyproject.toml
         venv_path = self.cache_dir / self.project_dir.name / "virtualenv"
@@ -148,7 +147,7 @@ class AnalyzerCore:
 
         if self.using_codeql:
             logger.info(f"(Re-)initializing CodeQL analysis for {self.project_dir}")
-            cache_root = self.cache_dir / "codeql" 
+            cache_root = self.cache_dir / "codeql"
             cache_root.mkdir(parents=True, exist_ok=True)
             self.db_path = cache_root / f"{self.project_dir.name}-db"
             self.db_path.mkdir(exist_ok=True)
@@ -213,8 +212,12 @@ class AnalyzerCore:
 
     def analyze(self) -> PyApplication:
         """Return the path to the CodeQL database."""
-        symbol_table = self._build_symbol_table()
-        call_graph = self._get_call_graph()
+        return (
+            PyApplication.builder()
+            .symbol_table(self._build_symbol_table())
+            .call_graph(self._get_call_graph())
+            .build()
+        )
 
     def _compute_checksum(self, root: Path) -> str:
         """Compute SHA256 checksum of all Python source files in a project directory. If somethings changes, the
@@ -237,5 +240,5 @@ class AnalyzerCore:
 
     def _get_call_graph(self) -> Dict[str, Any]:
         """Retrieve call graph from CodeQL database."""
-        logger.info("Call graph extraction not yet implemented.")
+        logger.warning("Call graph extraction not yet implemented.")
         return {}
