@@ -30,7 +30,7 @@ import inspect
 def builder(cls):
     """
     Decorator that generates a builder class for a Pydantic models defined below.
-    
+
     It creates methods like:
         - with_<fieldname>(value)
         - build() to instantiate the model
@@ -60,17 +60,20 @@ def builder(cls):
 
     namespace["__init__"] = __init__
 
-    # Iterate over all fields in the model and create a method for each field that sets the value and returns the builder instance. 
+    # Iterate over all fields in the model and create a method for each field that sets the value and returns the builder instance.
     # This allows for method chaining. The method name will be "<fieldname>".
     for field, field_type in annotations.items():
+
         def make_method(f=field, t=field_type):
             def method(self, value):
                 setattr(self, f"_{f}", value)
                 return self
+
             method.__name__ = f"{f}"
             method.__annotations__ = {"value": t, "return": builder_name}
             method.__doc__ = f"Set {f} ({t.__name__})"
             return method
+
         namespace[f"{field}"] = make_method()
 
     # Create a build method that constructs the model instance using the values set in the builder.
@@ -85,6 +88,7 @@ def builder(cls):
     # Attach the builder class to the original class as an attribute so we can now call `MyModel.builder().name(...)`.
     setattr(cls, "builder", builder_cls)
     return cls
+
 
 @builder
 class PyImport(BaseModel):
@@ -116,6 +120,7 @@ class PyImport(BaseModel):
     start_column: int = -1
     end_column: int = -1
 
+
 @builder
 class PyComment(BaseModel):
     """
@@ -138,6 +143,31 @@ class PyComment(BaseModel):
     is_docstring: bool = False
 
 @builder
+class PySymbol(BaseModel):
+    """
+    Represents a symbol used or declared in Python code.
+
+    Attributes:
+        name (str): The name of the symbol (e.g., 'x', 'self.x', 'os.path').
+        scope (Literal['local', 'nonlocal', 'global', 'class', 'module']): The scope where the symbol is accessed.
+        kind (Literal['variable', 'parameter', 'attribute', 'function', 'class', 'module']): The kind of symbol.
+        type (Optional[str]): Inferred or annotated type, if available.
+        qualified_name (Optional[str]): Fully qualified name (e.g., 'self.x', 'os.path.join').
+        is_builtin (bool): Whether this is a Python builtin.
+        lineno (int): Line number where the symbol is accessed or declared.
+        col_offset (int): Column offset.
+    """
+    name: str
+    scope: Literal['local', 'nonlocal', 'global', 'class', 'module']
+    kind: Literal['variable', 'parameter', 'attribute', 'function', 'class', 'module']
+    type: Optional[str] = None
+    qualified_name: Optional[str] = None
+    is_builtin: bool = False
+    lineno: int = -1
+    col_offset: int = -1
+
+
+@builder
 class PyVariableDeclaration(BaseModel):
     """Represents a Python variable declaration.
 
@@ -153,6 +183,7 @@ class PyVariableDeclaration(BaseModel):
     end_line: int = -1
     start_column: int = -1
     end_column: int = -1
+
 
 @builder
 class PyCallableParameter(BaseModel):
@@ -174,6 +205,28 @@ class PyCallableParameter(BaseModel):
     start_line: int = -1
     end_line: int = -1
     start_column: int = -1
+    end_column: int = -1
+
+@builder
+class PyCallsite(BaseModel):
+    """
+    Represents a Python call site (function or method invocation) with contextual metadata.
+    """
+    method_name: str
+    receiver_expr: Optional[str] = None
+    receiver_type: Optional[str] = None
+    argument_types: List[str] = []
+    return_type: Optional[str] = None
+    callee_signature: Optional[str] = None
+    is_public: bool = False
+    is_protected: bool = False
+    is_private: bool = False
+    is_unspecified: bool = False
+    is_static_call: bool = False
+    is_constructor_call: bool = False
+    start_line: int = -1
+    start_column: int = -1
+    end_line: int = -1
     end_column: int = -1
 
 @builder
@@ -208,15 +261,15 @@ class PyCallable(BaseModel):
     start_line: int = -1
     end_line: int = -1
     code_start_line: int = -1
-    accessed_symbols: List[str] = []
-    call_sites: List[str] = []
-    is_entrypoint: bool = False
+    accessed_symbols: List[PySymbol] = []
+    call_sites: List[PyCallsite] = []
     local_variables: List[PyVariableDeclaration] = []
     cyclomatic_complexity: int = 0
 
     def __hash__(self) -> int:
         """Generate a hash based on the callable's signature."""
         return hash(self.signature)
+
 
 @builder
 class PyClassAttribute(BaseModel):
@@ -235,6 +288,7 @@ class PyClassAttribute(BaseModel):
     docstring: PyComment = None
     start_line: int = -1
     end_line: int = -1
+
 
 @builder
 class PyClass(BaseModel):
@@ -255,6 +309,7 @@ class PyClass(BaseModel):
     name: str
     signature: str  # e.g., module.class_name
     docstring: PyComment = None
+    code: str = None
     base_classes: List[str] = []
     methods: Dict[str, PyCallable] = {}
     attributes: Dict[str, PyClassAttribute] = {}
@@ -265,6 +320,7 @@ class PyClass(BaseModel):
     def __hash__(self):
         """Generate a hash based on the class's signature."""
         return hash(self.signature)
+
 
 @builder
 class PyModule(BaseModel):
@@ -287,6 +343,7 @@ class PyModule(BaseModel):
     classes: Dict[str, PyClass] = {}
     functions: Dict[str, PyCallable] = {}
     variables: List[PyVariableDeclaration] = []
+
 
 @builder
 class PyApplication(BaseModel):
