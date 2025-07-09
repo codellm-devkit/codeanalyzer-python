@@ -14,10 +14,14 @@ def _setup_logger(level: str = "INFO") -> None:
     Args:
         level (str): The logging level to set. Default is "INFO".
     """
-    if __name__ != "__main__" or level == "OFF":
+    if __name__ != "__main__":
         return  # Avoid reconfiguring logger if not running as a cli application
 
     logger.remove()
+
+    if level=="OFF":
+        return # If logging is turned off, we do not add any handlers.
+    
     logger.add(
         sys.stderr,
         format="{time:YYYY-MM-DD at HH:mm:ss} | {level} | {message}",
@@ -29,59 +33,37 @@ def _setup_logger(level: str = "INFO") -> None:
 @logger.catch
 def main(
     input: Annotated[
-        Path, typer.Option("-i", "--input", help="Path to the project root directory.")
+        Path,
+        typer.Option("-i", "--input", help="Path to the project root directory.")
     ],
-    virtualenv: Annotated[
-        Optional[Path],
-        typer.Option(
-            "-venv",
-            "--virtualenv",
-            help="Path to the virtual environment directory. If not provided, one will be created using the project's requirements.txt (or pyproject.toml). If this fails, the system Python will be used.",
-        ),
-    ] = None,
     output: Annotated[
         Optional[Path],
-        typer.Option(
-            "-o",
-            "--output",
-            help="Destination directory to save the output graphs. By default, the SDG formatted as a JSON will be printed to the console.",
-        ),
+        typer.Option("-o", "--output", help="Output directory for artifacts.")
     ] = None,
+    analysis_level: Annotated[
+        int,
+        typer.Option("-a", "--analysis-level", help="1: symbol table, 2: call graph.")
+    ] = 1,
     using_codeql: Annotated[
         bool,
-        typer.Option(
-            "--using-codeql/--not-using-codeql",
-            "-ql/-nql",
-            help="Use static analysis provided by the CodeQL backend. Default: True",
-        ),
+        typer.Option("--codeql/--no-codeql", help="Enable CodeQL-based analysis.")
     ] = False,
     rebuild_analysis: Annotated[
         bool,
-        typer.Option(
-            "--rebuild-analysis/--dont-rebuild-analysis",
-            "-ra/-nra",
-            help="Rebuild the analysis from scratch. Default: True",
-        ),
+        typer.Option("--eager/--lazy", help="Enable eager or lazy analysis. Eager will rebuild the analysis cache at every run and lazy will use the cache if available. Defaults to lazy.")
     ] = False,
+    cache_dir: Annotated[
+        Optional[Path],
+        typer.Option("-c", "--cache-dir", help="Directory to store analysis cache. If not specified, the cache will be stored in the current working directory under .cache/codeanalyzer. Defaults to None.")
+    ] = None,
     clear_cache: Annotated[
         bool,
-        typer.Option(
-            "--clear-cache-on-exit/--do-not-clear-cache-on-exit",
-            "-cc/-dncc",
-            help="Clear the analysis cache after the analysis is complete. Default: False",
-        ),
-    ] = False,
-    analysis_level: Annotated[
-        int,
-        typer.Option(
-            "-a",
-            "--analysis-level",
-            help="Level of analysis to perform. Options: 1 (symbol table) or 2 (call graph). Default: 1",
-        ),
-    ] = 1,
+        typer.Option("--clear-cache/--keep-cache", help="Clear cache after analysis.")
+    ] = True,
     verbose: Annotated[
-        bool, typer.Option("--verbose/--quiet", "-v/-q", help="Enable verbose output.")
-    ] = False,
+        bool,
+        typer.Option("-v/-q", "--verbose/--quiet", help="Enable verbose output.")
+    ] = True,
 ):
     """Static Analysis on Python source code using Jedi, Asteroid, and Treesitter."""
     if verbose:
@@ -90,7 +72,7 @@ def main(
         _setup_logger("OFF")
 
     with AnalyzerCore(
-        input, virtualenv, using_codeql, rebuild_analysis, clear_cache, analysis_level
+        input, analysis_level, using_codeql, rebuild_analysis, cache_dir, clear_cache
     ) as analyzer:
         artifacts = analyzer.analyze()
         # Default to printing the artifacts to stdout

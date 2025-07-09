@@ -20,11 +20,73 @@ This module defines the data models used to represent Python code structures
 for static analysis purposes.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, get_type_hints
 from typing_extensions import Literal
 from pydantic import BaseModel
 
+import inspect
 
+
+def builder(cls):
+    """
+    Decorator that generates a builder class for a Pydantic models defined below.
+    
+    It creates methods like:
+        - with_<fieldname>(value)
+        - build() to instantiate the model
+
+    It supports nested builder patterns and is mypy-compatible.
+    """
+    cls_name = cls.__name__
+    builder_name = f"{cls_name}Builder"
+
+    # Get type hints and default values for the fields in the model.
+    # For example, {file_path: Path, module_name: str, imports: List[PyImport], ...}
+    annotations = get_type_hints(cls)
+    # Get default values for the fields in the model.
+    defaults = {
+        f.name: f.default
+        for f in inspect.signature(cls).parameters.values()
+        if f.default is not inspect.Parameter.empty
+    }
+    # Create a namespace for the builder class.
+    namespace = {}
+
+    # Create an __init__ method for the builder class that initializes all fields to their default values.
+    def __init__(self):
+        for field in annotations:
+            default = defaults.get(field, None)
+            setattr(self, f"_{field}", default)
+
+    namespace["__init__"] = __init__
+
+    # Iterate over all fields in the model and create a method for each field that sets the value and returns the builder instance. 
+    # This allows for method chaining. The method name will be "<fieldname>".
+    for field, field_type in annotations.items():
+        def make_method(f=field, t=field_type):
+            def method(self, value):
+                setattr(self, f"_{f}", value)
+                return self
+            method.__name__ = f"{f}"
+            method.__annotations__ = {"value": t, "return": builder_name}
+            method.__doc__ = f"Set {f} ({t.__name__})"
+            return method
+        namespace[f"{field}"] = make_method()
+
+    # Create a build method that constructs the model instance using the values set in the builder.
+    def build(self):
+        return cls(**{k: getattr(self, f"_{k}") for k in annotations})
+
+    # Add the build method to the namespace.
+    namespace["build"] = build
+
+    # Assemble the builder class dynamically
+    builder_cls = type(builder_name, (object,), namespace)
+    # Attach the builder class to the original class as an attribute so we can now call `MyModel.builder().name(...)`.
+    setattr(cls, "builder", builder_cls)
+    return cls
+
+@builder
 class PyImport(BaseModel):
     """Represents a Python import statement.
 
@@ -54,7 +116,7 @@ class PyImport(BaseModel):
     start_column: int = -1
     end_column: int = -1
 
-
+@builder
 class PyComment(BaseModel):
     """
     Represents a Python comment.
@@ -75,7 +137,7 @@ class PyComment(BaseModel):
     end_column: int = -1
     is_docstring: bool = False
 
-
+@builder
 class PyVariableDeclaration(BaseModel):
     """Represents a Python variable declaration.
 
@@ -92,7 +154,7 @@ class PyVariableDeclaration(BaseModel):
     start_column: int = -1
     end_column: int = -1
 
-
+@builder
 class PyCallableParameter(BaseModel):
     """Represents a parameter of a Python callable (function/method).
 
@@ -114,7 +176,7 @@ class PyCallableParameter(BaseModel):
     start_column: int = -1
     end_column: int = -1
 
-
+@builder
 class PyCallable(BaseModel):
     """Represents a Python callable (function/method).
 
@@ -156,7 +218,7 @@ class PyCallable(BaseModel):
         """Generate a hash based on the callable's signature."""
         return hash(self.signature)
 
-
+@builder
 class PyClassAttribute(BaseModel):
     """Represents a Python class attribute.
 
@@ -174,7 +236,7 @@ class PyClassAttribute(BaseModel):
     start_line: int = -1
     end_line: int = -1
 
-
+@builder
 class PyClass(BaseModel):
     """Represents a Python class.
 
@@ -204,7 +266,7 @@ class PyClass(BaseModel):
         """Generate a hash based on the class's signature."""
         return hash(self.signature)
 
-
+@builder
 class PyModule(BaseModel):
     """Represents a Python module.
 
@@ -226,7 +288,7 @@ class PyModule(BaseModel):
     functions: Dict[str, PyCallable] = {}
     variables: List[PyVariableDeclaration] = []
 
-
+@builder
 class PyApplication(BaseModel):
     """Represents a Python application.
 

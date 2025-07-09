@@ -7,6 +7,7 @@ from .py_schema import (
     PyVariableDeclaration,
     PyCallable,
     PyClassAttribute,
+    PyCallableParameter
 )
 
 __all__ = [
@@ -18,4 +19,5 @@ __all__ = [
     "PyVariableDeclaration",
     "PyCallable",
     "PyClassAttribute",
+    "PyCallableParameter"
 ]

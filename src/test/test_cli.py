@@ -18,8 +18,7 @@ def test_cli_call_symbol_table(cli_runner, project_root):
             str(project_root),
             "--analysis-level",
             "1",
-            "--not-using-codeql",
-            "--quiet",
+            "--no-codeql",
         ],
     )
     logger.info(result.output)
