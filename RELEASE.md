@@ -1,8 +1,8 @@
-## 🎉 CodeAnalyzer Python v0.1.0 Release
+## 🎉 Codeanalyzer Python v0.1.0 Release
 
 **Python Static Analysis Backend for CodeLLM DevKit (CLDK)**
 
-Initial release of **CodeAnalyzer Python**: A comprehensive static analysis tool designed specifically as the Python backend for the CodeLLM DevKit ecosystem. This tool provides deep code understanding capabilities through symbol table generation, with future support for call graph analysis and semantic analysis using industry-standard tools.
+Initial release of **Codeanalyzer Python**: A comprehensive static analysis tool designed specifically as the Python backend for the CodeLLM DevKit ecosystem. This tool provides deep code understanding capabilities through symbol table generation, with future support for call graph analysis and semantic analysis using industry-standard tools.
 
 ### 🚀 Key Features
 
