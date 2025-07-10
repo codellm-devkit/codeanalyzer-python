@@ -1,37 +1,13 @@
 from contextlib import nullcontext
 import sys
-from loguru import logger
 import typer
 from typing import Optional, Annotated
 from pathlib import Path
+from codeanalyzer.utils import _set_log_level
+
 from codeanalyzer.core import AnalyzerCore
-import json
 
 
-def _setup_logger(level: str = "INFO") -> None:
-    """
-    Setup the logger with the specified level.
-
-    Args:
-        level (str): The logging level to set. Default is "INFO".
-    """
-    if __name__ != "__main__":
-        return  # Avoid reconfiguring logger if not running as a cli application
-
-    logger.remove()
-
-    if level == "OFF":
-        return  # If logging is turned off, we do not add any handlers.
-
-    logger.add(
-        sys.stderr,
-        format="{time:YYYY-MM-DD at HH:mm:ss} | {level} | {message}",
-        level=level,
-        colorize=True,
-    )
-
-
-@logger.catch
 def main(
     input: Annotated[
         Path, typer.Option("-i", "--input", help="Path to the project root directory.")
@@ -51,7 +27,7 @@ def main(
         bool,
         typer.Option(
             "--eager/--lazy",
-            help="Enable eager or lazy analysis. Eager will rebuild the analysis cache at every run and lazy will use the cache if available. Defaults to lazy.",
+            help="Enable eager or lazy analysis. Defaults to lazy.",
         ),
     ] = False,
     cache_dir: Annotated[
@@ -59,32 +35,27 @@ def main(
         typer.Option(
             "-c",
             "--cache-dir",
-            help="Directory to store analysis cache. If not specified, the cache will be stored in the current working directory under `.codeanalyzer`. Defaults to None.",
+            help="Directory to store analysis cache.",
         ),
     ] = None,
     clear_cache: Annotated[
         bool,
         typer.Option("--clear-cache/--keep-cache", help="Clear cache after analysis."),
     ] = True,
-    verbose: Annotated[
-        bool, typer.Option("-v/-q", "--verbose/--quiet", help="Enable verbose output.")
-    ] = True,
+    verbosity: Annotated[
+        int, typer.Option("-v", count=True, help="Increase verbosity: -v, -vv, -vvv")
+    ] = 0,
 ):
-    """Static Analysis on Python source code using Jedi, Asteroid, and Treesitter."""
-    if verbose:
-        _setup_logger("DEBUG")
-    else:
-        _setup_logger("OFF")
+    """Static Analysis on Python source code using Jedi, Astroid, and Treesitter."""
+    _set_log_level(verbosity)
 
     with AnalyzerCore(
         input, analysis_level, using_codeql, rebuild_analysis, cache_dir, clear_cache
     ) as analyzer:
         artifacts = analyzer.analyze()
-        # Default to printing the artifacts to stdout
         print_stream = sys.stdout
         stream_context = nullcontext(print_stream)
 
-        # If output is specified, redirect to file
         if output is not None:
             output.mkdir(parents=True, exist_ok=True)
             output_file = output / "analysis.json"

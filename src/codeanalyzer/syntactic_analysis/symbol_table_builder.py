@@ -4,9 +4,10 @@ import tokenize
 from typing import Dict, List, Optional
 import astor
 import jedi
-from loguru import logger
+from codeanalyzer.utils import logger
 from jedi.api.project import Project
 from jedi.api import Script
+from rich.progress import track
 from codeanalyzer.schema.py_schema import (
     PyCallable,
     PyCallableParameter,
@@ -21,6 +22,8 @@ from codeanalyzer.schema.py_schema import (
 )
 import ast
 from ast import AST, ClassDef
+
+from codeanalyzer.utils.progress_bar import ProgressBar
 
 
 class SymbolTableBuilder:
@@ -875,16 +878,26 @@ class SymbolTableBuilder:
         functions, and variables defined in those files.
         """
         symbol_table: Dict[str, PyModule] = {}
-        for directory in self.project_dir.iterdir():
-            if directory.is_dir() and directory.name.startswith("."):
-                continue
-            for py_file in directory.rglob("*.py"):
-                if py_file.name.startswith("__"):
-                    continue
+        # Get all Python files first to show accurate progress
+        py_files = [
+            py_file
+            for py_file in self.project_dir.rglob("*.py")
+            if "site-packages"
+            not in py_file.resolve().__str__()  # exclude site-packages
+            and ".venv"
+            not in py_file.resolve().__str__()  # exclude virtual environments
+            and ".codeanalyzer"
+            not in py_file.resolve().__str__()  # exclude internal cache directories
+        ]
+
+        with ProgressBar(len(py_files), "Building symbol table") as progress:
+            for py_file in py_files:
                 try:
-                    py_module: PyModule = self._module(py_file)
-                    symbol_table.update({py_file: py_module})
+                    py_module = self._module(py_file)
+                    symbol_table[str(py_file)] = py_module
                 except Exception as e:
                     logger.error(f"Failed to process {py_file}: {e}")
-                    continue
+                progress.advance()
+            progress.finish("✅ Symbol table generation complete.")
+
         return symbol_table

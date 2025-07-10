@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 import sys
 from typing import Any, Dict, Union, Optional
-from loguru import logger
+from codeanalyzer.utils import logger
 
 from codeanalyzer.schema.py_schema import PyApplication, PyModule
 from codeanalyzer.semantic_analysis.codeql import CodeQLLoader
@@ -119,23 +119,6 @@ class AnalyzerCore:
             )
             # Find python in the virtual environment
             venv_python = venv_path / "bin" / "python"
-
-            # Upgrade pip + install build backend dependencies
-            self._cmd_exec_helper(
-                [
-                    str(venv_python),
-                    "-m",
-                    "pip",
-                    "install",
-                    "--upgrade",
-                    "--editable",
-                    "pip",
-                    "build",
-                    "setuptools",
-                    "wheel",
-                ],
-                check=True,
-            )
 
             # Install the project itself (reads pyproject.toml)
             self._cmd_exec_helper(
