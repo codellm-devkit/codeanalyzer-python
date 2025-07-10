@@ -25,10 +25,10 @@ def test_cli_call_symbol_table(cli_runner, project_root):
             "--analysis-level",
             "1",
             "--no-codeql",
-            "--quiet",
             "--cache-dir",
             str(project_root / "src" / "test" / ".cache"),
             "--keep-cache",
+            "-v",
         ],
     )
     logger.debug(f"CLI result: {result.output}")

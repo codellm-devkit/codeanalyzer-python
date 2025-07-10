@@ -4,7 +4,7 @@ import typer
 from typing import Optional, Annotated
 from pathlib import Path
 from codeanalyzer.utils import _set_log_level
-
+from codeanalyzer.utils import logger
 from codeanalyzer.core import AnalyzerCore
 
 
@@ -48,6 +48,10 @@ def main(
 ):
     """Static Analysis on Python source code using Jedi, Astroid, and Treesitter."""
     _set_log_level(verbosity)
+
+    if not input.exists():
+        logger.error(f"Input path '{input}' does not exist.")
+        raise typer.Exit(code=1)
 
     with AnalyzerCore(
         input, analysis_level, using_codeql, rebuild_analysis, cache_dir, clear_cache
