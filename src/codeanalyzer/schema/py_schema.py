@@ -20,6 +20,8 @@ This module defines the data models used to represent Python code structures
 for static analysis purposes.
 """
 
+from pathlib import Path
+import sys
 from typing import Any, Dict, List, Optional, get_type_hints
 from typing_extensions import Literal
 from pydantic import BaseModel
@@ -42,7 +44,7 @@ def builder(cls):
 
     # Get type hints and default values for the fields in the model.
     # For example, {file_path: Path, module_name: str, imports: List[PyImport], ...}
-    annotations = get_type_hints(cls)
+    annotations = cls.__annotations__
     # Get default values for the fields in the model.
     defaults = {
         f.name: f.default
@@ -69,12 +71,12 @@ def builder(cls):
                 setattr(self, f"_{f}", value)
                 return self
 
-            method.__name__ = f"{f}"
+            method.__name__ = f"with_{f}"
             method.__annotations__ = {"value": t, "return": builder_name}
             method.__doc__ = f"Set {f} ({t.__name__})"
             return method
 
-        namespace[f"{field}"] = make_method()
+        namespace[f"with_{field}"] = make_method()
 
     # Create a build method that constructs the model instance using the values set in the builder.
     def build(self):
@@ -222,11 +224,6 @@ class PyCallsite(BaseModel):
     argument_types: List[str] = []
     return_type: Optional[str] = None
     callee_signature: Optional[str] = None
-    is_public: bool = False
-    is_protected: bool = False
-    is_private: bool = False
-    is_unspecified: bool = False
-    is_static_call: bool = False
     is_constructor_call: bool = False
     start_line: int = -1
     start_column: int = -1
@@ -360,6 +357,4 @@ class PyApplication(BaseModel):
         description (str): A brief description of the application.
     """
 
-    symbol_table: dict[str, PyModule]
-    # TODO: Implement call graph extraction
-    call_graph: List[Any] | None = None
+    symbol_table: dict[Path, PyModule]
