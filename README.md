@@ -52,17 +52,17 @@ To view the available options and commands, run `uv run codeanalyzer --help`. Yo
  Static Analysis on Python source code using Jedi, CodeQL and Tree sitter.
 
 
-╭─ Options ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ *  --input           -i                    PATH     Path to the project root directory. [default: None] [required]                                                                                                                                                                                           │
-│    --output          -o                    PATH     Output directory for artifacts. [default: None]                                                                                                                                                                                                          │
-│    --analysis-level  -a                    INTEGER  1: symbol table, 2: call graph. [default: 1]                                                                                                                                                                                                             │
-│    --codeql              --no-codeql                Enable CodeQL-based analysis. [default: no-codeql]                                                                                                                                                                                                       │
-│    --eager               --lazy                     Enable eager or lazy analysis. Eager will rebuild the analysis cache at every run and lazy will use the cache if available. Defaults to lazy. [default: lazy]                                                                                            │
-│    --cache-dir       -c                    PATH     Directory to store analysis cache. If not specified, the cache will be stored in the current working directory under `.codeanalyzer`. Defaults to None. [default: None]                                                                                  │
-│    --clear-cache         --keep-cache               Clear cache after analysis. [default: clear-cache]                                                                                                                                                                                                       │
-│    --verbose         -v  --quiet       -q           Enable verbose output. [default: v]                                                                                                                                                                                                                      │
-│    --help                                           Show this message and exit.                                                                                                                                                                                                                              │
-╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ──────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ *  --input           -i                  PATH     Path to the project root directory. [default: None] [required]   │
+│    --output          -o                  PATH     Output directory for artifacts. [default: None]                  │
+│    --analysis-level  -a                  INTEGER  1: symbol table, 2: call graph. [default: 1]                     │
+│    --codeql              --no-codeql              Enable CodeQL-based analysis. [default: no-codeql]               │
+│    --eager               --lazy                   Enable eager or lazy analysis. Defaults to lazy. [default: lazy] │
+│    --cache-dir       -c                  PATH     Directory to store analysis cache. [default: None]               │
+│    --clear-cache         --keep-cache             Clear cache after analysis. [default: clear-cache]               │
+│                      -v                  INTEGER  Increase verbosity: -v, -vv, -vvv [default: 0]                   │
+│    --help                                         Show this message and exit.                                      │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
 ### Examples
