@@ -258,6 +258,7 @@ class SymbolTableBuilder:
                     callables[method_name] = (
                         PyCallable.builder()
                         .with_name(method_name)
+                        .with_path(script.path.__str__())
                         .with_signature(signature)
                         .with_decorators(decorators)
                         .with_code(code)
@@ -799,9 +800,10 @@ class SymbolTableBuilder:
                 complexity += 1
 
             elif isinstance(node, ast.ExceptHandler):
+                # Try and catch statement
                 complexity += 1
 
-            # I am also counting 'assert' or 'return' or 'yield' as complexity bumps
+            # TODO: I am also counting 'assert' or 'return' or 'yield' as complexity bumps
             elif isinstance(node, (ast.Assert, ast.Return, ast.Yield, ast.YieldFrom)):
                 complexity += 1
 

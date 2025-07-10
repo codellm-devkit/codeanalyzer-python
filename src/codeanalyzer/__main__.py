@@ -59,7 +59,7 @@ def main(
         typer.Option(
             "-c",
             "--cache-dir",
-            help="Directory to store analysis cache. If not specified, the cache will be stored in the current working directory under .cache/codeanalyzer. Defaults to None.",
+            help="Directory to store analysis cache. If not specified, the cache will be stored in the current working directory under `.codeanalyzer`. Defaults to None.",
         ),
     ] = None,
     clear_cache: Annotated[
