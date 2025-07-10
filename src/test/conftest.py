@@ -3,9 +3,6 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-# Import your Typer app
-from codeanalyzer.__main__ import app  # adjust if main is elsewhere
-
 
 @pytest.fixture
 def cli_runner() -> CliRunner:
