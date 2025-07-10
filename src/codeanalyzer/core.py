@@ -1,4 +1,5 @@
 import hashlib
+import os
 from pdb import set_trace
 import shutil
 import subprocess
@@ -94,15 +95,108 @@ class AnalyzerCore:
         returncode = process.wait()
 
         if check and returncode != 0:
-            raise subprocess.CalledProcessError(
-                returncode, cmd, output="\n".join(output_lines)
-            )
+            error_output = "\n".join(output_lines)
+            logger.error(f"Command failed with exit code {returncode}: {' '.join(cmd)}")
+            if error_output:
+                logger.error(f"Command output:\n{error_output}")
+            raise subprocess.CalledProcessError(returncode, cmd, output=error_output)
 
         return subprocess.CompletedProcess(
             args=cmd,
             returncode=returncode,
             stdout="\n".join(output_lines) if capture_output else None,
             stderr=None,
+        )
+
+    @staticmethod
+    def _get_base_interpreter() -> Path:
+        """Get the base Python interpreter path.
+
+        This method finds a suitable base Python interpreter that can be used
+        to create virtual environments, even when running from within a virtual environment.
+        It supports various Python version managers like pyenv, conda, asdf, etc.
+
+        Returns:
+            Path: The base Python interpreter path.
+
+        Raises:
+            RuntimeError: If no suitable Python interpreter can be found.
+        """
+        # If we're not in a virtual environment, use the current interpreter
+        if sys.prefix == sys.base_prefix:
+            return Path(sys.executable)
+
+        # We're inside a virtual environment; need to find the base interpreter
+
+        # First, check if user explicitly set SYSTEM_PYTHON
+        if system_python := os.getenv("SYSTEM_PYTHON"):
+            system_python_path = Path(system_python)
+            if system_python_path.exists() and system_python_path.is_file():
+                return system_python_path
+
+        # Try to get the base interpreter from sys.base_executable (Python 3.3+)
+        if hasattr(sys, "base_executable") and sys.base_executable:
+            base_exec = Path(sys.base_executable)
+            if base_exec.exists() and base_exec.is_file():
+                return base_exec
+
+        # Try to find Python interpreters using shlex.which
+        python_candidates = []
+
+        # Use shutil.which to find python3 and python in PATH
+        for python_name in ["python3", "python"]:
+            if python_path := shutil.which(python_name):
+                candidate = Path(python_path)
+                # Skip if this is the current virtual environment's python
+                if not str(candidate).startswith(sys.prefix):
+                    python_candidates.append(candidate)
+
+        # Check pyenv installation
+        if pyenv_root := os.getenv("PYENV_ROOT"):
+            pyenv_python = Path(pyenv_root) / "shims" / "python"
+            if pyenv_python.exists():
+                python_candidates.append(pyenv_python)
+
+        # Check default pyenv location
+        home_pyenv = Path.home() / ".pyenv" / "shims" / "python"
+        if home_pyenv.exists():
+            python_candidates.append(home_pyenv)
+
+        # Check conda base environment
+        if conda_prefix := os.getenv(
+            "CONDA_PREFIX_1"
+        ):  # Original conda env before activation
+            conda_python = Path(conda_prefix) / "bin" / "python"
+            if conda_python.exists():
+                python_candidates.append(conda_python)
+
+        # Check asdf
+        if asdf_dir := os.getenv("ASDF_DIR"):
+            asdf_python = Path(asdf_dir) / "shims" / "python"
+            if asdf_python.exists():
+                python_candidates.append(asdf_python)
+
+        # Test candidates to find a working Python interpreter
+        for candidate in python_candidates:
+            try:
+                # Test if the interpreter works and can create venv
+                result = subprocess.run(
+                    [str(candidate), "-c", "import venv; print('OK')"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                if result.returncode == 0 and "OK" in result.stdout:
+                    return candidate
+            except (subprocess.TimeoutExpired, FileNotFoundError, PermissionError):
+                continue
+
+        # If nothing works, raise an informative error
+        raise RuntimeError(
+            f"Could not find a suitable base Python interpreter. "
+            f"Current environment: {sys.executable} (prefix: {sys.prefix}). "
+            f"Please set the SYSTEM_PYTHON environment variable to point to "
+            f"a working Python interpreter that can create virtual environments."
         )
 
     def __enter__(self) -> "AnalyzerCore":
@@ -114,7 +208,7 @@ class AnalyzerCore:
         if not venv_path.exists() or self.rebuild_analysis:
             logger.info(f"(Re-)creating virtual environment at {venv_path}")
             self._cmd_exec_helper(
-                [sys.executable, "-m", "venv", str(venv_path)],
+                [str(self._get_base_interpreter()), "-m", "venv", str(venv_path)],
                 check=True,
             )
             # Find python in the virtual environment
