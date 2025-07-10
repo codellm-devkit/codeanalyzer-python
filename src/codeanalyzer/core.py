@@ -214,8 +214,7 @@ class AnalyzerCore:
         """Return the path to the CodeQL database."""
         return (
             PyApplication.builder()
-            .symbol_table(self._build_symbol_table())
-            .call_graph(self._get_call_graph())
+            .with_symbol_table(self._build_symbol_table())
             .build()
         )
 

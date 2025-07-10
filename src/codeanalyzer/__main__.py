@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 import sys
 from loguru import logger
 import typer
@@ -81,12 +82,16 @@ def main(
         artifacts = analyzer.analyze()
         # Default to printing the artifacts to stdout
         print_stream = sys.stdout
-        # The user has specified an output directory, so we save the artifacts there.
+        stream_context = nullcontext(print_stream)
+
+        # If output is specified, redirect to file
         if output is not None:
             output.mkdir(parents=True, exist_ok=True)
-            print_stream = output / "analysis.json"
+            output_file = output / "analysis.json"
+            stream_context = output_file.open("w")
 
-        print(artifacts.model_dump_json(indent=4), file=print_stream)
+        with stream_context as f:
+            print(artifacts.model_dump_json(indent=4), file=f)
 
 
 app = typer.Typer(
