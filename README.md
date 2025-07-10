@@ -16,6 +16,46 @@ This project uses [uv](https://docs.astral.sh/uv/) for dependency management.
   uv python install 3.12
   ```
 
+#### System Package Requirements
+
+The tool creates virtual environments internally using Python's built-in `venv` module.
+
+**Ubuntu/Debian systems:**
+```bash
+sudo apt update
+sudo apt install python3.12-venv python3-dev build-essential
+```
+
+**Fedora/RHEL/CentOS systems:**
+```bash
+sudo dnf group install "Development Tools"
+sudo dnf install python3-pip python3-venv python3-devel
+```
+or on older versions:
+```bash
+sudo yum groupinstall "Development Tools"
+sudo yum install python3-pip python3-venv python3-devel
+```
+
+**macOS systems:**
+```bash
+# Install Xcode Command Line Tools (for compilation)
+xcode-select --install
+
+# If using Homebrew Python (recommended)
+brew install python@3.12
+
+# If using pyenv (popular Python version manager)
+# First ensure pyenv is properly installed and configured
+pyenv install 3.12.0  # or latest 3.12.x version
+pyenv global 3.12.0   # or pyenv local 3.12.0 for project-specific
+
+# If using system Python, you may need to install certificates
+/Applications/Python\ 3.12/Install\ Certificates.command
+```
+
+> **Note:** These packages are required as the tool uses Python's built-in `venv` module to create isolated environments for analysis.
+
 ### Setup
 
 1. Clone the repository:
