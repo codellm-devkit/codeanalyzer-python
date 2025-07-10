@@ -128,6 +128,7 @@ class AnalyzerCore:
                     "pip",
                     "install",
                     "--upgrade",
+                    "--editable",
                     "pip",
                     "build",
                     "setuptools",

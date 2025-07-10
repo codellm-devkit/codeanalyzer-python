@@ -254,6 +254,7 @@ class PyCallable(BaseModel):
     """
 
     name: str
+    path: str
     signature: str  # e.g., module.<class_name>.function_name
     comments: List[PyComment] = []
     decorators: List[str] = []
