@@ -21,8 +21,7 @@ for static analysis purposes.
 """
 
 from pathlib import Path
-import sys
-from typing import Any, Dict, List, Optional, get_type_hints
+from typing import Any, Dict, List, Optional
 from typing_extensions import Literal
 from pydantic import BaseModel
 
@@ -287,7 +286,7 @@ class PyClassAttribute(BaseModel):
     """
 
     name: str
-    type: str = None
+    type: Optional[str] = None
     comments: List[PyComment] = []
     start_line: int = -1
     end_line: int = -1

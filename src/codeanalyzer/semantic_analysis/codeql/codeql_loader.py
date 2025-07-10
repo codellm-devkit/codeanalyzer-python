@@ -2,7 +2,7 @@ import platform
 import requests
 import zipfile
 from pathlib import Path
-from loguru import logger
+from codeanalyzer.utils import logger
 from tqdm import tqdm
 
 

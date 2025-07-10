@@ -262,9 +262,9 @@ dependencies = [
     { name = "pandas" },
     { name = "pydantic" },
     { name = "requests" },
+    { name = "rich" },
     { name = "ruff" },
     { name = "toml" },
-    { name = "tqdm" },
     { name = "typer" },
 ]
 
@@ -289,9 +289,9 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.3.0" },
     { name = "pydantic", specifier = ">=2.11.7" },
     { name = "requests", specifier = ">=2.32.4" },
+    { name = "rich", specifier = ">=14.0.0" },
     { name = "ruff", specifier = ">=0.12.2" },
     { name = "toml", specifier = ">=0.10.2" },
-    { name = "tqdm", specifier = ">=4.67.1" },
     { name = "typer", specifier = ">=0.16.0" },
 ]
 
