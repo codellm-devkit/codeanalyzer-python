@@ -287,11 +287,7 @@ class AnalyzerCore:
 
     def analyze(self) -> PyApplication:
         """Return the path to the CodeQL database."""
-        return (
-            PyApplication.builder()
-            .with_symbol_table(self._build_symbol_table())
-            .build()
-        )
+        return PyApplication.builder().symbol_table(self._build_symbol_table()).build()
 
     def _compute_checksum(self, root: Path) -> str:
         """Compute SHA256 checksum of all Python source files in a project directory. If somethings changes, the
