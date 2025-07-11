@@ -9,7 +9,6 @@ authors = [
 requires-python = ">=3.12"
 
 dependencies = [
-    "astor>=0.8.1",
     "jedi>=0.19.2",
     "loguru>=0.7.3",
     "msgpack>=1.1.1",
@@ -54,4 +53,37 @@ include = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+addopts = [
+    "-p", "coverage",
+    "--cov=codeanalyzer",
+    "--cov-report=html",
+    "--cov-report=term-missing",
+    "--cov-fail-under=40"
+]
+testpaths = ["test"]
+
+[tool.coverage.run]
+source = ["codeanalyzer"]
+branch = true
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "*/__pycache__/*",
+    "*/venv/*",
+    "*/.venv/*",
+    "codeanalyzer/semantic_analysis/*"
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:"
+]
+
+[tool.coverage.html]
+directory = "htmlcov"

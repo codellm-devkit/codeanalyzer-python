@@ -5,7 +5,6 @@ from io import StringIO
 from pathlib import Path
 from typing import Dict, List, Optional
 
-import astor
 import jedi
 from jedi.api import Script
 from jedi.api.project import Project
@@ -183,7 +182,7 @@ class SymbolTableBuilder:
                 f"{script.path.__str__().replace('/', '.').replace('.py', '')}.{class_node.name}",
             )
 
-        code: str = astor.to_source(class_node).strip()
+        code: str = ast.unparse(class_node).strip()
 
         py_class = (
             PyClass.builder()
@@ -243,7 +242,7 @@ class SymbolTableBuilder:
                         child, "end_lineno", start_line + len(child.body)
                     )
                     code_start_line = child.body[0].lineno if child.body else start_line
-                    code = astor.to_source(child).strip()
+                    code: str = ast.unparse(child).strip()
                     decorators = [ast.unparse(d) for d in child.decorator_list]
 
                     try:
