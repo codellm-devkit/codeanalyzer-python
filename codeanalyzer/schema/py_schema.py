@@ -33,7 +33,7 @@ def builder(cls):
     Decorator that generates a builder class for a Pydantic models defined below.
 
     It creates methods like:
-        - with_<fieldname>(value)
+        - <fieldname>(value)
         - build() to instantiate the model
 
     It supports nested builder patterns and is mypy-compatible.
@@ -70,12 +70,12 @@ def builder(cls):
                 setattr(self, f"_{f}", value)
                 return self
 
-            method.__name__ = f"with_{f}"
+            method.__name__ = f"{f}"
             method.__annotations__ = {"value": t, "return": builder_name}
             method.__doc__ = f"Set {f} ({t.__name__})"
             return method
 
-        namespace[f"with_{field}"] = make_method()
+        namespace[f"{field}"] = make_method()
 
     # Create a build method that constructs the model instance using the values set in the builder.
     def build(self):

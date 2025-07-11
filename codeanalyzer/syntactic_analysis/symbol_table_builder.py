@@ -98,13 +98,13 @@ class SymbolTableBuilder:
 
         return (
             PyModule.builder()
-            .with_file_path(str(py_file))
-            .with_module_name(py_file.stem)
-            .with_comments(self._pycomments(module, source))
-            .with_imports(self._imports(module))
-            .with_variables(self._module_variables(module, script))
-            .with_classes(classes)
-            .with_functions(functions)
+            .file_path(str(py_file))
+            .module_name(py_file.stem)
+            .comments(self._pycomments(module, source))
+            .imports(self._imports(module))
+            .variables(self._module_variables(module, script))
+            .classes(classes)
+            .functions(functions)
             .build()
         )
 
@@ -126,13 +126,13 @@ class SymbolTableBuilder:
                 for alias in node.names:
                     imports.append(
                         PyImport.builder()
-                        .with_module(alias.name)  # for "import os", alias.name = "os"
-                        .with_name(alias.asname or alias.name)  # name in local scope
-                        .with_alias(alias.name if alias.asname else None)
-                        .with_start_line(getattr(node, "lineno", -1))
-                        .with_end_line(getattr(node, "end_lineno", node.lineno))
-                        .with_start_column(getattr(node, "col_offset", -1))
-                        .with_end_column(getattr(node, "end_col_offset", -1))
+                        .module(alias.name)  # for "import os", alias.name = "os"
+                        .name(alias.asname or alias.name)  # name in local scope
+                        .alias(alias.name if alias.asname else None)
+                        .start_line(getattr(node, "lineno", -1))
+                        .end_line(getattr(node, "end_lineno", node.lineno))
+                        .start_column(getattr(node, "col_offset", -1))
+                        .end_column(getattr(node, "end_col_offset", -1))
                         .build()
                     )
 
@@ -145,13 +145,13 @@ class SymbolTableBuilder:
                         qualified_module = "." * node.level + (module_name or "")
                     imports.append(
                         PyImport.builder()
-                        .with_module(qualified_module)
-                        .with_name(alias.asname or alias.name)
-                        .with_alias(alias.name if alias.asname else None)
-                        .with_start_line(getattr(node, "lineno", -1))
-                        .with_end_line(getattr(node, "end_lineno", node.lineno))
-                        .with_start_column(getattr(node, "col_offset", -1))
-                        .with_end_column(getattr(node, "end_col_offset", -1))
+                        .module(qualified_module)
+                        .name(alias.asname or alias.name)
+                        .alias(alias.name if alias.asname else None)
+                        .start_line(getattr(node, "lineno", -1))
+                        .end_line(getattr(node, "end_lineno", node.lineno))
+                        .start_column(getattr(node, "col_offset", -1))
+                        .end_column(getattr(node, "end_col_offset", -1))
                         .build()
                     )
 
@@ -187,26 +187,26 @@ class SymbolTableBuilder:
 
         py_class = (
             PyClass.builder()
-            .with_name(class_node.name)
-            .with_signature(signature)
-            .with_start_line(class_node.lineno)
-            .with_end_line(
+            .name(class_node.name)
+            .signature(signature)
+            .start_line(class_node.lineno)
+            .end_line(
                 getattr(
                     class_node, "end_lineno", class_node.lineno + len(class_node.body)
                 )
             )
-            .with_comments(self._pycomments(class_node, code))
-            .with_code(code)
-            .with_base_classes(
+            .comments(self._pycomments(class_node, code))
+            .code(code)
+            .base_classes(
                 [
                     ast.unparse(base)
                     for base in class_node.bases
                     if isinstance(base, ast.expr)
                 ]
             )
-            .with_methods(self._callables(class_node, script))
-            .with_attributes(self._class_attributes(class_node, script))
-            .with_inner_classes(
+            .methods(self._callables(class_node, script))
+            .attributes(self._class_attributes(class_node, script))
+            .inner_classes(
                 {
                     k: v
                     for child in class_node.body
@@ -260,27 +260,27 @@ class SymbolTableBuilder:
 
                     callables[method_name] = (
                         PyCallable.builder()
-                        .with_name(method_name)
-                        .with_path(script.path.__str__())
-                        .with_signature(signature)
-                        .with_decorators(decorators)
-                        .with_code(code)
-                        .with_start_line(start_line)
-                        .with_end_line(end_line)
-                        .with_code_start_line(code_start_line)
-                        .with_accessed_symbols(self._accessed_symbols(child, script))
-                        .with_call_sites(self._call_sites(child, script))
-                        .with_local_variables(self._local_variables(child, script))
-                        .with_cyclomatic_complexity(self._cyclomatic_complexity(child))
-                        .with_parameters(self._callable_parameters(child, script))
-                        .with_return_type(
+                        .name(method_name)
+                        .path(script.path.__str__())
+                        .signature(signature)
+                        .decorators(decorators)
+                        .code(code)
+                        .start_line(start_line)
+                        .end_line(end_line)
+                        .code_start_line(code_start_line)
+                        .accessed_symbols(self._accessed_symbols(child, script))
+                        .call_sites(self._call_sites(child, script))
+                        .local_variables(self._local_variables(child, script))
+                        .cyclomatic_complexity(self._cyclomatic_complexity(child))
+                        .parameters(self._callable_parameters(child, script))
+                        .return_type(
                             ast.unparse(child.returns)
                             if child.returns
                             else self._infer_type(
                                 script, child.lineno, child.col_offset
                             )
                         )
-                        .with_comments(self._pycomments(child, code))
+                        .comments(self._pycomments(child, code))
                         .build()
                     )
 
@@ -327,12 +327,12 @@ class SymbolTableBuilder:
 
             comments.append(
                 PyComment.builder()
-                .with_content(docstring_content)
-                .with_start_line(start_line)
-                .with_end_line(end_line)
-                .with_start_column(start_column)
-                .with_end_column(end_column)
-                .with_is_docstring(True)
+                .content(docstring_content)
+                .start_line(start_line)
+                .end_line(end_line)
+                .start_column(start_column)
+                .end_column(end_column)
+                .is_docstring(True)
                 .build()
             )
 
@@ -348,12 +348,12 @@ class SymbolTableBuilder:
                     comment_text = tok.string.lstrip("#").strip()
                     comments.append(
                         PyComment.builder()
-                        .with_content(comment_text)
-                        .with_start_line(tok_line)
-                        .with_end_line(tok_line)
-                        .with_start_column(tok_col)
-                        .with_end_column(tok_col + len(tok.string))
-                        .with_is_docstring(False)
+                        .content(comment_text)
+                        .start_line(tok_line)
+                        .end_line(tok_line)
+                        .start_column(tok_col)
+                        .end_column(tok_col + len(tok.string))
+                        .is_docstring(False)
                         .build()
                     )
 
@@ -380,14 +380,14 @@ class SymbolTableBuilder:
                     if isinstance(target, ast.Name):
                         attributes[target.id] = (
                             PyClassAttribute.builder()
-                            .with_name(target.id)
-                            .with_type(
+                            .name(target.id)
+                            .type(
                                 self._infer_type(
                                     script, target.lineno, target.col_offset
                                 )
                             )
-                            .with_start_line(getattr(target, "lineno", -1))
-                            .with_end_line(getattr(stmt, "end_lineno", stmt.lineno))
+                            .start_line(getattr(target, "lineno", -1))
+                            .end_line(getattr(stmt, "end_lineno", stmt.lineno))
                             .build()
                         )
 
@@ -396,16 +396,16 @@ class SymbolTableBuilder:
                 if isinstance(target, ast.Name):
                     attributes[target.id] = (
                         PyClassAttribute.builder()
-                        .with_name(target.id)
-                        .with_type(
+                        .name(target.id)
+                        .type(
                             ast.unparse(stmt.annotation)
                             if stmt.annotation
                             else self._infer_type(
                                 script, target.lineno, target.col_offset
                             )
                         )
-                        .with_start_line(getattr(target, "lineno", -1))
-                        .with_end_line(getattr(stmt, "end_lineno", stmt.lineno))
+                        .start_line(getattr(target, "lineno", -1))
+                        .end_line(getattr(stmt, "end_lineno", stmt.lineno))
                         .build()
                     )
             # We may also encounter `__slots__` in class definitions.
@@ -428,10 +428,10 @@ class SymbolTableBuilder:
                             value = elt.s if isinstance(elt, ast.Str) else elt.value
                             attributes[value] = (
                                 PyClassAttribute.builder()
-                                .with_name(value)
-                                .with_type("slot")
-                                .with_start_line(getattr(stmt, "lineno", -1))
-                                .with_end_line(getattr(stmt, "end_lineno", stmt.lineno))
+                                .name(value)
+                                .type("slot")
+                                .start_line(getattr(stmt, "lineno", -1))
+                                .end_line(getattr(stmt, "end_lineno", stmt.lineno))
                                 .build()
                             )
 
@@ -472,15 +472,15 @@ class SymbolTableBuilder:
         ) -> PyCallableParameter:
             return (
                 PyCallableParameter.builder()
-                .with_name(arg_node.arg)
-                .with_type(resolve_type(arg_node))
-                .with_default_value(ast.unparse(default) if default else None)
-                .with_start_line(getattr(arg_node, "lineno", -1))
-                .with_end_line(
+                .name(arg_node.arg)
+                .type(resolve_type(arg_node))
+                .default_value(ast.unparse(default) if default else None)
+                .start_line(getattr(arg_node, "lineno", -1))
+                .end_line(
                     getattr(arg_node, "end_lineno", getattr(arg_node, "lineno", -1))
                 )
-                .with_start_column(getattr(arg_node, "col_offset", -1))
-                .with_end_column(getattr(arg_node, "end_col_offset", -1))
+                .start_column(getattr(arg_node, "col_offset", -1))
+                .end_column(getattr(arg_node, "end_col_offset", -1))
                 .build()
             )
 
@@ -559,17 +559,17 @@ class SymbolTableBuilder:
 
             call_sites.append(
                 PyCallsite.builder()
-                .with_method_name(method_name)
-                .with_receiver_expr(receiver_expr)
-                .with_receiver_type(receiver_type)
-                .with_argument_types(argument_types)
-                .with_return_type(return_type)
-                .with_callee_signature(callee_signature)
-                .with_is_constructor_call(method_name == "__init__")
-                .with_start_line(getattr(node, "lineno", -1))
-                .with_start_column(getattr(node, "col_offset", -1))
-                .with_end_line(getattr(node, "end_lineno", -1))
-                .with_end_column(getattr(node, "end_col_offset", -1))
+                .method_name(method_name)
+                .receiver_expr(receiver_expr)
+                .receiver_type(receiver_type)
+                .argument_types(argument_types)
+                .return_type(return_type)
+                .callee_signature(callee_signature)
+                .is_constructor_call(method_name == "__init__")
+                .start_line(getattr(node, "lineno", -1))
+                .start_column(getattr(node, "col_offset", -1))
+                .end_line(getattr(node, "end_lineno", -1))
+                .end_column(getattr(node, "end_col_offset", -1))
                 .build()
             )
 
@@ -611,23 +611,23 @@ class SymbolTableBuilder:
                     if isinstance(target, ast.Name):
                         module_vars.append(
                             PyVariableDeclaration.builder()
-                            .with_name(target.id)
-                            .with_type(
+                            .name(target.id)
+                            .type(
                                 self._infer_type(
                                     script, target.lineno, target.col_offset
                                 )
                             )
-                            .with_initializer(
+                            .initializer(
                                 ast.unparse(node.value) if node.value else None
                             )
-                            .with_value(None)
-                            .with_scope("module")
-                            .with_start_line(getattr(target, "lineno", -1))
-                            .with_end_line(
+                            .value(None)
+                            .scope("module")
+                            .start_line(getattr(target, "lineno", -1))
+                            .end_line(
                                 getattr(node, "end_lineno", getattr(node, "lineno", -1))
                             )
-                            .with_start_column(getattr(target, "col_offset", -1))
-                            .with_end_column(getattr(target, "end_col_offset", -1))
+                            .start_column(getattr(target, "col_offset", -1))
+                            .end_column(getattr(target, "end_col_offset", -1))
                             .build()
                         )
 
@@ -638,23 +638,21 @@ class SymbolTableBuilder:
                 if isinstance(target, ast.Name):
                     module_vars.append(
                         PyVariableDeclaration.builder()
-                        .with_name(target.id)
-                        .with_type(
+                        .name(target.id)
+                        .type(
                             ast.unparse(node.annotation)
                             if node.annotation
                             else self._infer_type(script, node.lineno, node.col_offset)
                         )
-                        .with_initializer(
-                            ast.unparse(node.value) if node.value else None
-                        )
-                        .with_value(None)
-                        .with_scope("module")
-                        .with_start_line(getattr(target, "lineno", -1))
-                        .with_end_line(
+                        .initializer(ast.unparse(node.value) if node.value else None)
+                        .value(None)
+                        .scope("module")
+                        .start_line(getattr(target, "lineno", -1))
+                        .end_line(
                             getattr(node, "end_lineno", getattr(node, "lineno", -1))
                         )
-                        .with_start_column(getattr(target, "col_offset", -1))
-                        .with_end_column(getattr(target, "end_col_offset", -1))
+                        .start_column(getattr(target, "col_offset", -1))
+                        .end_column(getattr(target, "end_col_offset", -1))
                         .build()
                     )
 
@@ -682,23 +680,23 @@ class SymbolTableBuilder:
                     if isinstance(target, ast.Name):
                         local_vars.append(
                             PyVariableDeclaration.builder()
-                            .with_name(target.id)
-                            .with_type(
+                            .name(target.id)
+                            .type(
                                 self._infer_type(
                                     script, target.lineno, target.col_offset
                                 )
                             )
-                            .with_initializer(
+                            .initializer(
                                 ast.unparse(node.value) if node.value else None
                             )
-                            .with_value(None)
-                            .with_scope("function")
-                            .with_start_line(getattr(target, "lineno", -1))
-                            .with_end_line(
+                            .value(None)
+                            .scope("function")
+                            .start_line(getattr(target, "lineno", -1))
+                            .end_line(
                                 getattr(node, "end_lineno", getattr(node, "lineno", -1))
                             )
-                            .with_start_column(getattr(target, "col_offset", -1))
-                            .with_end_column(getattr(target, "end_col_offset", -1))
+                            .start_column(getattr(target, "col_offset", -1))
+                            .end_column(getattr(target, "end_col_offset", -1))
                             .build()
                         )
                     # This handles instance attribute assignments like self.attr = value
@@ -709,23 +707,23 @@ class SymbolTableBuilder:
                     ):
                         local_vars.append(
                             PyVariableDeclaration.builder()
-                            .with_name(target.attr)
-                            .with_type(
+                            .name(target.attr)
+                            .type(
                                 self._infer_type(
                                     script, target.lineno, target.col_offset
                                 )
                             )
-                            .with_initializer(
+                            .initializer(
                                 ast.unparse(node.value) if node.value else None
                             )
-                            .with_value(None)
-                            .with_scope("class")
-                            .with_start_line(getattr(target, "lineno", -1))
-                            .with_end_line(
+                            .value(None)
+                            .scope("class")
+                            .start_line(getattr(target, "lineno", -1))
+                            .end_line(
                                 getattr(node, "end_lineno", getattr(node, "lineno", -1))
                             )
-                            .with_start_column(getattr(target, "col_offset", -1))
-                            .with_end_column(getattr(target, "end_col_offset", -1))
+                            .start_column(getattr(target, "col_offset", -1))
+                            .end_column(getattr(target, "end_col_offset", -1))
                             .build()
                         )
 
@@ -741,17 +739,17 @@ class SymbolTableBuilder:
                 if isinstance(target, ast.Name):
                     local_vars.append(
                         PyVariableDeclaration.builder()
-                        .with_name(target.id)
-                        .with_type(annotation_str)
-                        .with_initializer(initializer_str)
-                        .with_value(None)
-                        .with_scope("function")
-                        .with_start_line(getattr(target, "lineno", -1))
-                        .with_end_line(
+                        .name(target.id)
+                        .type(annotation_str)
+                        .initializer(initializer_str)
+                        .value(None)
+                        .scope("function")
+                        .start_line(getattr(target, "lineno", -1))
+                        .end_line(
                             getattr(node, "end_lineno", getattr(node, "lineno", -1))
                         )
-                        .with_start_column(getattr(target, "col_offset", -1))
-                        .with_end_column(getattr(target, "end_col_offset", -1))
+                        .start_column(getattr(target, "col_offset", -1))
+                        .end_column(getattr(target, "end_col_offset", -1))
                         .build()
                     )
                 # Annotated instance attribute: self.attr: int = SOME_VALUE
@@ -762,17 +760,17 @@ class SymbolTableBuilder:
                 ):
                     local_vars.append(
                         PyVariableDeclaration.builder()
-                        .with_name(target.attr)
-                        .with_type(annotation_str)
-                        .with_initializer(initializer_str)
-                        .with_value(None)
-                        .with_scope("class")
-                        .with_start_line(getattr(target, "lineno", -1))
-                        .with_end_line(
+                        .name(target.attr)
+                        .type(annotation_str)
+                        .initializer(initializer_str)
+                        .value(None)
+                        .scope("class")
+                        .start_line(getattr(target, "lineno", -1))
+                        .end_line(
                             getattr(node, "end_lineno", getattr(node, "lineno", -1))
                         )
-                        .with_start_column(getattr(target, "col_offset", -1))
-                        .with_end_column(getattr(target, "end_col_offset", -1))
+                        .start_column(getattr(target, "col_offset", -1))
+                        .end_column(getattr(target, "end_col_offset", -1))
                         .build()
                     )
 
@@ -859,14 +857,14 @@ class SymbolTableBuilder:
 
         return (
             PySymbol.builder()
-            .with_name(name)
-            .with_scope(scope)
-            .with_kind(kind)
-            .with_type(inferred_type)
-            .with_qualified_name(qname)
-            .with_is_builtin(is_builtin)
-            .with_lineno(lineno)
-            .with_col_offset(col_offset)
+            .name(name)
+            .scope(scope)
+            .kind(kind)
+            .type(inferred_type)
+            .qualified_name(qname)
+            .is_builtin(is_builtin)
+            .lineno(lineno)
+            .col_offset(col_offset)
             .build()
         )
 

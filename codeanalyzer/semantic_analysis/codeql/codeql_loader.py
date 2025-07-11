@@ -3,8 +3,6 @@ import zipfile
 from pathlib import Path
 
 import requests
-from tqdm import tqdm
-
 from codeanalyzer.utils import logger
 
 
@@ -45,22 +43,11 @@ class CodeQLLoader:
         logger.info(f"Downloading CodeQL CLI from {download_url}")
         with requests.get(download_url, stream=True) as r:
             r.raise_for_status()
-            total_size = int(r.headers.get("content-length", 0))
             block_size = 8192  # 8KB
 
-            with (
-                open(archive_path, "wb") as f,
-                tqdm(
-                    total=total_size,
-                    unit="B",
-                    unit_scale=True,
-                    unit_divisor=1024,
-                    desc="Downloading CodeQL",
-                ) as bar,
-            ):
+            with open(archive_path, "wb") as f:
                 for chunk in r.iter_content(chunk_size=block_size):
                     f.write(chunk)
-                    bar.update(len(chunk))
 
         extract_dir = temp_dir / filename.replace(".zip", "")
         extract_dir.mkdir(exist_ok=True)
