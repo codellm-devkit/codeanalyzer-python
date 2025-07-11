@@ -250,8 +250,8 @@ wheels = [
 ]
 
 [[package]]
-name = "codeanalyzer"
-version = "0.1.1"
+name = "codeanalyzer-python"
+version = "0.1.2"
 source = { editable = "." }
 dependencies = [
     { name = "asteroid" },

@@ -1,6 +1,6 @@
 [project]
 name = "codeanalyzer-python"
-version = "0.1.1"
+version = "0.1.2"
 description = "Static Analysis on Python source code using Jedi, CodeQL and Treesitter."
 readme = "README.md"
 authors = [
@@ -41,22 +41,18 @@ codeanalyzer = "codeanalyzer.__main__:app"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.hatch.build]
-# Tell hatchling to use the src layout
-sources = ["src"]
-
 [tool.hatch.build.targets.wheel]
-packages = ["src/codeanalyzer"]
-include = ["src/codeanalyzer/py.typed"]
+packages = ["codeanalyzer"]
+include = ["codeanalyzer/py.typed"]
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "src/codeanalyzer",
-    "src/codeanalyzer/py.typed",
+    "codeanalyzer",
+    "codeanalyzer/py.typed",
     "README.md",
     "LICENSE",
     "NOTICE"
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["src/test"]
+testpaths = ["tests"]
