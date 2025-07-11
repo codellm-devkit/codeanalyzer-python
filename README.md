@@ -1,6 +1,6 @@
-![logo](./docs/assets/logo.png)
+![logo](https://github.com/codellm-devkit/codeanalyzer-python/blob/main/docs/assets/logo.png?raw=true)
 
-Python Static Analysis Backend for CLDK
+# A Python Static Analysis Toolkit (and Library)
 
 A comprehensive static analysis tool for Python source code that provides symbol table generation, call graph analysis, and semantic analysis using Jedi, CodeQL, and Tree-sitter.
 
