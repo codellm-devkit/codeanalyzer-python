@@ -92,8 +92,10 @@ def _write_output(artifacts, output_dir: Path, format: OutputFormat):
     """Write artifacts to file in the specified format."""
     if format == OutputFormat.JSON:
         output_file = output_dir / "analysis.json"
+        # Use Pydantic's json() with separators for compact output
+        json_str = artifacts.model_dump_json(indent=None)
         with output_file.open("w") as f:
-            f.write(artifacts.model_dump_json(separators=(",", ":")))
+            f.write(json_str)
         logger.info(f"Analysis saved to {output_file}")
 
     elif format == OutputFormat.MSGPACK:
