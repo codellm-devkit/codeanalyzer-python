@@ -1,6 +1,6 @@
 [project]
 name = "codeanalyzer-python"
-version = "0.1.2"
+version = "0.1.3"
 description = "Static Analysis on Python source code using Jedi, CodeQL and Treesitter."
 readme = "README.md"
 authors = [
