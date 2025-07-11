@@ -1,12 +1,16 @@
-import sys
-from contextlib import nullcontext
 from pathlib import Path
 from typing import Annotated, Optional
+from enum import Enum
 
 import typer
 
 from codeanalyzer.core import AnalyzerCore
 from codeanalyzer.utils import _set_log_level, logger
+
+
+class OutputFormat(str, Enum):
+    JSON = "json"
+    MSGPACK = "msgpack"
 
 
 def main(
@@ -17,6 +21,15 @@ def main(
         Optional[Path],
         typer.Option("-o", "--output", help="Output directory for artifacts."),
     ] = None,
+    format: Annotated[
+        OutputFormat,
+        typer.Option(
+            "-f",
+            "--format",
+            help="Output format: json or msgpack.",
+            case_sensitive=False,
+        ),
+    ] = OutputFormat.JSON,
     analysis_level: Annotated[
         int,
         typer.Option("-a", "--analysis-level", help="1: symbol table, 2: call graph."),
@@ -58,16 +71,40 @@ def main(
         input, analysis_level, using_codeql, rebuild_analysis, cache_dir, clear_cache
     ) as analyzer:
         artifacts = analyzer.analyze()
-        print_stream = sys.stdout
-        stream_context = nullcontext(print_stream)
 
-        if output is not None:
+        # Handle output based on format
+        if output is None:
+            # Output to stdout (only for JSON)
+            if format == OutputFormat.JSON:
+                print(artifacts.model_dump_json(separators=(",", ":")))
+            else:
+                logger.error(
+                    f"Format '{format.value}' requires an output directory (use -o/--output)"
+                )
+                raise typer.Exit(code=1)
+        else:
+            # Output to file
             output.mkdir(parents=True, exist_ok=True)
-            output_file = output / "analysis.json"
-            stream_context = output_file.open("w")
+            _write_output(artifacts, output, format)
 
-        with stream_context as f:
-            print(artifacts.model_dump_json(indent=4), file=f)
+
+def _write_output(artifacts, output_dir: Path, format: OutputFormat):
+    """Write artifacts to file in the specified format."""
+    if format == OutputFormat.JSON:
+        output_file = output_dir / "analysis.json"
+        with output_file.open("w") as f:
+            f.write(artifacts.model_dump_json(separators=(",", ":")))
+        logger.info(f"Analysis saved to {output_file}")
+
+    elif format == OutputFormat.MSGPACK:
+        output_file = output_dir / "analysis.msgpack"
+        msgpack_data = artifacts.to_msgpack_bytes()
+        with output_file.open("wb") as f:
+            f.write(msgpack_data)
+        logger.info(f"Analysis saved to {output_file}")
+        logger.info(
+            f"Compression ratio: {artifacts.get_compression_ratio():.1%} of JSON size"
+        )
 
 
 app = typer.Typer(
