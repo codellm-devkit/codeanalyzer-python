@@ -48,6 +48,20 @@ jobs:
       - name: Build package
         run: uv build
 
+      - name: Get version from tag
+        id: tag_name
+        run: |
+          echo "current_version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Read Changelog Entry
+        id: changelog_reader
+        uses: mindsers/changelog-reader-action@v2
+        with:
+          validation_level: warn
+          version: ${{ steps.tag_name.outputs.current_version }}
+          path: ./CHANGELOG.md
+
       - name: Build changelog
         id: gen_changelog
         uses: mikepenz/release-changelog-builder-action@v5
@@ -61,7 +75,16 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: dist/*
-          body: ${{ steps.gen_changelog.outputs.changelog }}
+          body: |
+            ## Release Notes (from CHANGELOG.md)
+            
+            ${{ steps.changelog_reader.outputs.changes }}
+            
+            ---
+            
+            ## Detailed Changes (auto-generated)
+            
+            ${{ steps.gen_changelog.outputs.changelog }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
