@@ -1,5 +1,5 @@
 [project]
-name = "codeanalyzer"
+name = "codeanalyzer-python"
 version = "0.1.1"
 description = "Static Analysis on Python source code using Jedi, CodeQL and Treesitter."
 readme = "README.md"
