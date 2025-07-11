@@ -20,11 +20,12 @@ This module provides functionality to run CodeQL queries against CodeQL database
 and process the results.
 """
 
+import shlex
 import subprocess
 import tempfile
 from pathlib import Path
-import shlex
 from typing import List
+
 import pandas as pd
 from pandas import DataFrame
 

@@ -21,9 +21,10 @@ for Python projects and execute queries against them.
 """
 
 from pathlib import Path
+from typing import Union
+
 from networkx import DiGraph
 from pandas import DataFrame
-from typing import Union
 
 from codeanalyzer.semantic_analysis.codeql.codeql_query_runner import CodeQLQueryRunner
 
@@ -130,4 +131,3 @@ class CodeQL:
         Returns:
             DiGraph: A directed graph representing the call graph of the application.
         """
-        pass

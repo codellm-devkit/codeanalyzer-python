@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Improved CLI error handling with proper logging when input path does not exist
 - Test configuration updates:
-  - Removed unused app import from conftest.py 
+  - Removed unused app import from conftest.py
   - Updated test_cli_call_symbol_table to use verbose flag (-v) instead of --quiet flag
 - Improved virtual environment creation error handling with informative error messages
 - Enhanced `_get_base_interpreter()` method with robust Python interpreter detection across different environments

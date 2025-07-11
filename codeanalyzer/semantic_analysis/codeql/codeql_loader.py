@@ -1,9 +1,11 @@
 import platform
-import requests
 import zipfile
 from pathlib import Path
-from codeanalyzer.utils import logger
+
+import requests
 from tqdm import tqdm
+
+from codeanalyzer.utils import logger
 
 
 class CodeQLLoader:

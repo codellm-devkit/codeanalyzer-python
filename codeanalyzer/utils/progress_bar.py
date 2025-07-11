@@ -1,15 +1,16 @@
+import logging
+from typing import Optional
+
 from rich.console import Console
 from rich.progress import (
+    BarColumn,
     Progress,
     SpinnerColumn,
+    TaskID,
     TextColumn,
-    BarColumn,
     TimeElapsedColumn,
     TimeRemainingColumn,
-    TaskID,
 )
-from typing import Optional
-import logging
 
 
 class ProgressBar:

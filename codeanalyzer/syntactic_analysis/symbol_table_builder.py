@@ -1,13 +1,15 @@
+import ast
+import tokenize
+from ast import AST, ClassDef
 from io import StringIO
 from pathlib import Path
-import tokenize
 from typing import Dict, List, Optional
+
 import astor
 import jedi
-from codeanalyzer.utils import logger
-from jedi.api.project import Project
 from jedi.api import Script
-from rich.progress import track
+from jedi.api.project import Project
+
 from codeanalyzer.schema.py_schema import (
     PyCallable,
     PyCallableParameter,
@@ -20,9 +22,7 @@ from codeanalyzer.schema.py_schema import (
     PySymbol,
     PyVariableDeclaration,
 )
-import ast
-from ast import AST, ClassDef
-
+from codeanalyzer.utils import logger
 from codeanalyzer.utils.progress_bar import ProgressBar
 
 

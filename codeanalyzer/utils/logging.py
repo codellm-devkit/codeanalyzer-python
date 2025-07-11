@@ -1,6 +1,7 @@
+import logging
+
 from rich.console import Console
 from rich.logging import RichHandler
-import logging
 
 # Set up base logger with RichHandler
 console = Console()

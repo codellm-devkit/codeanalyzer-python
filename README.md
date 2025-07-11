@@ -118,8 +118,8 @@ To view the available options and commands, run `codeanalyzer --help`. You shoul
    ```bash
    codeanalyzer --input ./my-python-project --codeql
    ```
-    This will perform CodeQL-based analysis in addition to the standard symbol table generation. 
-    
+    This will perform CodeQL-based analysis in addition to the standard symbol table generation.
+
     ***Note: Not yet fully implemented. Please refrain from using this option until further notice.***
 
 4. **Eager analysis with custom cache directory:**
@@ -170,7 +170,7 @@ uv run codeanalyzer --input /path/to/python/project
 ### Running Tests
 
 ```bash
-uv run pytest --pspec -s 
+uv run pytest --pspec -s
 ```
 
 ### Development Dependencies

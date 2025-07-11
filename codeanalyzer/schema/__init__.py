@@ -1,13 +1,13 @@
 from .py_schema import (
     PyApplication,
-    PyImport,
-    PyComment,
-    PyModule,
-    PyClass,
-    PyVariableDeclaration,
     PyCallable,
+    PyCallableParameter,
+    PyClass,
     PyClassAttribute,
-    PyCallableParameter
+    PyComment,
+    PyImport,
+    PyModule,
+    PyVariableDeclaration,
 )
 
 __all__ = [
@@ -19,5 +19,5 @@ __all__ = [
     "PyVariableDeclaration",
     "PyCallable",
     "PyClassAttribute",
-    "PyCallableParameter"
+    "PyCallableParameter",
 ]

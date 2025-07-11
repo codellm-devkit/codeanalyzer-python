@@ -1,19 +1,16 @@
 import hashlib
 import os
-from pdb import set_trace
 import shutil
 import subprocess
-from pathlib import Path
 import sys
-from typing import Any, Dict, Union, Optional
-from codeanalyzer.utils import logger
+from pathlib import Path
+from typing import Any, Dict, Optional, Union
 
 from codeanalyzer.schema.py_schema import PyApplication, PyModule
 from codeanalyzer.semantic_analysis.codeql import CodeQLLoader
-from codeanalyzer.semantic_analysis.codeql.codeql_exceptions import (
-    CodeQLExceptions,
-)
+from codeanalyzer.semantic_analysis.codeql.codeql_exceptions import CodeQLExceptions
 from codeanalyzer.syntactic_analysis.symbol_table_builder import SymbolTableBuilder
+from codeanalyzer.utils import logger
 
 
 class AnalyzerCore:
