@@ -19,8 +19,8 @@ CodeQL package
 """
 
 from .codeql_analysis import CodeQL
-from .codeql_query_runner import CodeQLQueryRunner
-from .codeql_loader import CodeQLLoader
 from .codeql_exceptions import CodeQLExceptions
+from .codeql_loader import CodeQLLoader
+from .codeql_query_runner import CodeQLQueryRunner
 
 __all__ = ["CodeQL", "CodeQLQueryRunner", "CodeQLLoader", "CodeQLExceptions"]

@@ -20,12 +20,12 @@ This module defines the data models used to represent Python code structures
 for static analysis purposes.
 """
 
+import inspect
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from typing_extensions import Literal
-from pydantic import BaseModel
 
-import inspect
+from pydantic import BaseModel
+from typing_extensions import Literal
 
 
 def builder(cls):

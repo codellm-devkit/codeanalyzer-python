@@ -1,11 +1,12 @@
-from contextlib import nullcontext
 import sys
-import typer
-from typing import Optional, Annotated
+from contextlib import nullcontext
 from pathlib import Path
-from codeanalyzer.utils import _set_log_level
-from codeanalyzer.utils import logger
+from typing import Annotated, Optional
+
+import typer
+
 from codeanalyzer.core import AnalyzerCore
+from codeanalyzer.utils import _set_log_level, logger
 
 
 def main(

@@ -1,5 +1,5 @@
-from codeanalyzer.utils import logger
 from codeanalyzer.__main__ import app
+from codeanalyzer.utils import logger
 
 
 def test_cli_help(cli_runner):

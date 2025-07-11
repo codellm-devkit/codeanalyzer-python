@@ -17,7 +17,7 @@ dependencies = [
     "pydantic>=2.11.7",
     "requests>=2.32.4",
     "rich>=14.0.0",
-    "typer>=0.16.0", 
+    "typer>=0.16.0",
 ]
 
 [dependency-groups]
@@ -29,6 +29,7 @@ test = [
 ]
 dev = [
     "ipdb>=0.13.13",
+    "pre-commit>=4.2.0",
 ]
 
 [project.scripts]
