@@ -6,15 +6,13 @@ A comprehensive static analysis tool for Python source code that provides symbol
 
 ## Installation
 
-This project uses [uv](https://docs.astral.sh/uv/) for dependency management.
+```bash
+pip install codeanalyzer-python
+```
 
 ### Prerequisites
 
-- [uv](https://docs.astral.sh/uv/getting-started/installation/) installed
-- Python 3.12 or higher. You can use `uv` to install Python if it's not already installed:
-  ```bash
-  uv python install 3.12
-  ```
+- Python 3.12 or higher
 
 #### System Package Requirements
 
@@ -56,20 +54,6 @@ pyenv global 3.12.0   # or pyenv local 3.12.0 for project-specific
 
 > **Note:** These packages are required as the tool uses Python's built-in `venv` module to create isolated environments for analysis.
 
-### Setup
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/codellm-devkit/codeanalyzer-python
-   cd codeanalyzer-python
-   ```
-
-2. Install dependencies using uv:
-   ```bash
-   uv sync --all-groups
-   ```
-   This will install all dependencies including development and test dependencies.
-
 ## Usage
 
 The codeanalyzer provides a command-line interface for performing static analysis on Python projects.
@@ -77,15 +61,15 @@ The codeanalyzer provides a command-line interface for performing static analysi
 ### Basic Usage
 
 ```bash
-uv run codeanalyzer --input /path/to/python/project
+codeanalyzer --input /path/to/python/project
 ```
 
 ### Command Line Options
 
-To view the available options and commands, run `uv run codeanalyzer --help`. You should see output similar to the following:
+To view the available options and commands, run `codeanalyzer --help`. You should see output similar to the following:
 
 ```bash
-❯ uv run codeanalyzer --help
+❯ codeanalyzer --help
 
  Usage: codeanalyzer [OPTIONS] COMMAND [ARGS]...
 
@@ -109,30 +93,30 @@ To view the available options and commands, run `uv run codeanalyzer --help`. Yo
 
 1. **Basic analysis with symbol table:**
    ```bash
-   uv run codeanalyzer --input ./my-python-project
+   codeanalyzer --input ./my-python-project
    ```
 
    This will print the symbol table to stdout in JSON format to the standard output. If you want to save the output, you can use the `--output` option.
 
    ```bash
-   uv run codeanalyzer --input ./my-python-project --output /path/to/analysis-results
+   codeanalyzer --input ./my-python-project --output /path/to/analysis-results
    ```
 
    Now, you can find the analysis results in `analysis.json` in the specified directory.
 
 2. **Toggle analysis levels with `--analysis-level`:**
    ```bash
-   uv run codeanalyzer --input ./my-python-project --analysis-level 1 # Symbol table only
+   codeanalyzer --input ./my-python-project --analysis-level 1 # Symbol table only
    ```
    Call graph analysis can be enabled by setting the level to `2`:
    ```bash
-   uv run codeanalyzer --input ./my-python-project --analysis-level 2 # Symbol table + Call graph
+   codeanalyzer --input ./my-python-project --analysis-level 2 # Symbol table + Call graph
    ```
    ***Note: The `--analysis-level=2` is not yet implemented in this version.***
 
 3. **Analysis with CodeQL enabled:**
    ```bash
-   uv run codeanalyzer --input ./my-python-project --codeql
+   codeanalyzer --input ./my-python-project --codeql
    ```
     This will perform CodeQL-based analysis in addition to the standard symbol table generation. 
     
@@ -140,7 +124,7 @@ To view the available options and commands, run `uv run codeanalyzer --help`. Yo
 
 4. **Eager analysis with custom cache directory:**
    ```bash
-   uv run codeanalyzer --input ./my-python-project --eager --cache-dir /path/to/custom-cache
+   codeanalyzer --input ./my-python-project --eager --cache-dir /path/to/custom-cache
    ```
     This will rebuild the analysis cache at every run and store it in `/path/to/custom-cache/.codeanalyzer`. The cache will be cleared by default after analysis unless you specify `--keep-cache`.
 
@@ -148,7 +132,7 @@ To view the available options and commands, run `uv run codeanalyzer --help`. Yo
 
 5. **Quiet mode (minimal output):**
    ```bash
-   uv run codeanalyzer --input /path/to/my-python-project --quiet
+   codeanalyzer --input /path/to/my-python-project --quiet
    ```
 
 ### Output
@@ -156,6 +140,32 @@ To view the available options and commands, run `uv run codeanalyzer --help`. Yo
 By default, analysis results are printed to stdout in JSON format. When using the `--output` option, results are saved to `analysis.json` in the specified directory.
 
 ## Development
+
+This project uses [uv](https://docs.astral.sh/uv/) for dependency management during development.
+
+### Development Setup
+
+1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/)
+
+2. Clone the repository:
+   ```bash
+   git clone https://github.com/codellm-devkit/codeanalyzer-python
+   cd codeanalyzer-python
+   ```
+
+3. Install dependencies using uv:
+   ```bash
+   uv sync --all-groups
+   ```
+   This will install all dependencies including development and test dependencies.
+
+### Running from Source
+
+When developing, you can run the tool directly from source:
+
+```bash
+uv run codeanalyzer --input /path/to/python/project
+```
 
 ### Running Tests
 
