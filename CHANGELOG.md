@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2025-07-14
+
+### Changed
+- **BREAKING CHANGE**: Updated Python version requirement from `>=3.12` to `==3.10` for improved backwards compatibility
+- Enhanced backwards compatibility by supporting Python 3.10 environments commonly used in enterprise and CI/CD systems
+
+### Fixed
+- Fixed Python version compatibility issue that was unnecessarily blocking installation on Python 3.10 and 3.11 systems
+- Resolved adoption barriers for users on older but still supported Python versions
+
+### Technical Notes
+- All codebase features are fully compatible with Python 3.10 (ast.unparse, built-in generics, type hints)
+- No Python 3.11+ or 3.12+ specific features are used in the implementation
+- All dependencies support Python 3.10+
+
+## [0.2.0] - 2025-07-11
+
+### Changed
+- **BREAKING CHANGE**: Renamed `AnalyzerCore` class to `Codeanalyzer` for better library naming consistency
+- Refactored core class to support direct library import: `from codeanalyzer import Codeanalyzer`
+- Updated all internal references and documentation to use the new class name
+- Enhanced library interface for programmatic usage while maintaining CLI compatibility
+
+### Added
+- Direct library import support allowing users to import and use `Codeanalyzer` as a library
+- Proper `__all__` export in `__init__.py` for clean package interface
+
 ## [0.1.5] - 2025-07-11
 
 ### Fixed
