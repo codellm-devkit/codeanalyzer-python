@@ -5,7 +5,7 @@ import typer
 
 from codeanalyzer.core import Codeanalyzer
 from codeanalyzer.utils import _set_log_level, logger
-from codeanalyzer.config import OutputFormat, AnalysisOptions, CLIOptions
+from codeanalyzer.config import OutputFormat
 
 
 def main(
