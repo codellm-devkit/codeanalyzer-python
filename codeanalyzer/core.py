@@ -13,7 +13,7 @@ from codeanalyzer.syntactic_analysis.symbol_table_builder import SymbolTableBuil
 from codeanalyzer.utils import logger
 
 
-class AnalyzerCore:
+class Codeanalyzer:
     """Core functionality for CodeQL analysis.
 
     Args:
@@ -196,7 +196,7 @@ class AnalyzerCore:
             f"a working Python interpreter that can create virtual environments."
         )
 
-    def __enter__(self) -> "AnalyzerCore":
+    def __enter__(self) -> "Codeanalyzer":
         # If no virtualenv is provided, try to create one using requirements.txt or pyproject.toml
         venv_path = self.cache_dir / self.project_dir.name / "virtualenv"
         # Ensure the cache directory exists for this project

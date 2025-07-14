@@ -503,7 +503,9 @@ class SymbolTableBuilder:
 
         return params
 
-    def _accessed_symbols(self, fn_node: ast.FunctionDef, script: Script) -> List[str]:
+    def _accessed_symbols(
+        self, fn_node: ast.FunctionDef, script: Script
+    ) -> List[PySymbol]:
         """Analyzes the function body to extract all accessed symbols."""
         symbols = []
         for node in ast.walk(fn_node):
