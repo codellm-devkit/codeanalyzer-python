@@ -76,17 +76,18 @@ To view the available options and commands, run `codeanalyzer --help`. You shoul
  Static Analysis on Python source code using Jedi, CodeQL and Tree sitter.
 
 
-╭─ Options ──────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ *  --input           -i                  PATH     Path to the project root directory. [default: None] [required]   │
-│    --output          -o                  PATH     Output directory for artifacts. [default: None]                  │
-│    --analysis-level  -a                  INTEGER  1: symbol table, 2: call graph. [default: 1]                     │
-│    --codeql              --no-codeql              Enable CodeQL-based analysis. [default: no-codeql]               │
-│    --eager               --lazy                   Enable eager or lazy analysis. Defaults to lazy. [default: lazy] │
-│    --cache-dir       -c                  PATH     Directory to store analysis cache. [default: None]               │
-│    --clear-cache         --keep-cache             Clear cache after analysis. [default: clear-cache]               │
-│                      -v                  INTEGER  Increase verbosity: -v, -vv, -vvv [default: 0]                   │
-│    --help                                         Show this message and exit.                                      │
-╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ *  --input           -i                  PATH            Path to the project root directory. [default: None] [required]   │
+│    --output          -o                  PATH            Output directory for artifacts. [default: None]                  │
+│    --format          -f                  [json|msgpack]  Output format: json or msgpack. [default: json]                  │
+│    --analysis-level  -a                  INTEGER         1: symbol table, 2: call graph. [default: 1]                     │
+│    --codeql              --no-codeql                     Enable CodeQL-based analysis. [default: no-codeql]               │
+│    --eager               --lazy                          Enable eager or lazy analysis. Defaults to lazy. [default: lazy] │
+│    --cache-dir       -c                  PATH            Directory to store analysis cache. [default: None]               │
+│    --clear-cache         --keep-cache                    Clear cache after analysis. [default: clear-cache]               │
+│                      -v                  INTEGER         Increase verbosity: -v, -vv, -vvv [default: 0]                   │
+│    --help                                                Show this message and exit.                                      │
+╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
 ### Examples
@@ -104,7 +105,14 @@ To view the available options and commands, run `codeanalyzer --help`. You shoul
 
    Now, you can find the analysis results in `analysis.json` in the specified directory.
 
-2. **Toggle analysis levels with `--analysis-level`:**
+2. **Change output format to msgpack:**
+   ```bash
+   codeanalyzer --input ./my-python-project --output /path/to/analysis-results --format msgpack
+   ```
+
+   This will save the analysis results in `analysis.msgpack` in the specified directory.
+
+3. **Toggle analysis levels with `--analysis-level`:**
    ```bash
    codeanalyzer --input ./my-python-project --analysis-level 1 # Symbol table only
    ```
@@ -114,7 +122,7 @@ To view the available options and commands, run `codeanalyzer --help`. You shoul
    ```
    ***Note: The `--analysis-level=2` is not yet implemented in this version.***
 
-3. **Analysis with CodeQL enabled:**
+4. **Analysis with CodeQL enabled:**
    ```bash
    codeanalyzer --input ./my-python-project --codeql
    ```
@@ -122,7 +130,7 @@ To view the available options and commands, run `codeanalyzer --help`. You shoul
 
     ***Note: Not yet fully implemented. Please refrain from using this option until further notice.***
 
-4. **Eager analysis with custom cache directory:**
+5. **Eager analysis with custom cache directory:**
    ```bash
    codeanalyzer --input ./my-python-project --eager --cache-dir /path/to/custom-cache
    ```
@@ -130,14 +138,14 @@ To view the available options and commands, run `codeanalyzer --help`. You shoul
 
     If you provide --cache-dir, the cache will be stored in that directory. If not specified, it defaults to `.codeanalyzer` in the current working directory (`$PWD`).
 
-5. **Quiet mode (minimal output):**
+6. **Quiet mode (minimal output):**
    ```bash
    codeanalyzer --input /path/to/my-python-project --quiet
    ```
 
-### Output
+## Output
 
-By default, analysis results are printed to stdout in JSON format. When using the `--output` option, results are saved to `analysis.json` in the specified directory.
+By default, analysis results are printed to stdout in JSON format. When using the `--output` option, results are saved to `analysis.json` in the specified directory. If you use the `--format=msgpack` option, the results will be saved in `analysis.msgpack`, which is a binary format that can be more efficient for storage and transmission.
 
 ## Development
 
