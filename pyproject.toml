@@ -1,12 +1,12 @@
 [project]
 name = "codeanalyzer-python"
-version = "0.1.6"
+version = "0.1.7"
 description = "Static Analysis on Python source code using Jedi, CodeQL and Treesitter."
 readme = "README.md"
 authors = [
     { name = "Rahul Krishna", email = "i.m.ralk@gmail.com" }
 ]
-requires-python = "==3.10.*"
+requires-python = ">=3.10"
 
 dependencies = [
     "jedi>=0.19.2",
