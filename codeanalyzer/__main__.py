@@ -1,16 +1,11 @@
 from pathlib import Path
 from typing import Annotated, Optional
-from enum import Enum
 
 import typer
 
-from codeanalyzer.core import AnalyzerCore
+from codeanalyzer.core import Codeanalyzer
 from codeanalyzer.utils import _set_log_level, logger
-
-
-class OutputFormat(str, Enum):
-    JSON = "json"
-    MSGPACK = "msgpack"
+from codeanalyzer.config import OutputFormat, AnalysisOptions, CLIOptions
 
 
 def main(
@@ -67,7 +62,7 @@ def main(
         logger.error(f"Input path '{input}' does not exist.")
         raise typer.Exit(code=1)
 
-    with AnalyzerCore(
+    with Codeanalyzer(
         input, analysis_level, using_codeql, rebuild_analysis, cache_dir, clear_cache
     ) as analyzer:
         artifacts = analyzer.analyze()
