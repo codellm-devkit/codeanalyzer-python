@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional, Union, List
 
 import ray
 from codeanalyzer.utils import logger
-from codeanalyzer.schema import PyApplication, PyModule
+from codeanalyzer.schema import PyApplication, PyModule, model_dump_json, model_validate_json
 from codeanalyzer.semantic_analysis.codeql import CodeQLLoader
 from codeanalyzer.semantic_analysis.codeql.codeql_exceptions import CodeQLExceptions
 from codeanalyzer.syntactic_analysis.exceptions import SymbolTableBuilderRayError
@@ -408,7 +408,7 @@ class Codeanalyzer:
         """
         with cache_file.open('r') as f:
             data = f.read()
-        return PyApplication.parse_raw(data)
+        return model_validate_json(PyApplication, data)
     
     def _save_analysis_cache(self, app: PyApplication, cache_file: Path) -> None:
         """Save analysis to cache file.
@@ -421,8 +421,8 @@ class Codeanalyzer:
         cache_file.parent.mkdir(parents=True, exist_ok=True)
         
         with cache_file.open('w') as f:
-            f.write(app.json(indent=2))
-        
+            f.write(model_dump_json(app, indent=2))
+
         logger.info(f"Analysis cached to {cache_file}")
 
     def _file_unchanged(self, file_path: Path, cached_module: PyModule) -> bool:
