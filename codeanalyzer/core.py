@@ -14,6 +14,7 @@ from codeanalyzer.semantic_analysis.codeql.codeql_exceptions import CodeQLExcept
 from codeanalyzer.syntactic_analysis.exceptions import SymbolTableBuilderRayError
 from codeanalyzer.syntactic_analysis.symbol_table_builder import SymbolTableBuilder
 from codeanalyzer.utils import ProgressBar
+from codeanalyzer.options import AnalysisOptions
 
 @ray.remote
 def _process_file_with_ray(py_file: Union[Path, str], project_dir: Union[Path, str], virtualenv: Union[Path, str, None]) -> Dict[str, PyModule]:
@@ -43,40 +44,25 @@ class Codeanalyzer:
     """Core functionality for CodeQL analysis.
 
     Args:
-        project_dir (Union[str, Path]): The root directory of the project to analyze.
-        virtualenv (Optional[Path]): Path to the virtual environment directory.
-        using_codeql (bool): Whether to use CodeQL for analysis.
-        rebuild_analysis (bool): Whether to force rebuild the database.
-        clear_cache (bool): Whether to delete the cached directory after analysis.
-        analysis_depth (int): Depth of analysis (reserved for future use).
+        options (AnalysisOptions): Analysis configuration options containing all necessary parameters.
     """
 
-    def __init__(
-        self,
-        project_dir: Union[str, Path],
-        analysis_depth: int,
-        skip_tests: bool,
-        using_codeql: bool,
-        rebuild_analysis: bool,
-        cache_dir: Optional[Path],
-        clear_cache: bool,
-        using_ray: bool,
-        file_name: Optional[Path] = None,
-    ) -> None:
-        self.analysis_depth = analysis_depth
-        self.project_dir = Path(project_dir).resolve()
-        self.skip_tests = skip_tests
-        self.using_codeql = using_codeql
-        self.rebuild_analysis = rebuild_analysis
+    def __init__(self, options: AnalysisOptions) -> None:
+        self.options = options
+        self.analysis_depth = options.analysis_level
+        self.project_dir = Path(options.input).resolve()
+        self.skip_tests = options.skip_tests
+        self.using_codeql = options.using_codeql
+        self.rebuild_analysis = options.rebuild_analysis
         self.cache_dir = (
-            cache_dir.resolve() if cache_dir is not None else self.project_dir
+            options.cache_dir.resolve() if options.cache_dir is not None else self.project_dir
         ) / ".codeanalyzer"
-        self.clear_cache = clear_cache
+        self.clear_cache = options.clear_cache
         self.db_path: Optional[Path] = None
         self.codeql_bin: Optional[Path] = None
         self.virtualenv: Optional[Path] = None
-        self.using_ray: bool = using_ray
-        self.file_name: Optional[Path] = file_name
+        self.using_ray: bool = options.using_ray
+        self.file_name: Optional[Path] = options.file_name
 
     @staticmethod
     def _cmd_exec_helper(
