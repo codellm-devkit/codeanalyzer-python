@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.11] - 2025-07-21
+
+### Fixed
+- **CRITICAL**: Fixed NumPy build failure on Python 3.12+ (addresses [#19](https://github.com/codellm-devkit/codeanalyzer-python/issues/19))
+  - Updated NumPy dependency constraints to handle Python 3.12+ compatibility
+  - Split NumPy version constraints into three tiers:
+    - `numpy>=1.21.0,<1.24.0` for Python < 3.11
+    - `numpy>=1.24.0,<2.0.0` for Python 3.11.x  
+    - `numpy>=1.26.0,<2.0.0` for Python 3.12+ (requires NumPy 1.26+ which supports Python 3.12)
+  - Resolves `ModuleNotFoundError: No module named 'distutils'` errors on Python 3.12+
+  - Ensures compatibility with Python 3.12 which removed `distutils` from the standard library
+- Fixed Pydantic v1/v2 compatibility issues in JSON serialization throughout codebase
+  - Added comprehensive Pydantic version detection and compatibility layer
+  - Introduced `model_dump_json()` and `model_validate_json()` helper functions for cross-version compatibility
+  - Fixed `PyApplication.parse_raw()` deprecated method usage (replaced with `model_validate_json()`)
+  - Updated CLI output methods to use compatible serialization functions
+  - Resolved forward reference updates only for Pydantic v1 (v2 handles these automatically)
+
+### Changed
+- Enhanced Pydantic compatibility infrastructure in schema module
+  - Added runtime Pydantic version detection using `importlib.metadata`
+  - Created compatibility abstraction layer for JSON serialization/deserialization
+  - Improved forward reference resolution logic to work with both Pydantic v1 and v2
+  - Updated all JSON serialization calls to use new compatibility functions
+  - Better error handling for missing Pydantic dependency
+
+### Technical Details
+- Added `packaging` dependency for robust version comparison
+- Enhanced schema module with runtime version detection and compatibility helpers
+- Updated core analysis caching system to use compatible Pydantic JSON methods
+- Improved CLI output formatting with cross-version Pydantic support
+
 ## [0.1.10] - 2025-07-20
 
 ### Added
