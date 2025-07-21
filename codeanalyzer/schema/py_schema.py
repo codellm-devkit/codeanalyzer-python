@@ -19,7 +19,7 @@
 This module defines the data models used to represent Python code structures
 for static analysis purposes.
 """
-
+from __future__ import annotations
 import inspect
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -148,7 +148,8 @@ def builder(cls):
 
             method.__name__ = f"{f}"
             method.__annotations__ = {"value": t, "return": builder_name}
-            method.__doc__ = f"Set {f} ({t.__name__})"
+            # Check if 't' has '__name__' attribute, otherwise use a fallback
+            method.__doc__ = f"Set {f} ({getattr(t, '__name__', str(t))})"
             return method
 
         namespace[f"{field}"] = make_method()
@@ -275,12 +276,16 @@ class PyCallable(BaseModel):
     code_start_line: int = -1
     accessed_symbols: List[PySymbol] = []
     call_sites: List[PyCallsite] = []
+    inner_callables: Dict[str, "PyCallable"] = {}
+    inner_classes: Dict[str, "PyClass"] = {}
     local_variables: List[PyVariableDeclaration] = []
     cyclomatic_complexity: int = 0
 
     def __hash__(self) -> int:
         """Generate a hash based on the callable's signature."""
         return hash(self.signature)
+    
+    
 
 
 @builder
@@ -328,6 +333,10 @@ class PyModule(BaseModel):
     classes: Dict[str, PyClass] = {}
     functions: Dict[str, PyCallable] = {}
     variables: List[PyVariableDeclaration] = []
+    # Metadata for caching
+    content_hash: Optional[str] = None
+    last_modified: Optional[float] = None
+    file_size: Optional[int] = None
 
 
 @builder
@@ -335,4 +344,4 @@ class PyModule(BaseModel):
 class PyApplication(BaseModel):
     """Represents a Python application."""
 
-    symbol_table: dict[Path, PyModule]
+    symbol_table: Dict[str, PyModule]

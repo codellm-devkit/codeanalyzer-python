@@ -5,6 +5,113 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.10] - 2025-07-20
+
+### Added
+- Ray distributed processing support for parallel symbol table generation (addresses [#16](https://github.com/codellm-devkit/codeanalyzer-python/issues/16))
+- `--ray/--no-ray` CLI flag to enable/disable Ray-based distributed analysis
+- `--skip-tests/--include-tests` CLI flag to control whether test files are analyzed (improves analysis performance)
+- `--file-name` CLI flag for single file analysis (addresses part of [#16](https://github.com/codellm-devkit/codeanalyzer-python/issues/16))
+- Incremental caching system with SHA256-based file change detection
+  - Automatic caching of analysis results to `analysis_cache.json`
+  - File-level caching with content hash validation to avoid re-analyzing unchanged files
+  - Significant performance improvements for subsequent analysis runs
+  - Cache reuse statistics logging
+- Custom exception classes for better error handling in symbol table building:
+  - `SymbolTableBuilderException` (base exception)
+  - `SymbolTableBuilderFileNotFoundError` (file not found errors)
+  - `SymbolTableBuilderParsingError` (parsing errors)
+  - `SymbolTableBuilderRayError` (Ray processing errors)
+- Enhanced PyModule schema with metadata fields for caching:
+  - `last_modified` timestamp tracking
+  - `content_hash` for precise change detection
+- Progress bar support for both serial and parallel processing modes
+- Enhanced test fixtures including xarray project for comprehensive testing
+- Comprehensive `__init__.py` exports for syntactic analysis module
+- Smart dependency installation with conditional logic:
+  - Only installs requirements files when they exist (requirements.txt, requirements-dev.txt, dev-requirements.txt, test-requirements.txt)
+  - Only performs editable installation when package definition files are present (pyproject.toml, setup.py, setup.cfg)
+  - Improved virtual environment setup with better dependency detection and installation logic
+
+### Changed
+- **BREAKING CHANGE**: Updated Python version requirement from `>=3.10` to `>=3.9` for broader compatibility (closes [#17](https://github.com/codellm-devkit/codeanalyzer-python/issues/17))
+- **BREAKING CHANGE**: Updated dependency versions with more conservative constraints for better stability:
+  - `pydantic` downgraded from `>=2.11.7` to `>=1.8.0,<2.0.0` for stability
+  - `pandas` constrained to `>=1.3.0,<2.0.0`
+  - `numpy` constrained to `>=1.21.0,<1.24.0`
+  - `rich` constrained to `>=12.6.0,<14.0.0`
+  - `typer` constrained to `>=0.9.0,<1.0.0`
+  - Other dependencies updated with conservative version ranges for better compatibility
+- Major Architecture Enhancement: Complete rewrite of analysis caching system
+  - `analyze()` method now implements intelligent caching with PyApplication serialization
+  - Symbol table building redesigned to support incremental updates and cache reuse
+  - File change detection using SHA256 content hashing for maximum accuracy
+- Enhanced `Codeanalyzer` constructor signature to accept `file_name` parameter for single file analysis
+- Refactored symbol table building from monolithic `build()` method to cache-aware file-level processing
+- Enhanced `Codeanalyzer` constructor signature to accept `skip_tests` and `using_ray` parameters
+- Improved error handling with proper context managers in core analyzer
+- Updated CLI to use Pydantic v1 compatible JSON serialization methods
+- Reorganized syntactic analysis module structure with proper exception handling and exports
+- Enhanced virtual environment detection with better fallback mechanisms
+- Symbol table builder now sets metadata fields (`last_modified`, `content_hash`) for all PyModule objects
+
+### Fixed
+- Fixed critical symbol table bug for nested functions (closes [#15](https://github.com/codellm-devkit/codeanalyzer-python/issues/15))
+  - Corrected `_callables()` method recursion logic to properly capture both outer and inner functions
+  - Previously, only inner/nested functions were being captured in the symbol table
+  - Now correctly processes module-level functions, class methods, and all nested function definitions
+- Fixed nested method/function signature generation in symbol table builder
+  - Corrected `_callables()` method to properly build fully qualified signatures for nested structures
+  - Fixed issue where nested functions and methods were getting incorrect signatures (e.g., `main.__init__` instead of `main.outer_function.NestedClass.__init__`)
+  - Added `prefix` parameter to `_callables()` and `_add_class()` methods to maintain proper nesting context
+  - Signatures now correctly reflect the full nested hierarchy (e.g., `main.outer_function.NestedClass.nested_class_method.method_nested_function`)
+  - Updated class method processing to pass class signature as prefix to nested callable processing
+  - Improved path relativization to project directory for cleaner signature generation
+- Fixed Pydantic v2 compatibility issues by reverting to v1 API (`json()` instead of `model_dump_json()`)
+- Fixed missing import statements and type annotations throughout the codebase
+- Fixed symbol table builder to support individual file processing for distributed execution
+- Improved error handling in virtual environment detection and Python interpreter resolution
+- Fixed schema type annotations to use proper string keys for better serialization
+- Enhanced import ordering and removed unnecessary blank lines in CLI module
+- Improved virtual environment setup reliability:
+  - Fixed unnecessary pip installs by adding conditional logic to only install when dependencies are available
+  - Only attempts to install requirements files if they actually exist in the project
+  - Only performs editable installation when package definition files are present
+  - Prevents errors and warnings from attempting to install non-existent dependencies
+
+### Technical Details
+- Added Ray as a core dependency for distributed computing capabilities (addresses [#16](https://github.com/codellm-devkit/codeanalyzer-python/issues/16))
+- Implemented `@ray.remote` decorator for parallel file processing
+- Comprehensive caching system implementation:
+  - `_load_pyapplication_from_cache()` and `_save_analysis_cache()` methods for PyApplication serialization
+  - `_file_unchanged()` method with SHA256 content hash validation
+  - Cache-aware symbol table building with selective file processing
+  - Automatic cache statistics and performance reporting
+- Enhanced progress tracking for both serial and parallel execution modes with Rich progress bars
+- Updated schema to use `Dict[str, PyModule]` instead of `dict[Path, PyModule]` for better serialization
+- Extended PyModule schema with optional `last_modified` and `content_hash` fields for caching metadata
+- Added comprehensive exception hierarchy for better error classification and handling
+- Refactored symbol table building into modular, file-level processing suitable for distribution
+- Enhanced Python interpreter detection with support for multiple version managers (pyenv, conda, asdf)
+- Added `hashlib` integration for file content hashing throughout the codebase
+- Enhanced virtual environment setup logic:
+  - Modified `_add_class()` method to accept `prefix` parameter and pass class signature to method processing
+  - Updated `_callables()` method signature to include `prefix` parameter for nested context tracking  
+  - Enhanced signature building logic to use prefix when available, falling back to Jedi resolution for top-level definitions
+  - Fixed recursive calls to pass current signature as prefix for proper nesting hierarchy
+  - Implemented conditional dependency installation with existence checks for requirements files and package definition files
+
+### Notes
+- This release significantly addresses the performance improvements requested in [#16](https://github.com/codellm-devkit/codeanalyzer-python/issues/16):
+  - ✅ Ray parallelization implemented
+  - ✅ Incremental caching with SHA256-based change detection implemented  
+  - ✅ `--file-name` option for single-file analysis implemented
+  - ❌ `--nproc` options not yet included (still uses all available cores with Ray)
+- ✅ Critical bug fix for nested function detection ([#15](https://github.com/codellm-devkit/codeanalyzer-python/issues/15)) is now included in this version
+- Expected performance improvements: 2-10x faster on subsequent runs depending on code change frequency
+- Enhanced symbol table accuracy ensures all function definitions are properly captured
+- Virtual environment setup is now more robust and only installs dependencies when they are actually available
+
 ## [0.1.9] - 2025-07-14
 
 ### Fixed

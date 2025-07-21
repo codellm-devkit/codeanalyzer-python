@@ -1,9 +1,10 @@
 import ast
+import hashlib
 import tokenize
 from ast import AST, ClassDef
 from io import StringIO
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 import jedi
 from jedi.api import Script
@@ -21,14 +22,12 @@ from codeanalyzer.schema.py_schema import (
     PySymbol,
     PyVariableDeclaration,
 )
-from codeanalyzer.utils import logger
-from codeanalyzer.utils.progress_bar import ProgressBar
 
 
 class SymbolTableBuilder:
     """A class for building a symbol table for a Python project."""
 
-    def __init__(self, project_dir: Path | str, virtualenv: Path | str | None) -> None:
+    def __init__(self, project_dir: Union[Path, str], virtualenv: Union[Path, str, None]) -> None:
         self.project_dir = Path(project_dir)
         if virtualenv is None:
             # If no virtual environment is provided, create a jedi project without an environment.
@@ -72,7 +71,7 @@ class SymbolTableBuilder:
             pass
         return None
 
-    def _module(self, py_file: Path) -> PyModule:
+    def build_pymodule_from_file(self, py_file: Path) -> PyModule:
         """Builds a PyModule from a Python file.
 
         Args:
@@ -83,18 +82,17 @@ class SymbolTableBuilder:
         """
         # Get the raw source code from the file
         source = py_file.read_text(encoding="utf-8")
+        
+        # Get file metadata for caching
+        stat = py_file.stat()
+        file_size = stat.st_size
+        last_modified = stat.st_mtime
+        content_hash = hashlib.sha256(source.encode('utf-8')).hexdigest()
+        
         # Create a Jedi script for the file
         script: Script = Script(path=str(py_file), project=self.jedi_project)
         module = ast.parse(source, filename=str(py_file))
-
-        classes = {}
-        functions = {}
-        for node in ast.iter_child_nodes(module):
-            if isinstance(node, ClassDef):
-                classes.update(self._add_class(node, script))
-            elif isinstance(node, ast.FunctionDef):
-                functions.update(self._callables(node, script))
-
+        
         return (
             PyModule.builder()
             .file_path(str(py_file))
@@ -102,8 +100,11 @@ class SymbolTableBuilder:
             .comments(self._pycomments(module, source))
             .imports(self._imports(module))
             .variables(self._module_variables(module, script))
-            .classes(classes)
-            .functions(functions)
+            .classes(self._add_class(module, script))
+            .functions(self._callables(module, script))
+            .content_hash(content_hash)
+            .last_modified(last_modified)
+            .file_size(file_size)
             .build()
         )
 
@@ -156,144 +157,112 @@ class SymbolTableBuilder:
 
         return imports
 
-    def _add_class(
-        self, class_node: ast.ClassDef, script: Script
-    ) -> Dict[str, PyClass]:
-        """Builds a PyClass from a class definition node.
+    def _add_class(self, node: AST, script: Script, prefix: str = "") -> Dict[str, PyClass]:
+        classes: Dict[str, PyClass] = {}
 
-        Args:
-            class_node (ast.ClassDef): The AST node representing the class.
-            script (Script): The Jedi script object for the module.
+        for child in ast.iter_child_nodes(node):
+            if not isinstance(child, ast.ClassDef):
+                continue
 
-        Returns:
-            Dict[str, PyClass]: Mapping of class signature to PyClass object.
-        """
-        # Try resolving full signature with Jedi
-        try:
-            definitions = script.goto(
-                line=class_node.lineno, column=class_node.col_offset
-            )
-            signature = next(
-                (d.full_name for d in definitions if d.type == "class"),
-                f"{script.path.__str__().replace('/', '.').replace('.py', '')}.{class_node.name}",
-            )
-        except Exception:
-            signature = (
-                f"{script.path.__str__().replace('/', '.').replace('.py', '')}.{class_node.name}",
-            )
+            class_name = child.name
+            start_line = child.lineno
+            end_line = getattr(child, "end_lineno", start_line + len(child.body))
+            code = ast.unparse(child).strip()
 
-        code: str = ast.unparse(class_node).strip()
-
-        py_class = (
-            PyClass.builder()
-            .name(class_node.name)
-            .signature(signature)
-            .start_line(class_node.lineno)
-            .end_line(
-                getattr(
-                    class_node, "end_lineno", class_node.lineno + len(class_node.body)
-                )
-            )
-            .comments(self._pycomments(class_node, code))
-            .code(code)
-            .base_classes(
-                [
-                    ast.unparse(base)
-                    for base in class_node.bases
-                    if isinstance(base, ast.expr)
-                ]
-            )
-            .methods(self._callables(class_node, script))
-            .attributes(self._class_attributes(class_node, script))
-            .inner_classes(
-                {
-                    k: v
-                    for child in class_node.body
-                    if isinstance(child, ast.ClassDef)
-                    for k, v in self._add_class(child, script).items()
-                }
-            )
-            .build()
-        )
-
-        return {signature: py_class}
-
-    def _callables(self, node: AST, script: Script) -> Dict[str, PyCallable]:
-        """
-        Builds PyCallable objects from any AST node that may contain functions.
-
-        Args:
-            node (AST): The AST node to process (e.g., Module, ClassDef, FunctionDef).
-            script (Script): The Jedi script object for the module.
-
-        Returns:
-            Dict[str, PyCallable]: A dictionary mapping function/method names to PyCallable objects.
-        """
-        callables: Dict[str, PyCallable] = {}
-        module_path: str = script.path or "<unknown_module>"
-        module_name: str = Path(module_path).stem if module_path else "<unknown>"
-
-        def visit(n: AST, class_prefix: str = ""):
-            for child in ast.iter_child_nodes(n):
-                if isinstance(child, ast.FunctionDef):
-                    method_name = child.name
-                    start_line = child.lineno
-                    end_line = getattr(
-                        child, "end_lineno", start_line + len(child.body)
+            # Try resolving full signature with Jedi
+            if prefix:
+                signature = f"{prefix}.{class_name}"
+            else:
+                try:
+                    definitions = script.goto(line=start_line, column=child.col_offset)
+                    signature = next(
+                        (d.full_name for d in definitions if d.type == "class"),
+                        f"{Path(script.path).relative_to(self.project_dir).__str__().replace('/', '.').replace('.py', '')}.{class_name}"
                     )
-                    code_start_line = child.body[0].lineno if child.body else start_line
-                    code: str = ast.unparse(child).strip()
-                    decorators = [ast.unparse(d) for d in child.decorator_list]
+                except Exception:
+                    signature = f"{Path(script.path).relative_to(self.project_dir).__str__().replace('/', '.').replace('.py', '')}.{class_name}"
+            py_class = (
+                PyClass.builder()
+                .name(class_name)
+                .signature(signature)
+                .start_line(start_line)
+                .end_line(end_line)
+                .code(code)
+                .comments(self._pycomments(child, code))
+                .base_classes([
+                    ast.unparse(base)
+                    for base in child.bases
+                    if isinstance(base, ast.expr)
+                ])
+                .methods(self._callables(child, script, prefix=signature))  # Pass class signature as prefix
+                .attributes(self._class_attributes(child, script))
+                .inner_classes(self._add_class(child, script, prefix=signature))  # Pass class signature as prefix
+                .build()
+            )
 
+            classes[signature] = py_class
+
+        return classes
+
+
+    def _callables(self, node: AST, script: Script, prefix: str = "") -> Dict[str, PyCallable]:
+        callables: Dict[str, PyCallable] = {}
+
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                method_name = child.name  # Keep the actual method name unchanged
+                start_line = child.lineno
+                end_line = getattr(child, "end_lineno", start_line + len(child.body))
+                code = ast.unparse(child).strip()
+                decorators = [ast.unparse(d) for d in child.decorator_list]
+                
+                if prefix:
+                    # We're in a nested context - build signature with prefix
+                    signature = f"{prefix}.{method_name}"
+                else:
+                    # Top-level function - try Jedi first, fall back to relative path-based
                     try:
-                        definitions = script.goto(
-                            line=start_line, column=child.col_offset
+                        definitions = script.goto(line=start_line, column=child.col_offset)
+                        signature = next(
+                            (d.full_name for d in definitions if d.type == "function"),
+                            None
                         )
                     except Exception:
-                        definitions = []
-
-                    signature = next(
-                        (d.full_name for d in definitions if d.type == "function"),
-                        f"{module_name}.{class_prefix}{method_name}",
+                        signature = None
+                    
+                    # If Jedi didn't provide a signature, build one relative to project_dir
+                    if not signature:
+                        relative_path = Path(script.path).relative_to(self.project_dir)
+                        signature = f"{str(relative_path).replace('/', '.').replace('.py', '')}.{method_name}"
+                py_callable = (
+                    PyCallable.builder()
+                    .name(method_name)  # Use the actual method name, not the full signature
+                    .path(str(script.path))
+                    .signature(signature)  # Use the full signature here
+                    .decorators(decorators)
+                    .code(code)
+                    .start_line(start_line)
+                    .end_line(end_line)
+                    .code_start_line(child.body[0].lineno if child.body else start_line)
+                    .accessed_symbols(self._accessed_symbols(child, script))
+                    .call_sites(self._call_sites(child, script))
+                    .local_variables(self._local_variables(child, script))
+                    .cyclomatic_complexity(self._cyclomatic_complexity(child))
+                    .parameters(self._callable_parameters(child, script))
+                    .return_type(
+                        ast.unparse(child.returns)
+                        if child.returns else self._infer_type(script, child.lineno, child.col_offset)
                     )
+                    .comments(self._pycomments(child, code))
+                    .inner_callables(self._callables(child, script, signature))  # Pass current signature as prefix
+                    .inner_classes(self._add_class(child, script, signature))    # Pass current signature as prefix
+                    .build()
+                )
 
-                    callables[method_name] = (
-                        PyCallable.builder()
-                        .name(method_name)
-                        .path(script.path.__str__())
-                        .signature(signature)
-                        .decorators(decorators)
-                        .code(code)
-                        .start_line(start_line)
-                        .end_line(end_line)
-                        .code_start_line(code_start_line)
-                        .accessed_symbols(self._accessed_symbols(child, script))
-                        .call_sites(self._call_sites(child, script))
-                        .local_variables(self._local_variables(child, script))
-                        .cyclomatic_complexity(self._cyclomatic_complexity(child))
-                        .parameters(self._callable_parameters(child, script))
-                        .return_type(
-                            ast.unparse(child.returns)
-                            if child.returns
-                            else self._infer_type(
-                                script, child.lineno, child.col_offset
-                            )
-                        )
-                        .comments(self._pycomments(child, code))
-                        .build()
-                    )
+                callables[method_name] = py_callable  # Key by method name, not full signature
 
-                    visit(child, class_prefix + method_name + ".")
-
-                elif isinstance(child, ast.ClassDef):
-                    visit(child, class_prefix + child.name + ".")
-
-                elif hasattr(child, "body"):
-                    visit(child, class_prefix)
-
-        visit(node)
         return callables
-
+    
     def _pycomments(self, node: ast.AST, source: str) -> List[PyComment]:
         """
         Extracts all PyComment instances (docstring and # comments) from within a specific AST node's body.
@@ -868,35 +837,3 @@ class SymbolTableBuilder:
             .col_offset(col_offset)
             .build()
         )
-
-    def build(self) -> Dict[str, PyModule]:
-        """Builds the symbol table for the project.
-
-        This method scans the project directory, identifies Python files,
-        and constructs a symbol table containing information about classes,
-        functions, and variables defined in those files.
-        """
-        symbol_table: Dict[str, PyModule] = {}
-        # Get all Python files first to show accurate progress
-        py_files = [
-            py_file
-            for py_file in self.project_dir.rglob("*.py")
-            if "site-packages"
-            not in py_file.resolve().__str__()  # exclude site-packages
-            and ".venv"
-            not in py_file.resolve().__str__()  # exclude virtual environments
-            and ".codeanalyzer"
-            not in py_file.resolve().__str__()  # exclude internal cache directories
-        ]
-
-        with ProgressBar(len(py_files), "Building symbol table") as progress:
-            for py_file in py_files:
-                try:
-                    py_module = self._module(py_file)
-                    symbol_table[str(py_file)] = py_module
-                except Exception as e:
-                    logger.error(f"Failed to process {py_file}: {e}")
-                progress.advance()
-            progress.finish("✅ Symbol table generation complete.")
-
-        return symbol_table

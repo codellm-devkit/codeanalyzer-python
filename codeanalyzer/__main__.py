@@ -1,12 +1,11 @@
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Optional, Annotated
 
 import typer
 
 from codeanalyzer.core import Codeanalyzer
 from codeanalyzer.utils import _set_log_level, logger
 from codeanalyzer.config import OutputFormat
-
 
 def main(
     input: Annotated[
@@ -32,6 +31,12 @@ def main(
     using_codeql: Annotated[
         bool, typer.Option("--codeql/--no-codeql", help="Enable CodeQL-based analysis.")
     ] = False,
+    using_ray: Annotated[
+        bool,
+        typer.Option(
+            "--ray/--no-ray", help="Enable Ray for distributed analysis."
+        ),
+    ] = False,
     rebuild_analysis: Annotated[
         bool,
         typer.Option(
@@ -39,18 +44,32 @@ def main(
             help="Enable eager or lazy analysis. Defaults to lazy.",
         ),
     ] = False,
+    skip_tests: Annotated[
+        bool,
+        typer.Option(
+            "--skip-tests/--include-tests",
+            help="Skip test files in analysis.",
+        ),
+    ] = True,
+    file_name: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--file-name",
+            help="Analyze only the specified file (relative to input directory).",
+        ),
+    ] = None,
     cache_dir: Annotated[
         Optional[Path],
         typer.Option(
             "-c",
             "--cache-dir",
-            help="Directory to store analysis cache.",
+            help="Directory to store analysis cache. Defaults to '.codeanalyzer' in the input directory.",
         ),
     ] = None,
     clear_cache: Annotated[
         bool,
-        typer.Option("--clear-cache/--keep-cache", help="Clear cache after analysis."),
-    ] = True,
+        typer.Option("--clear-cache/--keep-cache", help="Clear cache after analysis. By default, cache is retained."),
+    ] = False,
     verbosity: Annotated[
         int, typer.Option("-v", count=True, help="Increase verbosity: -v, -vv, -vvv")
     ] = 0,
@@ -62,21 +81,28 @@ def main(
         logger.error(f"Input path '{input}' does not exist.")
         raise typer.Exit(code=1)
 
+    # Validate file_name if provided
+    if file_name is not None:
+        full_file_path = input / file_name
+        if not full_file_path.exists():
+            logger.error(f"Specified file '{file_name}' does not exist in '{input}'.")
+            raise typer.Exit(code=1)
+        if not full_file_path.is_file():
+            logger.error(f"Specified path '{file_name}' is not a file.")
+            raise typer.Exit(code=1)
+        if not str(file_name).endswith('.py'):
+            logger.error(f"Specified file '{file_name}' is not a Python file (.py).")
+            raise typer.Exit(code=1)
+
     with Codeanalyzer(
-        input, analysis_level, using_codeql, rebuild_analysis, cache_dir, clear_cache
+        input, analysis_level, skip_tests, using_codeql, rebuild_analysis, cache_dir, clear_cache, using_ray, file_name
     ) as analyzer:
         artifacts = analyzer.analyze()
 
         # Handle output based on format
         if output is None:
             # Output to stdout (only for JSON)
-            if format == OutputFormat.JSON:
-                print(artifacts.model_dump_json(separators=(",", ":")))
-            else:
-                logger.error(
-                    f"Format '{format.value}' requires an output directory (use -o/--output)"
-                )
-                raise typer.Exit(code=1)
+            print(artifacts.json(separators=(",", ":")))
         else:
             # Output to file
             output.mkdir(parents=True, exist_ok=True)
@@ -88,7 +114,7 @@ def _write_output(artifacts, output_dir: Path, format: OutputFormat):
     if format == OutputFormat.JSON:
         output_file = output_dir / "analysis.json"
         # Use Pydantic's json() with separators for compact output
-        json_str = artifacts.model_dump_json(indent=None)
+        json_str = artifacts.json(indent=None)
         with output_file.open("w") as f:
             f.write(json_str)
         logger.info(f"Analysis saved to {output_file}")

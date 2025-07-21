@@ -4,13 +4,39 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Union, List
 
-from codeanalyzer.schema.py_schema import PyApplication, PyModule
+import ray
+from codeanalyzer.utils import logger
+from codeanalyzer.schema import PyApplication, PyModule
 from codeanalyzer.semantic_analysis.codeql import CodeQLLoader
 from codeanalyzer.semantic_analysis.codeql.codeql_exceptions import CodeQLExceptions
+from codeanalyzer.syntactic_analysis.exceptions import SymbolTableBuilderRayError
 from codeanalyzer.syntactic_analysis.symbol_table_builder import SymbolTableBuilder
-from codeanalyzer.utils import logger
+from codeanalyzer.utils import ProgressBar
+
+@ray.remote
+def _process_file_with_ray(py_file: Union[Path, str], project_dir: Union[Path, str], virtualenv: Union[Path, str, None]) -> Dict[str, PyModule]:
+    """Processes files in the project directory using Ray for distributed processing.
+    
+    Args:
+        py_file (Union[Path, str]): Path to the Python file to process.
+        project_dir (Union[Path, str]): Path to the project directory.
+        virtualenv (Union[Path, str, None]): Path to the virtual environment directory.
+    Returns:
+        Dict[str, PyModule]: A dictionary mapping file paths to PyModule objects.
+    """
+    from rich.console import Console
+    console = Console()
+    module_map: Dict[str, PyModule] = {}
+    try:
+        py_file = Path(py_file)
+        symbol_table_builder = SymbolTableBuilder(project_dir, virtualenv)
+        module_map[str(py_file)] = symbol_table_builder.build_pymodule_from_file(py_file)
+    except Exception as e:
+        console.log(f"❌ Failed to process {py_file}: {e}")
+        raise SymbolTableBuilderRayError(f"Ray processing error for {py_file}: {e}")
+    return module_map
 
 
 class Codeanalyzer:
@@ -28,14 +54,18 @@ class Codeanalyzer:
     def __init__(
         self,
         project_dir: Union[str, Path],
-        analysis_depth: int = 1,
-        using_codeql: bool = False,
-        rebuild_analysis: bool = False,
-        cache_dir: Optional[Path] = None,
-        clear_cache: bool = True,
+        analysis_depth: int,
+        skip_tests: bool,
+        using_codeql: bool,
+        rebuild_analysis: bool,
+        cache_dir: Optional[Path],
+        clear_cache: bool,
+        using_ray: bool,
+        file_name: Optional[Path] = None,
     ) -> None:
         self.analysis_depth = analysis_depth
         self.project_dir = Path(project_dir).resolve()
+        self.skip_tests = skip_tests
         self.using_codeql = using_codeql
         self.rebuild_analysis = rebuild_analysis
         self.cache_dir = (
@@ -45,10 +75,12 @@ class Codeanalyzer:
         self.db_path: Optional[Path] = None
         self.codeql_bin: Optional[Path] = None
         self.virtualenv: Optional[Path] = None
+        self.using_ray: bool = using_ray
+        self.file_name: Optional[Path] = file_name
 
     @staticmethod
     def _cmd_exec_helper(
-        cmd: list[str],
+        cmd: List[str],
         cwd: Optional[Path] = None,
         capture_output: bool = True,
         check: bool = True,
@@ -126,7 +158,8 @@ class Codeanalyzer:
         # We're inside a virtual environment; need to find the base interpreter
 
         # First, check if user explicitly set SYSTEM_PYTHON
-        if system_python := os.getenv("SYSTEM_PYTHON"):
+        system_python = os.getenv("SYSTEM_PYTHON")
+        if system_python:
             system_python_path = Path(system_python)
             if system_python_path.exists() and system_python_path.is_file():
                 return system_python_path
@@ -142,14 +175,16 @@ class Codeanalyzer:
 
         # Use shutil.which to find python3 and python in PATH
         for python_name in ["python3", "python"]:
-            if python_path := shutil.which(python_name):
+            python_path = shutil.which(python_name)
+            if python_path:
                 candidate = Path(python_path)
                 # Skip if this is the current virtual environment's python
                 if not str(candidate).startswith(sys.prefix):
                     python_candidates.append(candidate)
 
         # Check pyenv installation
-        if pyenv_root := os.getenv("PYENV_ROOT"):
+        pyenv_root = os.getenv("PYENV_ROOT")
+        if pyenv_root:
             pyenv_python = Path(pyenv_root) / "shims" / "python"
             if pyenv_python.exists():
                 python_candidates.append(pyenv_python)
@@ -160,15 +195,17 @@ class Codeanalyzer:
             python_candidates.append(home_pyenv)
 
         # Check conda base environment
-        if conda_prefix := os.getenv(
-            "CONDA_PREFIX_1"
-        ):  # Original conda env before activation
-            conda_python = Path(conda_prefix) / "bin" / "python"
+        conda_base = os.getenv("CONDA_PREFIX")
+        if conda_base:
+            conda_python = Path(conda_base) / "bin" / "python"
             if conda_python.exists():
                 python_candidates.append(conda_python)
 
         # Check asdf
-        if asdf_dir := os.getenv("ASDF_DIR"):
+        asdf_dir = os.getenv("ASDF_DIR")
+        # If ASDF_DIR is set, use its shims directory
+        # Otherwise, check if asdf is installed in the default location
+        if asdf_dir:
             asdf_python = Path(asdf_dir) / "shims" / "python"
             if asdf_python.exists():
                 python_candidates.append(asdf_python)
@@ -211,14 +248,61 @@ class Codeanalyzer:
             # Find python in the virtual environment
             venv_python = venv_path / "bin" / "python"
 
-            # Install the project itself (reads pyproject.toml)
-            self._cmd_exec_helper(
-                [str(venv_python), "-m", "pip", "install", "-U", f"{self.project_dir}"],
-                cwd=self.project_dir,
-                check=True,
-            )
-            # Install the project dependencies
-            self.virtualenv = venv_path
+            # First, install dependencies from various dependency files
+            dependency_files = [
+                ("requirements.txt", ["-r"]),
+                ("requirements-dev.txt", ["-r"]),
+                ("dev-requirements.txt", ["-r"]),
+                ("test-requirements.txt", ["-r"]),
+            ]
+
+            for dep_file, pip_args in dependency_files:
+                if (self.project_dir / dep_file).exists():
+                    logger.info(f"Installing dependencies from {dep_file}")
+                    self._cmd_exec_helper(
+                        [str(venv_python), "-m", "pip", "install", "-U"] + pip_args + [str(self.project_dir / dep_file)],
+                        cwd=self.project_dir,
+                        check=True,
+                    )
+
+            # Handle Pipenv files
+            if (self.project_dir / "Pipfile").exists():
+                logger.info("Installing dependencies from Pipfile")
+                # Note: This would require pipenv to be installed
+                self._cmd_exec_helper(
+                    [str(venv_python), "-m", "pip", "install", "pipenv"],
+                    cwd=self.project_dir,
+                    check=True,
+                )
+                self._cmd_exec_helper(
+                    ["pipenv", "install", "--dev"],
+                    cwd=self.project_dir,
+                    check=True,
+                )
+
+            # Handle conda environment files
+            conda_files = ["conda.yml", "environment.yml"]
+            for conda_file in conda_files:
+                if (self.project_dir / conda_file).exists():
+                    logger.info(f"Found {conda_file} - note that conda environments should be handled outside this tool")
+                    break
+
+            # Now install the project itself in editable mode (only if package definition exists)
+            package_definition_files = [
+                "pyproject.toml",    # Modern Python packaging (PEP 518/621)
+                "setup.py",          # Traditional setuptools
+                "setup.cfg",         # Setup configuration
+            ]
+
+            if any((self.project_dir / file).exists() for file in package_definition_files):
+                logger.info("Installing project in editable mode")
+                self._cmd_exec_helper(
+                    [str(venv_python), "-m", "pip", "install", "-e", str(self.project_dir)],
+                    cwd=self.project_dir,
+                    check=True,
+                )
+            else:
+                logger.warning("No package definition files found, skipping editable installation")
 
         if self.using_codeql:
             logger.info(f"(Re-)initializing CodeQL analysis for {self.project_dir}")
@@ -280,14 +364,95 @@ class Codeanalyzer:
 
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(self, *args, **kwargs) -> None:
         if self.clear_cache and self.cache_dir.exists():
             logger.info(f"Clearing cache directory: {self.cache_dir}")
             shutil.rmtree(self.cache_dir)
 
     def analyze(self) -> PyApplication:
-        """Return the path to the CodeQL database."""
-        return PyApplication.builder().symbol_table(self._build_symbol_table()).build()
+        """Analyze the project and return a PyApplication with symbol table.
+        
+        Uses caching to avoid re-analyzing unchanged files.
+        """
+        cache_file = self.cache_dir / "analysis_cache.json"
+        
+        # Try to load existing cached analysis 
+        cached_pyapplication = None
+        if not self.rebuild_analysis and cache_file.exists():
+            try:
+                cached_pyapplication = self._load_pyapplication_from_cache(cache_file)
+                logger.info("Loaded cached analysis")
+            except Exception as e:
+                logger.warning(f"Failed to load cache: {e}. Rebuilding analysis.")
+                cached_pyapplication = None
+
+        # Build symbol table from cached application if available (if no available, the build a new one)
+        symbol_table = self._build_symbol_table(cached_pyapplication.symbol_table if cached_pyapplication else {})
+
+        # Recreate pyapplication
+        app = PyApplication.builder().symbol_table(symbol_table).build()
+        
+        # Save to cache
+        self._save_analysis_cache(app, cache_file)
+        
+        return app
+
+    def _load_pyapplication_from_cache(self, cache_file: Path) -> PyApplication:
+        """Load cached analysis from file.
+        
+        Args:
+            cache_file: Path to the cache file
+            
+        Returns:
+            PyApplication: The cached application data
+        """
+        with cache_file.open('r') as f:
+            data = f.read()
+        return PyApplication.parse_raw(data)
+    
+    def _save_analysis_cache(self, app: PyApplication, cache_file: Path) -> None:
+        """Save analysis to cache file.
+        
+        Args:
+            app: The PyApplication to cache
+            cache_file: Path to save the cache file
+        """
+        # Ensure cache directory exists
+        cache_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        with cache_file.open('w') as f:
+            f.write(app.json(indent=2))
+        
+        logger.info(f"Analysis cached to {cache_file}")
+
+    def _file_unchanged(self, file_path: Path, cached_module: PyModule) -> bool:
+        """Check if a file has changed since it was cached.
+        
+        Args:
+            file_path: Path to the file to check
+            cached_module: The cached PyModule for this file
+            
+        Returns:
+            bool: True if file is unchanged, False otherwise
+        """
+        try:
+            # Check last modified time and file size
+            if (cached_module.last_modified is not None and
+                cached_module.file_size is not None and
+                cached_module.last_modified == file_path.stat().st_mtime and
+                cached_module.file_size == file_path.stat().st_size):
+                return True
+            # Also check content hash for extra safety
+            if cached_module.content_hash is not None:
+                content_hash = hashlib.sha256(file_path.read_bytes()).hexdigest()
+                return content_hash == cached_module.content_hash
+
+            # No cached metadata mismatch, assume file changed
+            return False
+            
+        except Exception as e:
+            logger.debug(f"Error checking file {file_path}: {e}")
+            return False
 
     def _compute_checksum(self, root: Path) -> str:
         """Compute SHA256 checksum of all Python source files in a project directory. If somethings changes, the
@@ -304,9 +469,129 @@ class Codeanalyzer:
             sha256.update(py_file.read_bytes())
         return sha256.hexdigest()
 
-    def _build_symbol_table(self) -> Dict[str, PyModule]:
-        """Retrieve a symbol table of the whole project."""
-        return SymbolTableBuilder(self.project_dir, self.virtualenv).build()
+    def _build_symbol_table(self, cached_symbol_table: Optional[Dict[str, PyModule]] = None) -> Dict[str, PyModule]:
+        """Builds the symbol table for the project.
+
+        This method scans the project directory, identifies Python files,
+        and constructs a symbol table containing information about classes,
+        functions, and variables defined in those files.
+        
+        Args:
+            cached_app: Previously cached PyApplication to reuse unchanged files
+        
+        Returns:
+            Dict[str, PyModule]: A dictionary mapping file paths to PyModule objects.
+        """
+        symbol_table: Dict[str, PyModule] = {}
+        
+        # Handle single file analysis
+        if self.file_name is not None:
+            single_file = self.project_dir / self.file_name
+            logger.info(f"Analyzing single file: {single_file}")
+            
+            # Check if file is in cache and unchanged
+            file_key = str(single_file)
+            if file_key in cached_symbol_table and not self.rebuild_analysis:
+                # Compute file checksum to see if it changed
+                if self._file_unchanged(single_file, cached_symbol_table[file_key]):
+                    logger.info(f"Using cached analysis for {single_file}")
+                    symbol_table[file_key] = cached_symbol_table[file_key]
+                    return symbol_table
+            
+            # File is new or changed, analyze it
+            try:
+                symbol_table_builder = SymbolTableBuilder(self.project_dir, self.virtualenv)
+                py_module = symbol_table_builder.build_pymodule_from_file(single_file)
+                symbol_table[file_key] = py_module
+                logger.info("✅ Single file analysis complete.")
+                return symbol_table
+            except Exception as e:
+                logger.error(f"Failed to process {single_file}: {e}")
+                return symbol_table
+        
+        # Get all Python files first to show accurate progress
+        py_files = []
+        for py_file in self.project_dir.rglob("*.py"):
+            rel_path = py_file.relative_to(self.project_dir)
+            path_parts = rel_path.parts
+            filename = py_file.name
+
+            # Skip directories we don't care about
+            if (
+                "site-packages" in path_parts
+                or ".venv" in path_parts
+                or ".codeanalyzer" in path_parts
+            ):
+                continue
+
+            # Skip test files if enabled
+            if self.skip_tests and (
+                "test" in path_parts
+                or "tests" in path_parts
+                or filename.startswith("test_")
+                or filename.endswith("_test.py")
+            ):
+                continue
+
+            py_files.append(py_file)
+
+        if self.using_ray:
+            logger.info("Using Ray for distributed symbol table generation.")
+            # Separate files into cached and new/changed
+            files_to_process = []
+            for py_file in py_files:
+                file_key = str(py_file)
+                if file_key in cached_symbol_table and not self.rebuild_analysis:
+                    if self._file_unchanged(py_file, cached_symbol_table[file_key]):
+                        # Use cached version
+                        symbol_table[file_key] = cached_symbol_table[file_key]
+                        continue
+                files_to_process.append(py_file)
+            
+            # Process only new/changed files with Ray
+            if files_to_process:
+                futures = [_process_file_with_ray.remote(py_file, self.project_dir, str(self.virtualenv) if self.virtualenv else None) for py_file in files_to_process]
+                
+                with ProgressBar(len(futures), "Building symbol table (parallel)") as progress:
+                    pending = futures[:]
+                    while pending:
+                        done, pending = ray.wait(pending, num_returns=1)
+                        result = ray.get(done[0])
+                        if result:
+                            symbol_table.update(result)
+                        progress.advance()
+        else:
+            logger.info("Building symbol table serially.")
+            symbol_table_builder = SymbolTableBuilder(self.project_dir, self.virtualenv)
+            files_processed = 0
+            files_from_cache = 0
+            
+            with ProgressBar(len(py_files), "Building symbol table") as progress:
+                for py_file in py_files:
+                    file_key = str(py_file)
+                    
+                    # Check if file is cached and unchanged
+                    if file_key in cached_symbol_table and not self.rebuild_analysis:
+                        if self._file_unchanged(py_file, cached_symbol_table[file_key]):
+                            symbol_table[file_key] = cached_symbol_table[file_key]
+                            files_from_cache += 1
+                            progress.advance()
+                            continue
+                    
+                    # File is new or changed, analyze it
+                    try:
+                        py_module = symbol_table_builder.build_pymodule_from_file(py_file)
+                        symbol_table[file_key] = py_module
+                        files_processed += 1
+                    except Exception as e:
+                        logger.error(f"Failed to process {py_file}: {e}")
+                    progress.advance()
+            
+            if files_from_cache > 0:
+                logger.info(f"Reused {files_from_cache} files from cache, processed {files_processed} new/changed files")
+
+        logger.info("✅ Symbol table generation complete.")
+        return symbol_table
 
     def _get_call_graph(self) -> Dict[str, Any]:
         """Retrieve call graph from CodeQL database."""

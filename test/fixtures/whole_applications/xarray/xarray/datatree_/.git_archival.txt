@@ -1,0 +1,4 @@
+node: bef04067dd87f9f0c1a3ae7840299e0bbdd595a8
+node-date: 2024-06-13T07:05:11-06:00
+describe-name: %(describe:tags=true)
+ref-names: tag: v2024.06.0
