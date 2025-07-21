@@ -6,6 +6,7 @@ import typer
 from codeanalyzer.core import Codeanalyzer
 from codeanalyzer.utils import _set_log_level, logger
 from codeanalyzer.config import OutputFormat
+from codeanalyzer.schema import model_dump_json
 
 def main(
     input: Annotated[
@@ -102,7 +103,7 @@ def main(
         # Handle output based on format
         if output is None:
             # Output to stdout (only for JSON)
-            print(artifacts.json(separators=(",", ":")))
+            print(model_dump_json(artifacts, separators=(",", ":")))
         else:
             # Output to file
             output.mkdir(parents=True, exist_ok=True)
@@ -113,8 +114,8 @@ def _write_output(artifacts, output_dir: Path, format: OutputFormat):
     """Write artifacts to file in the specified format."""
     if format == OutputFormat.JSON:
         output_file = output_dir / "analysis.json"
-        # Use Pydantic's json() with separators for compact output
-        json_str = artifacts.json(indent=None)
+        # Use Pydantic's model_dump_json() for compact output
+        json_str = model_dump_json(artifacts, indent=None)
         with output_file.open("w") as f:
             f.write(json_str)
         logger.info(f"Analysis saved to {output_file}")
