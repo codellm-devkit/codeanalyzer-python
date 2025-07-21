@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.12] - 2025-07-21
 
 ### Changed
-- **BREAKING CHANGE**: Refactored `Codeanalyzer` constructor to use `AnalysisOptions` dataclass [in response to #19](https://github.com/codellm-devkit/codeanalyzer-python/issues/19)
+- **BREAKING CHANGE**: Refactored `Codeanalyzer` constructor to use `AnalysisOptions` dataclass [in response to #12](https://github.com/codellm-devkit/codeanalyzer-python/issues/12)
   - Replaced multiple individual parameters with single `AnalysisOptions` object for cleaner API
   - Improved type safety and configuration management through centralized options structure
   - Enhanced maintainability and extensibility for future configuration additions
@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Maintained backward compatibility in terms of functionality while improving code architecture
 
 ### Added
-- New `AnalysisOptions` dataclass in `codeanalyzer.options` module [in response to #19](https://github.com/codellm-devkit/codeanalyzer-python/issues/19)
+- New `AnalysisOptions` dataclass in `codeanalyzer.options` module [in response to #12](https://github.com/codellm-devkit/codeanalyzer-python/issues/12)
   - Centralized configuration structure with all analysis parameters
   - Type-safe configuration with proper defaults and validation
   - Support for `OutputFormat` enum integration
