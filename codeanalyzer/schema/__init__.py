@@ -21,3 +21,13 @@ __all__ = [
     "PyClassAttribute",
     "PyCallableParameter",
 ]
+
+# Resolve forward references
+PyCallable.update_forward_refs(PyClass=PyClass)
+PyClass.update_forward_refs(PyCallable=PyCallable)
+PyModule.update_forward_refs(PyCallable=PyCallable, PyClass=PyClass)
+PyApplication.update_forward_refs(
+    PyCallable=PyCallable,
+    PyClass=PyClass,
+    PyModule=PyModule
+)
