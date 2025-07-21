@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.12] - 2025-07-21
+
+### Changed
+- **BREAKING CHANGE**: Refactored `Codeanalyzer` constructor to use `AnalysisOptions` dataclass [in response to #12](https://github.com/codellm-devkit/codeanalyzer-python/issues/12)
+  - Replaced multiple individual parameters with single `AnalysisOptions` object for cleaner API
+  - Improved type safety and configuration management through centralized options structure
+  - Enhanced maintainability and extensibility for future configuration additions
+  - Updated CLI integration to create and pass `AnalysisOptions` instance
+  - Maintained backward compatibility in terms of functionality while improving code architecture
+
+### Added
+- New `AnalysisOptions` dataclass in `codeanalyzer.options` module [in response to #12](https://github.com/codellm-devkit/codeanalyzer-python/issues/12)
+  - Centralized configuration structure with all analysis parameters
+  - Type-safe configuration with proper defaults and validation
+  - Support for `OutputFormat` enum integration
+  - Clean separation between CLI and library configuration handling
+
+### Technical Details
+- Added new `codeanalyzer.options` package with `AnalysisOptions` dataclass
+- Updated `Codeanalyzer.__init__()` to accept single `options` parameter instead of 9 individual parameters
+- Modified CLI handler in `__main__.py` to create `AnalysisOptions` instance from command line arguments
+- Improved code organization and maintainability for configuration management
+- Enhanced API design following best practices for parameter object patterns
+
 ## [0.1.11] - 2025-07-21
 
 ### Fixed
@@ -12,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated NumPy dependency constraints to handle Python 3.12+ compatibility
   - Split NumPy version constraints into three tiers:
     - `numpy>=1.21.0,<1.24.0` for Python < 3.11
-    - `numpy>=1.24.0,<2.0.0` for Python 3.11.x  
+    - `numpy>=1.24.0,<2.0.0` for Python 3.11.x
     - `numpy>=1.26.0,<2.0.0` for Python 3.12+ (requires NumPy 1.26+ which supports Python 3.12)
   - Resolves `ModuleNotFoundError: No module named 'distutils'` errors on Python 3.12+
   - Ensures compatibility with Python 3.12 which removed `distutils` from the standard library
