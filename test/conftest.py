@@ -26,6 +26,11 @@ def cli_runner() -> CliRunner:
 
 
 @pytest.fixture
-def project_root() -> Path:
-    """Returns the grandparent directory of this conftest file — typically the project root."""
-    return Path(__file__).resolve().parents[1]
+def whole_applications__xarray() -> Path:
+    """The xarray application directory."""
+    return Path(__file__).parent.resolve().joinpath("fixtures", "whole_applications", "xarray")
+
+@pytest.fixture
+def single_functionalities__stuff_nested_in_functions() -> Path:
+    """Returns the path to the 'single_functionalities/stuff_nested_in_functions' directory."""
+    return Path(__file__).parent.resolve().joinpath("fixtures", "single_functionalities", "stuff_nested_in_functions_test")
