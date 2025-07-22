@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.13] - 2025-07-22
+
+### Improved
+- **CLI Help Documentation**: Comprehensive help text added for all command-line options
+  - Added descriptive help messages for all CLI parameters including `--output`, `--format`, `--analysis-level`, etc.
+  - Enhanced user experience with clear option descriptions in `--help` output
+  - Improved CLI parameter organization using `Annotated` type hints for better maintainability
+  - Added case-insensitive support for `--format` option
+  - Updated verbosity option help to clearly indicate multiple usage (`-v`, `-vv`, `-vvv`)
+
+### Technical Details
+- Refactored CLI function signature to use consistent `Annotated` type hint pattern
+- Added comprehensive help text for all 12 command-line options
+- Improved code organization and type safety in CLI parameter definitions
+
 ## [0.1.12] - 2025-07-21
 
 ### Changed
