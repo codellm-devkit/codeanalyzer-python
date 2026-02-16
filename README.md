@@ -77,16 +77,16 @@ To view the available options and commands, run `codeanalyzer --help`. You shoul
 
 
 ╭─ Options ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ *  --input           -i                  PATH            Path to the project root directory. [default: None] [required]   │
-│    --output          -o                  PATH            Output directory for artifacts. [default: None]                  │
-│    --format          -f                  [json|msgpack]  Output format: json or msgpack. [default: json]                  │
-│    --analysis-level  -a                  INTEGER         1: symbol table, 2: call graph. [default: 1]                     │
-│    --codeql              --no-codeql                     Enable CodeQL-based analysis. [default: no-codeql]               │
-│    --eager               --lazy                          Enable eager or lazy analysis. Defaults to lazy. [default: lazy] │
-│    --cache-dir       -c                  PATH            Directory to store analysis cache. [default: None]               │
-│    --clear-cache         --keep-cache                    Clear cache after analysis. [default: clear-cache]               │
-│                      -v                  INTEGER         Increase verbosity: -v, -vv, -vvv [default: 0]                   │
-│    --help                                                Show this message and exit.                                      │
+│ *  --input           -i                  PATH            Path to the project root directory. [default: None] [required]     │
+│    --output          -o                  PATH            Output directory for artifacts. [default: None]                    │
+│    --format          -f                  [json|msgpack]  Output format: json or msgpack. [default: json]                    │
+│    --analysis-level  -a                  INTEGER         1: symbol table, 2: call graph. [default: 1]                       │
+│    --codeql              --no-codeql                     Enable CodeQL-based analysis. [default: no-codeql]                 │
+│    --eager               --lazy                          Enable eager or lazy analysis. Defaults to lazy. [default: lazy]   │
+│    --cache-dir       -c                  PATH            Directory to store analysis cache. [default: None]                 │
+│    --clear-cache         --keep-cache                    Clear cache after analysis. [default: clear-cache]                 │
+│                      -v                  INTEGER         Increase verbosity: -v, -vv, -vvv [default: 0]                     │
+│    --help                                                Show this message and exit.                                        │
 ╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
