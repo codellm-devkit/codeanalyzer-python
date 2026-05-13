@@ -176,6 +176,7 @@ cython_debug/
 # Project-specific files
 .codeanalyzer
 .vscode/
+analysis.json
 
 # UV
 uv.lock
