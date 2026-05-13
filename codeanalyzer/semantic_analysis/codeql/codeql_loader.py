@@ -1,4 +1,6 @@
+import os
 import platform
+import stat
 import zipfile
 from pathlib import Path
 
@@ -52,12 +54,38 @@ class CodeQLLoader:
         extract_dir = temp_dir / filename.replace(".zip", "")
         extract_dir.mkdir(exist_ok=True)
 
-        print(f"Extracting CodeQL CLI to {extract_dir}")
+        logger.info(f"Extracting CodeQL CLI to {extract_dir}")
+        # zipfile.extractall drops Unix permissions (the executable bit), so
+        # we extract entries manually and copy each one's stored mode onto
+        # the file system. Without this, the CodeQL launcher script can't
+        # be executed and the next subprocess.Popen raises PermissionError.
         with zipfile.ZipFile(archive_path, "r") as zip_ref:
-            zip_ref.extractall(extract_dir)
+            for info in zip_ref.infolist():
+                extracted_path = zip_ref.extract(info, extract_dir)
+                stored_mode = info.external_attr >> 16
+                if stored_mode:
+                    os.chmod(extracted_path, stored_mode)
 
-        codeql_bin = next(extract_dir.rglob("codeql"), None)
-        if not codeql_bin or not codeql_bin.exists():
+        # Archive is no longer needed once extracted.
+        try:
+            archive_path.unlink()
+        except OSError as exc:
+            logger.warning(f"Could not remove CodeQL archive {archive_path}: {exc}")
+
+        # rglob("codeql") returns both the launcher file *and* an internal
+        # directory of the same name (CodeQL ships its own runtime under
+        # ``codeql/codeql/``); insist on a regular file so we never bind to
+        # the directory.
+        codeql_bin = next(
+            (p for p in extract_dir.rglob("codeql") if p.is_file()),
+            None,
+        )
+        if not codeql_bin:
             raise FileNotFoundError("CodeQL binary not found in extracted contents.")
+
+        # Belt-and-suspenders: ensure the binary is executable even if the
+        # archive entry's mode was zero (some older zip producers omit it).
+        st = codeql_bin.stat()
+        codeql_bin.chmod(st.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
         return codeql_bin.resolve()

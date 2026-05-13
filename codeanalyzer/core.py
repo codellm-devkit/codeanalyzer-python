@@ -9,7 +9,14 @@ from typing import Any, Dict, Optional, Union, List
 import ray
 from codeanalyzer.utils import logger
 from codeanalyzer.schema import PyApplication, PyModule, model_dump_json, model_validate_json
+from codeanalyzer.schema.py_schema import PyCallEdge
+from codeanalyzer.semantic_analysis.call_graph import (
+    jedi_call_graph_edges,
+    merge_edges,
+    resolve_unresolved_constructors,
+)
 from codeanalyzer.semantic_analysis.codeql import CodeQLLoader
+from codeanalyzer.semantic_analysis.codeql.codeql_analysis import CodeQL
 from codeanalyzer.semantic_analysis.codeql.codeql_exceptions import CodeQLExceptions
 from codeanalyzer.syntactic_analysis.exceptions import SymbolTableBuilderRayError
 from codeanalyzer.syntactic_analysis.symbol_table_builder import SymbolTableBuilder
@@ -49,7 +56,6 @@ class Codeanalyzer:
 
     def __init__(self, options: AnalysisOptions) -> None:
         self.options = options
-        self.analysis_depth = options.analysis_level
         self.project_dir = Path(options.input).resolve()
         self.skip_tests = options.skip_tests
         self.using_codeql = options.using_codeql
@@ -60,6 +66,7 @@ class Codeanalyzer:
         self.clear_cache = options.clear_cache
         self.db_path: Optional[Path] = None
         self.codeql_bin: Optional[Path] = None
+        self.codeql_packs_dir: Optional[Path] = None
         self.virtualenv: Optional[Path] = None
         self.using_ray: bool = options.using_ray
         self.file_name: Optional[Path] = options.file_name
@@ -292,6 +299,15 @@ class Codeanalyzer:
 
         if self.using_codeql:
             logger.info(f"(Re-)initializing CodeQL analysis for {self.project_dir}")
+
+            # Resolve the CLI binary before anything else uses it: DB build
+            # below needs it, and so does every subsequent query run.
+            self.codeql_bin = self._ensure_codeql_bin()
+            # Download the standard query library pack (idempotent). The
+            # CLI install ships only the language extractors; the
+            # ``codeql/python-all`` library pack must be fetched separately.
+            self.codeql_packs_dir = self._ensure_codeql_packs(self.codeql_bin)
+
             cache_root = self.cache_dir / "codeql"
             cache_root.mkdir(parents=True, exist_ok=True)
             self.db_path = cache_root / f"{self.project_dir.name}-db"
@@ -309,19 +325,6 @@ class Codeanalyzer:
 
             if self.rebuild_analysis or not is_cache_valid():
                 logger.info("Creating new CodeQL database...")
-
-                codeql_in_path = shutil.which("codeql")
-                if codeql_in_path:
-                    self.codeql_bin = Path(codeql_in_path)
-                else:
-                    self.codeql_bin = CodeQLLoader.download_and_extract_codeql(
-                        self.cache_dir / "codeql" / "bin"
-                    )
-
-                if not shutil.which(str(self.codeql_bin)):
-                    raise FileNotFoundError(
-                        f"CodeQL binary not executable: {self.codeql_bin}"
-                    )
 
                 cmd = [
                     str(self.codeql_bin),
@@ -375,8 +378,27 @@ class Codeanalyzer:
         # Build symbol table from cached application if available (if no available, the build a new one)
         symbol_table = self._build_symbol_table(cached_pyapplication.symbol_table if cached_pyapplication else {})
 
+        # Build the call graph in four steps:
+        #   1. Run CodeQL (when enabled). Produces resolved edges with
+        #      ``provenance=["codeql"]`` and augments ``PyCallsite``s
+        #      in-place — filling ``callee_signature`` for sites Jedi
+        #      couldn't resolve.
+        #   2. Heuristic fallback for constructor calls neither Jedi nor
+        #      CodeQL could resolve (commonly classes nested inside
+        #      functions). Walks the symbol table by class short-name +
+        #      scope and writes ``<class>.__init__`` into the site.
+        #   3. Derive Jedi edges from the now-fully-augmented symbol
+        #      table — these reflect every resolution the symbol table
+        #      contains, regardless of which pass put it there.
+        #   4. Merge with CodeQL edges; provenance unions for edges both
+        #      backends saw.
+        codeql_edges = self._get_call_graph(symbol_table, augment_sites=True)
+        resolve_unresolved_constructors(symbol_table)
+        jedi_edges = jedi_call_graph_edges(symbol_table)
+        call_graph = merge_edges(jedi_edges, codeql_edges)
+
         # Recreate pyapplication
-        app = PyApplication.builder().symbol_table(symbol_table).build()
+        app = PyApplication.builder().symbol_table(symbol_table).call_graph(call_graph).build()
         
         # Save to cache
         self._save_analysis_cache(app, cache_file)
@@ -579,7 +601,120 @@ class Codeanalyzer:
         logger.info("✅ Symbol table generation complete.")
         return symbol_table
 
-    def _get_call_graph(self) -> Dict[str, Any]:
-        """Retrieve call graph from CodeQL database."""
-        logger.warning("Call graph extraction not yet implemented.")
-        return {}
+    def _ensure_codeql_packs(self, codeql_bin: Path) -> Path:
+        """Materialize a qlpack that depends on ``codeql/python-all``.
+
+        The CodeQL CLI install ships only the language extractors — query
+        library packs (and their transitive dependencies like
+        ``codeql/concepts``) must be resolved separately. The canonical
+        way is to declare the dependency in a ``qlpack.yml`` and run
+        ``codeql pack install`` in that directory; CodeQL writes a
+        ``codeql-pack.lock.yml`` and downloads everything needed.
+
+        We do this once per project under ``<cache_dir>/codeql/qlpack/``
+        and return that directory. The query runner then writes its
+        temporary ``.ql`` file inside this pack — colocation makes
+        ``import python`` resolve without any ``--additional-packs`` or
+        ``--search-path`` gymnastics.
+        """
+        pack_dir = self.cache_dir / "codeql" / "qlpack"
+        pack_dir.mkdir(parents=True, exist_ok=True)
+        qlpack_yml = pack_dir / "qlpack.yml"
+        lock_file = pack_dir / "codeql-pack.lock.yml"
+
+        if not qlpack_yml.exists():
+            qlpack_yml.write_text(
+                "name: codeanalyzer-deps\n"
+                "version: 1.0.0\n"
+                "dependencies:\n"
+                '  codeql/python-all: "*"\n'
+            )
+
+        if lock_file.exists():
+            logger.debug(f"CodeQL pack dependencies already installed in {pack_dir}")
+            return pack_dir
+
+        logger.info(f"Installing CodeQL pack dependencies in {pack_dir}.")
+        proc = subprocess.Popen(
+            [str(codeql_bin), "pack", "install", str(pack_dir)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        _, err = proc.communicate()
+        if proc.returncode != 0:
+            raise CodeQLExceptions.CodeQLDatabaseBuildException(
+                f"Failed to install CodeQL pack dependencies:\n"
+                f"{(err or b'').decode(errors='replace')}"
+            )
+        return pack_dir
+
+    def _ensure_codeql_bin(self) -> Path:
+        """Locate (or download) the CodeQL CLI binary into the project cache.
+
+        Resolution order:
+          1. An existing binary inside ``<cache_dir>/codeql/bin/`` —
+             reused across runs on the same project.
+          2. ``codeql`` already on the user's PATH — picked up verbatim.
+          3. Otherwise, download into ``<cache_dir>/codeql/bin/``.
+
+        The project-local cache is preferred over PATH so the version we
+        installed earlier wins over whatever the OS ships — keeps behavior
+        deterministic when the user has both.
+        """
+        bin_root = self.cache_dir / "codeql" / "bin"
+        bin_root.mkdir(parents=True, exist_ok=True)
+
+        existing = next(
+            (p for p in bin_root.rglob("codeql") if p.is_file()),
+            None,
+        )
+        if existing and os.access(existing, os.X_OK):
+            logger.debug(f"Reusing cached CodeQL CLI at {existing}")
+            return existing.resolve()
+
+        on_path = shutil.which("codeql")
+        if on_path:
+            logger.debug(f"Using CodeQL CLI from PATH at {on_path}")
+            return Path(on_path)
+
+        logger.info(f"CodeQL CLI not found; downloading into {bin_root}.")
+        downloaded = CodeQLLoader.download_and_extract_codeql(bin_root)
+        if not downloaded.exists() or not os.access(downloaded, os.X_OK):
+            raise FileNotFoundError(
+                f"CodeQL binary not executable after download: {downloaded}"
+            )
+        return downloaded
+
+    def _get_call_graph(
+        self,
+        symbol_table: Dict[str, PyModule],
+        augment_sites: bool = False,
+    ) -> List[PyCallEdge]:
+        """Build CodeQL-resolved call edges and optionally augment sites.
+
+        Returns an empty list when CodeQL isn't enabled or the database
+        isn't available. Edges carry ``provenance=["codeql"]`` — merge
+        with Jedi-derived edges via ``call_graph.merge_edges``.
+
+        When ``augment_sites`` is True, also mutates
+        ``PyCallable.call_sites`` in the symbol table to backfill
+        ``callee_signature`` for sites Jedi couldn't resolve. The single
+        CodeQL query is shared (cached on the ``CodeQL`` instance) so
+        this costs no extra DB work.
+        """
+        if not self.using_codeql or self.db_path is None:
+            return []
+        try:
+            cq = CodeQL(
+                self.project_dir,
+                self.db_path,
+                codeql_bin=self.codeql_bin,
+                codeql_packs_dir=self.codeql_packs_dir,
+            )
+            edges = cq.build_call_graph_edges(symbol_table)
+            if augment_sites:
+                cq.augment_call_sites(symbol_table)
+            return edges
+        except Exception as exc:
+            logger.warning(f"CodeQL call-graph extraction failed: {exc}")
+            return []
