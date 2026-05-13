@@ -20,8 +20,6 @@ def test_cli_call_symbol_table_with_json(cli_runner, whole_applications__xarray)
             str(whole_applications__xarray),
             "--output",
             str(output_dir),
-            "--analysis-level",
-            "1",
             "--ray",
             "--no-codeql",
             "--cache-dir",

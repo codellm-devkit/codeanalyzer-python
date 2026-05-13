@@ -27,10 +27,6 @@ def main(
             case_sensitive=False,
         ),
     ] = OutputFormat.JSON,
-    analysis_level: Annotated[
-        int,
-        typer.Option("-a", "--analysis-level", help="1: symbol table, 2: call graph."),
-    ] = 1,
     using_codeql: Annotated[
         bool, typer.Option("--codeql/--no-codeql", help="Enable CodeQL-based analysis.")
     ] = False,
@@ -82,7 +78,6 @@ def main(
         input=input,
         output=output,
         format=format,
-        analysis_level=analysis_level,
         using_codeql=using_codeql,
         using_ray=using_ray,
         rebuild_analysis=rebuild_analysis,
