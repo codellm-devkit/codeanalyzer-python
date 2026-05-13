@@ -341,7 +341,27 @@ class PyModule(BaseModel):
 
 @builder
 @msgpk
+class PyCallEdge(BaseModel):
+    """Identity-only call-graph edge with weight.
+
+    Mirrors Java's ``CallDependency``. ``source`` and ``target`` are
+    ``PyCallable.signature`` strings — nodes of the graph are the existing
+    ``PyCallable`` entries in the symbol table, not a separate vertex type.
+    Rich per-call metadata (receiver, arguments, location, ...) lives on
+    ``PyCallsite`` inside the source ``PyCallable.call_sites``.
+    """
+
+    source: str  # caller's PyCallable.signature
+    target: str  # callee's PyCallable.signature
+    type: Literal["CALL_DEP"] = "CALL_DEP"
+    weight: int = 1
+    provenance: List[Literal["jedi", "codeql", "joern"]] = []
+
+
+@builder
+@msgpk
 class PyApplication(BaseModel):
     """Represents a Python application."""
 
     symbol_table: Dict[str, PyModule]
+    call_graph: List[PyCallEdge] = []

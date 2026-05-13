@@ -14,7 +14,6 @@ class AnalysisOptions:
     input: Path
     output: Optional[Path] = None
     format: OutputFormat = OutputFormat.JSON
-    analysis_level: int = 1
     using_codeql: bool = False
     using_ray: bool = False
     rebuild_analysis: bool = False

@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.14] - 2026-05-13
+
+### Added
+- **Call graph in analysis output**: `PyApplication.call_graph: List[PyCallEdge]`. Every run now produces a call graph in addition to the symbol table. Edges carry `source`, `target` (both `PyCallable.signature`), `weight`, and `provenance` (`jedi` / `codeql` / `joern`).
+- **`call_graph` module** (`codeanalyzer.semantic_analysis.call_graph`) with `to_digraph` / `from_digraph` networkx adapters, `jedi_call_graph_edges`, and `merge_edges`. Endpoints absent from the symbol table become ghost nodes so RPC / third-party / framework edges are preserved.
+- **CodeQL Python query** rewritten against the CodeQL Python library (was Java idioms before). Resolves direct calls and constructor calls via `ClassValue.lookup("__init__")`, using the modern `Value.getACall()` predicate (CodeQL Python 7.x).
+- **`augment_call_sites`**: when `--codeql` is enabled, CodeQL backfills `PyCallsite.callee_signature` entries Jedi left unresolved.
+- **`resolve_unresolved_constructors`**: heuristic fallback that walks the symbol table by class short-name and scope to fill in constructor sites neither Jedi nor CodeQL resolved (common for classes nested inside functions/methods). Synthesizes `<class>.__init__` signatures.
+- **`iter_classes_in_symbol_table`**: full recursive walker over classes — including inner classes, classes nested in functions, and classes nested in class methods.
+
+### Changed
+- **BREAKING**: Removed `--analysis-level` / `analysis_level`. The call graph is built unconditionally; use `--codeql/--no-codeql` to control CodeQL participation. Jedi-derived edges are always available.
+- **Jedi constructor calls now resolve to `<class>.__init__`** (was: bare `<class>`). When `script.infer()` returns a class, the qualified name is rewritten to point at the constructor — matching where method `PyCallable`s actually live in the symbol table. `PyCallsite.is_constructor_call` now reflects Jedi's type inference (was: `method_name == "__init__"`, only true for explicit `obj.__init__()` calls).
+- **`_call_sites` scope correctness**: replaced naive `ast.walk` with `_iter_calls_in_scope`, which stops at nested `FunctionDef` / `AsyncFunctionDef` / `ClassDef` bodies (those have their own `PyCallable.call_sites`). Decorators, default arguments, return annotations, base classes and class keyword args are still walked since they execute in the enclosing scope. Previously, outer functions over-attributed every call from every nested definition.
+- CodeQL CLI binary is now downloaded into `<cache_dir>/codeql/bin/` (per-project, respecting `--cache-dir`) and discovered before any CodeQL operation — including when the database cache is reused. The downloaded archive is removed after extraction.
+- `CodeQLQueryRunner` now accepts the resolved binary path instead of relying on `PATH`. The temporary `.ql` file is written **inside** a per-project qlpack (`<cache_dir>/codeql/qlpack/`) whose `codeql/python-all` dependency is resolved once via `codeql pack install`, eliminating the lockfile / search-path gymnastics.
+
+### Fixed
+- **`zipfile` extraction dropped Unix permissions** on the CodeQL CLI launcher, causing `PermissionError` on first query run. Entries are now extracted with their stored `external_attr` mode applied, plus a defensive `chmod +x` on the resolved binary.
+- **`rglob("codeql")` matched the bundled `codeql/codeql/` directory** before the launcher file, returning a directory instead of an executable. Both `CodeQLLoader` and `_ensure_codeql_bin` now filter to `is_file()`.
+- **`CodeQLQueryRunner` crashed on subprocess errors** with `'NoneType' object has no attribute 'stderr'` because `stderr=None` returns `None` from `communicate()`. Now captures `stderr=PIPE` and decodes bytes safely.
+
 ## [0.1.13] - 2025-07-22
 
 ### Improved

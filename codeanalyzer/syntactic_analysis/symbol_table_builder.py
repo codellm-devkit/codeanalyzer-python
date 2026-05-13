@@ -4,7 +4,7 @@ import tokenize
 from ast import AST, ClassDef
 from io import StringIO
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import jedi
 from jedi.api import Script
@@ -70,6 +70,32 @@ class SymbolTableBuilder:
         except Exception:
             pass
         return None
+
+    @staticmethod
+    def _infer_callee(
+        script: Script, line: int, column: int
+    ) -> Tuple[Optional[str], bool]:
+        """Infer ``(qualified_name, is_class)`` at a call expression.
+
+        When the callee resolves to a class (e.g. ``A()``), the qualified
+        name is normalized to ``<class>.__init__`` so it joins to the
+        ``PyCallable`` entry for the constructor in the symbol table —
+        classes themselves are not ``PyCallable``s, so without this
+        rewrite every constructor call would surface as a ghost node in
+        the call graph.
+        """
+        try:
+            definitions = script.infer(line=line, column=column)
+            if not definitions:
+                return None, False
+            d = definitions[0]
+            is_class = (d.type == "class")
+            full = d.full_name
+            if is_class and full:
+                full = f"{full}.__init__"
+            return full, is_class
+        except Exception:
+            return None, False
 
     def build_pymodule_from_file(self, py_file: Path) -> PyModule:
         """Builds a PyModule from a Python file.
@@ -485,6 +511,63 @@ class SymbolTableBuilder:
                 symbols.append(symbol)
         return symbols
 
+    @staticmethod
+    def _iter_calls_in_scope(fn_node: ast.AST):
+        """Yield ``ast.Call`` nodes belonging to ``fn_node``'s own scope.
+
+        Naive ``ast.walk`` descends into nested ``FunctionDef`` / ``ClassDef``
+        bodies, attributing their calls to the outer function — wrong, since
+        those nested definitions have their own ``PyCallable`` entries
+        (built recursively by ``_callables``/``_add_class``) and own
+        ``call_sites`` lists.
+
+        Decorators, default arguments, return-type annotations, base
+        classes and class-level keyword args ARE evaluated in the
+        enclosing scope, so calls in those subtrees stay attributed to
+        ``fn_node``. Bodies of nested defs/classes are skipped. Lambdas,
+        comprehensions and inline conditionals don't get their own
+        ``PyCallable`` so their internals stay attributed to the enclosing
+        function.
+        """
+
+        def walk(node: ast.AST):
+            if isinstance(node, ast.Call):
+                yield node
+
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                # Decorators, defaults, return annotations run in
+                # enclosing scope. Body and arg names run in inner scope.
+                for dec in node.decorator_list:
+                    yield from walk(dec)
+                for default in node.args.defaults:
+                    yield from walk(default)
+                for default in node.args.kw_defaults:
+                    if default is not None:
+                        yield from walk(default)
+                if node.returns is not None:
+                    yield from walk(node.returns)
+                return
+
+            if isinstance(node, ast.ClassDef):
+                # Decorators, bases, and keyword args run in enclosing scope.
+                # Body runs in class scope.
+                for dec in node.decorator_list:
+                    yield from walk(dec)
+                for base in node.bases:
+                    yield from walk(base)
+                for kw in node.keywords:
+                    yield from walk(kw.value)
+                return
+
+            for child in ast.iter_child_nodes(node):
+                yield from walk(child)
+
+        for stmt in getattr(fn_node, "body", []):
+            yield from walk(stmt)
+        # Decorators / defaults / returns of fn_node itself are evaluated
+        # in the ENCLOSING scope, so they belong to fn_node's parent, not
+        # fn_node. Don't yield them here.
+
     def _call_sites(self, fn_node: ast.FunctionDef, script: Script) -> List[PyCallsite]:
         """
         Finds all call sites made from within the function using Jedi for type inference.
@@ -498,14 +581,14 @@ class SymbolTableBuilder:
         """
         call_sites: List[PyCallsite] = []
 
-        for node in ast.walk(fn_node):
+        for node in self._iter_calls_in_scope(fn_node):
             if not isinstance(node, ast.Call):
                 continue
 
             func_expr = node.func
 
             method_name = "<unknown>"
-            callee_signature = self._infer_qualified_name(
+            callee_signature, is_constructor = self._infer_callee(
                 script, node.lineno, node.col_offset
             )
             return_type = self._infer_type(script, node.lineno, node.col_offset)
@@ -535,7 +618,7 @@ class SymbolTableBuilder:
                 .argument_types(argument_types)
                 .return_type(return_type)
                 .callee_signature(callee_signature)
-                .is_constructor_call(method_name == "__init__")
+                .is_constructor_call(is_constructor)
                 .start_line(getattr(node, "lineno", -1))
                 .start_column(getattr(node, "col_offset", -1))
                 .end_line(getattr(node, "end_lineno", -1))

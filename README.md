@@ -80,7 +80,6 @@ To view the available options and commands, run `codeanalyzer --help`. You shoul
 │ *  --input           -i                  PATH            Path to the project root directory. [default: None] [required]     │
 │    --output          -o                  PATH            Output directory for artifacts. [default: None]                    │
 │    --format          -f                  [json|msgpack]  Output format: json or msgpack. [default: json]                    │
-│    --analysis-level  -a                  INTEGER         1: symbol table, 2: call graph. [default: 1]                       │
 │    --codeql              --no-codeql                     Enable CodeQL-based analysis. [default: no-codeql]                 │
 │    --eager               --lazy                          Enable eager or lazy analysis. Defaults to lazy. [default: lazy]   │
 │    --cache-dir       -c                  PATH            Directory to store analysis cache. [default: None]                 │
@@ -112,25 +111,15 @@ To view the available options and commands, run `codeanalyzer --help`. You shoul
 
    This will save the analysis results in `analysis.msgpack` in the specified directory.
 
-3. **Toggle analysis levels with `--analysis-level`:**
-   ```bash
-   codeanalyzer --input ./my-python-project --analysis-level 1 # Symbol table only
-   ```
-   Call graph analysis can be enabled by setting the level to `2`:
-   ```bash
-   codeanalyzer --input ./my-python-project --analysis-level 2 # Symbol table + Call graph
-   ```
-   ***Note: The `--analysis-level=2` is not yet implemented in this version.***
-
-4. **Analysis with CodeQL enabled:**
+3. **Analysis with CodeQL enabled:**
    ```bash
    codeanalyzer --input ./my-python-project --codeql
    ```
-    This will perform CodeQL-based analysis in addition to the standard symbol table generation.
+   Every run produces a symbol table **and** a call graph. By default, edges come from Jedi's lexical analysis. Adding `--codeql` resolves additional edges (including RPC / third-party / dynamically-dispatched targets) and merges them with the Jedi-derived edges. CodeQL also backfills resolved callees on Jedi-emitted call sites where Jedi couldn't resolve them.
 
-    ***Note: Not yet fully implemented. Please refrain from using this option until further notice.***
+    ***Note: CodeQL integration is experimental. The CLI is downloaded into `<cache_dir>/codeql/` on first use and reused thereafter.***
 
-5. **Eager analysis with custom cache directory:**
+4. **Eager analysis with custom cache directory:**
    ```bash
    codeanalyzer --input ./my-python-project --eager --cache-dir /path/to/custom-cache
    ```
@@ -138,7 +127,7 @@ To view the available options and commands, run `codeanalyzer --help`. You shoul
 
     If you provide --cache-dir, the cache will be stored in that directory. If not specified, it defaults to `.codeanalyzer` in the current working directory (`$PWD`).
 
-6. **Quiet mode (minimal output):**
+5. **Quiet mode (minimal output):**
    ```bash
    codeanalyzer --input /path/to/my-python-project --quiet
    ```
@@ -236,7 +225,6 @@ To view the available options and commands, run `codeanalyzer --help`. You shoul
 │ *  --input           -i                  PATH     Path to the project root directory. [default: None] [required]   │
 │    --output          -o                  PATH     Output directory for artifacts. [default: None]                  │
 │    --format          -f           [json|msgpack]  Output format: json or msgpack. [default: json].                 │
-│    --analysis-level  -a                  INTEGER  1: symbol table, 2: call graph. [default: 1]                     │
 │    --codeql              --no-codeql              Enable CodeQL-based analysis. [default: no-codeql]               │
 │    --eager               --lazy                   Enable eager or lazy analysis. Defaults to lazy. [default: lazy] │
 │    --cache-dir       -c                  PATH     Directory to store analysis cache. [default: None]               │
@@ -261,25 +249,15 @@ To view the available options and commands, run `codeanalyzer --help`. You shoul
 
    Now, you can find the analysis results in `analysis.json` in the specified directory.
 
-2. **Toggle analysis levels with `--analysis-level`:**
-   ```bash
-   codeanalyzer --input ./my-python-project --analysis-level 1 # Symbol table only
-   ```
-   Call graph analysis can be enabled by setting the level to `2`:
-   ```bash
-   codeanalyzer --input ./my-python-project --analysis-level 2 # Symbol table + Call graph
-   ```
-   ***Note: The `--analysis-level=2` is not yet implemented in this version.***
-
-3. **Analysis with CodeQL enabled:**
+2. **Analysis with CodeQL enabled:**
    ```bash
    codeanalyzer --input ./my-python-project --codeql
    ```
-    This will perform CodeQL-based analysis in addition to the standard symbol table generation.
+   Every run produces a symbol table **and** a call graph. By default, edges come from Jedi's lexical analysis. Adding `--codeql` resolves additional edges (including RPC / third-party / dynamically-dispatched targets) and merges them with the Jedi-derived edges. CodeQL also backfills resolved callees on Jedi-emitted call sites where Jedi couldn't resolve them.
 
-    ***Note: Not yet fully implemented. Please refrain from using this option until further notice.***
+   ***Note: CodeQL integration is experimental. The CLI is downloaded into `<cache_dir>/codeql/` on first use and reused thereafter.***
 
-4. **Eager analysis with custom cache directory:**
+3. **Eager analysis with custom cache directory:**
    ```bash
    codeanalyzer --input ./my-python-project --eager --cache-dir /path/to/custom-cache
    ```
@@ -287,7 +265,7 @@ To view the available options and commands, run `codeanalyzer --help`. You shoul
 
     If you provide --cache-dir, the cache will be stored in that directory. If not specified, it defaults to `.codeanalyzer` in the current working directory (`$PWD`).
 
-5. **Save output in msgpack format:**
+4. **Save output in msgpack format:**
    ```bash
    codeanalyzer --input ./my-python-project --output /path/to/analysis-results --format msgpack
    ```
