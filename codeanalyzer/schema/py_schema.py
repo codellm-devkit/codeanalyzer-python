@@ -19,15 +19,17 @@
 This module defines the data models used to represent Python code structures
 for static analysis purposes.
 """
+
 from __future__ import annotations
+
+import gzip
 import inspect
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-import gzip
 
+import msgpack
 from pydantic import BaseModel
 from typing_extensions import Literal
-import msgpack
 
 
 def msgpk(cls):
@@ -280,12 +282,12 @@ class PyCallable(BaseModel):
     inner_classes: Dict[str, "PyClass"] = {}
     local_variables: List[PyVariableDeclaration] = []
     cyclomatic_complexity: int = 0
+    is_entrypoint: bool = False
+    entrypoint_framework: Optional[str] = None
 
     def __hash__(self) -> int:
         """Generate a hash based on the callable's signature."""
         return hash(self.signature)
-    
-    
 
 
 @builder
@@ -309,6 +311,8 @@ class PyClass(BaseModel):
     signature: str  # e.g., module.class_name
     comments: List[PyComment] = []
     code: str = None
+    is_entrypoint: bool = False
+    entrypoint_framework: Optional[str] = None
     base_classes: List[str] = []
     methods: Dict[str, PyCallable] = {}
     attributes: Dict[str, PyClassAttribute] = {}
