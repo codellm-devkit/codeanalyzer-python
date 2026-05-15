@@ -32,6 +32,67 @@ from codeanalyzer.semantic_analysis.codeql.codeql_query_runner import CodeQLQuer
 from codeanalyzer.utils import logger
 
 
+class _CallableResolver:
+    """Maps a CodeQL endpoint ``(file, start_line, name, arity)`` to a Jedi
+    ``PyCallable``.
+
+    Resolution ladder:
+      1. exact ``(abs_path, start_line)`` — the precise join;
+      2. on miss, candidates sharing ``(abs_path, short_name)``: a single
+         candidate is taken directly; otherwise prefer those whose
+         parameter count equals the CodeQL positional arity, then the
+         nearest ``start_line``;
+      3. no name match -> ``None`` (caller row skipped / callee becomes
+         a ghost node).
+
+    Step 2 recovers edges the ``(file, line)`` join silently drops when
+    CodeQL and Jedi disagree on a definition's start line (e.g. decorator
+    handling). Jedi's ``parameters`` counts every declared slot (incl.
+    ``*args``/``**kwargs``/keyword-only) whereas CodeQL's arity is
+    positional only, so the arity filter is exact for plain signatures
+    and otherwise yields to the nearest-line tiebreak.
+    """
+
+    def __init__(self) -> None:
+        self._by_loc: Dict[Tuple[str, int], Any] = {}
+        self._by_name: Dict[Tuple[str, str], List[Any]] = {}
+
+    @staticmethod
+    def _abs(path: str) -> str:
+        try:
+            return str(Path(path).resolve())
+        except (OSError, RuntimeError):
+            return path
+
+    @classmethod
+    def from_symbol_table(
+        cls, symbol_table: Dict[str, PyModule]
+    ) -> "_CallableResolver":
+        resolver = cls()
+        for c in iter_callables_in_symbol_table(symbol_table):
+            abs_path = cls._abs(c.path)
+            resolver._by_loc[(abs_path, c.start_line)] = c
+            resolver._by_name.setdefault((abs_path, c.name), []).append(c)
+        return resolver
+
+    def resolve(
+        self, file: str, start_line: int, name: str, arity: int
+    ) -> Any:
+        exact = self._by_loc.get((file, start_line))
+        if exact is not None:
+            return exact
+        if not name:
+            return None
+        candidates = self._by_name.get((file, name))
+        if not candidates:
+            return None
+        if len(candidates) == 1:
+            return candidates[0]
+        arity_matched = [c for c in candidates if len(c.parameters) == arity]
+        pool = arity_matched or candidates
+        return min(pool, key=lambda c: abs(c.start_line - start_line))
+
+
 class CodeQL:
     """A class for building the application view of a Python application using CodeQL.
 
@@ -99,9 +160,14 @@ class CodeQL:
             # codeql/python-all 7.x — it returns the ``CallNode`` (CFG)
             # whose target was resolved to that ``Value``. Cleaner than
             # poking at ``pointsTo`` directly.
-            "from CallNode call, Function caller, FunctionValue calleeVal",
+            # ``callee`` is bound to the FunctionValue's scope so the
+            # endpoint emits the same Function-level facts (name, arity,
+            # location) the post-processor needs for the name+arity
+            # fallback when the (file, start_line) join misses.
+            "from CallNode call, Function caller, FunctionValue calleeVal, Function callee",
             "where",
             "  call.getScope() = caller and",
+            "  callee = calleeVal.getScope() and",
             "  (",
             # Direct function / bound-method call:  foo()  or  obj.foo()
             "    call = calleeVal.getACall()",
@@ -115,15 +181,20 @@ class CodeQL:
             "    )",
             "  )",
             "select",
-            # --- Caller endpoint --- (joins to PyCallable via file + start_line)
+            # --- Caller endpoint --- (joins to PyCallable: exact by
+            #     (file, start_line), else by (file, name) + arity)
             "  caller.getLocation().getFile().getAbsolutePath(),",
             "  caller.getLocation().getStartLine(),",
             "  caller.getQualifiedName(),",
+            "  caller.getName(),",
+            "  count(caller.getArg(_)),",
             # --- Callee endpoint --- (file/line may live in a library stub;
             #     post-processor classifies as in-source or ghost)
-            "  calleeVal.getScope().getLocation().getFile().getAbsolutePath(),",
-            "  calleeVal.getScope().getLocation().getStartLine(),",
+            "  callee.getLocation().getFile().getAbsolutePath(),",
+            "  callee.getLocation().getStartLine(),",
             "  calleeVal.getQualifiedName(),",
+            "  callee.getName(),",
+            "  count(callee.getArg(_)),",
             # --- Call-site location --- (for PyCallsite augmentation)
             "  call.getLocation().getStartLine(),",
             "  call.getLocation().getStartColumn(),",
@@ -149,9 +220,13 @@ class CodeQL:
                     "caller_file",
                     "caller_start_line",
                     "caller_qname",
+                    "caller_name",
+                    "caller_arity",
                     "callee_file",
                     "callee_start_line",
                     "callee_qname",
+                    "callee_name",
+                    "callee_arity",
                     "call_start_line",
                     "call_start_column",
                     "call_end_line",
@@ -162,24 +237,15 @@ class CodeQL:
         return df
 
     @staticmethod
-    def _build_callable_location_index(
+    def _build_callable_resolver(
         symbol_table: Dict[str, PyModule],
-    ) -> Dict[Tuple[str, int], "PyCallable"]:
-        """Build ``(absolute_file_path, start_line) -> PyCallable`` from Jedi.
+    ) -> _CallableResolver:
+        """Build the endpoint -> ``PyCallable`` resolver from Jedi.
 
         Paths are resolved so they match CodeQL's ``getAbsolutePath()``
         regardless of symlinks or the current working directory.
         """
-        from codeanalyzer.schema.py_schema import PyCallable  # local to avoid cycle
-
-        index: Dict[Tuple[str, int], PyCallable] = {}
-        for c in iter_callables_in_symbol_table(symbol_table):
-            try:
-                abs_path = str(Path(c.path).resolve())
-            except (OSError, RuntimeError):
-                abs_path = c.path
-            index[(abs_path, c.start_line)] = c
-        return index
+        return _CallableResolver.from_symbol_table(symbol_table)
 
     def _iter_resolved_rows(
         self, symbol_table: Dict[str, PyModule]
@@ -194,19 +260,27 @@ class CodeQL:
         df = self._query_call_edges()
         if df.empty:
             return
-        location_index = self._build_callable_location_index(symbol_table)
+        resolver = self._build_callable_resolver(symbol_table)
 
         skipped_unknown_caller = 0
         ghost_callees = 0
         for row in df.itertuples(index=False):
-            caller_key = (row.caller_file, int(row.caller_start_line))
-            caller = location_index.get(caller_key)
+            caller = resolver.resolve(
+                row.caller_file,
+                int(row.caller_start_line),
+                row.caller_name,
+                int(row.caller_arity),
+            )
             if caller is None:
                 skipped_unknown_caller += 1
                 continue
 
-            callee_key = (row.callee_file, int(row.callee_start_line))
-            callee = location_index.get(callee_key)
+            callee = resolver.resolve(
+                row.callee_file,
+                int(row.callee_start_line),
+                row.callee_name,
+                int(row.callee_arity),
+            )
             if callee is not None:
                 target_sig = callee.signature
             else:
@@ -267,20 +341,28 @@ class CodeQL:
         Returns:
             Number of ``PyCallsite`` entries augmented.
         """
-        location_index = self._build_callable_location_index(symbol_table)
+        resolver = self._build_callable_resolver(symbol_table)
         df = self._query_call_edges()
         if df.empty:
             return 0
 
         augmented = 0
         for row in df.itertuples(index=False):
-            caller_key = (row.caller_file, int(row.caller_start_line))
-            caller = location_index.get(caller_key)
+            caller = resolver.resolve(
+                row.caller_file,
+                int(row.caller_start_line),
+                row.caller_name,
+                int(row.caller_arity),
+            )
             if caller is None:
                 continue
 
-            callee_key = (row.callee_file, int(row.callee_start_line))
-            callee = location_index.get(callee_key)
+            callee = resolver.resolve(
+                row.callee_file,
+                int(row.callee_start_line),
+                row.callee_name,
+                int(row.callee_arity),
+            )
             resolved_sig = callee.signature if callee is not None else row.callee_qname
 
             call_start = int(row.call_start_line)

@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.15] - 2026-05-15
+
+### Fixed
+- **CodeQL call-graph edges silently dropped on `(file, start_line)` join miss** ([#25](https://github.com/codellm-devkit/codeanalyzer-python/issues/25)). CodeQL endpoints were matched back into Jedi's `PyCallable` signature space by an exact `(absolute_file_path, start_line)` key; when CodeQL and Jedi disagreed on a definition's start line (commonly with decorated functions), the caller lookup missed and the entire edge was discarded (callee misses degraded to ghost nodes). Replaced the exact-only index with a resolution ladder: exact `(file, start_line)` → candidates sharing `(file, short_name)` (single candidate taken directly, else nearest `start_line` among those whose parameter count matches the CodeQL positional arity) → no match (caller skipped / callee ghost, as before). The CodeQL query now emits `Function.getName()` and positional arity for both endpoints. Jedi's parameter count includes `*args`/`**kwargs`/keyword-only slots while CodeQL's arity is positional only, so the arity filter is exact for plain signatures and yields to the nearest-line tiebreak otherwise.
+
 ## [0.1.14] - 2026-05-13
 
 ### Added
