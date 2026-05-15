@@ -27,9 +27,20 @@ def main(
             case_sensitive=False,
         ),
     ] = OutputFormat.JSON,
+    analysis_level: Annotated[
+        int,
+        typer.Option("-a", "--analysis-level", help="1: symbol table, 2: call graph (requires --codeql), 3: taint analysis (requires --codeql)."),
+    ] = 1,
     using_codeql: Annotated[
         bool, typer.Option("--codeql/--no-codeql", help="Enable CodeQL-based analysis.")
     ] = False,
+    taint_config: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--taint-config",
+            help="Path to taint analysis configuration file (YAML or JSON). Used with --analysis-level 3.",
+        ),
+    ] = None,
     using_ray: Annotated[
         bool,
         typer.Option("--ray/--no-ray", help="Enable Ray for distributed analysis."),
@@ -74,10 +85,20 @@ def main(
         int, typer.Option("-v", count=True, help="Increase verbosity: -v, -vv, -vvv")
     ] = 0,
 ):
+    # Validate analysis level requirements
+    if analysis_level >= 2 and not using_codeql:
+        logger.error("Analysis levels 2 and 3 require --codeql flag")
+        raise typer.Exit(code=1)
+    
+    if analysis_level >= 3 and taint_config and not taint_config.exists():
+        logger.error(f"Taint configuration file '{taint_config}' does not exist.")
+        raise typer.Exit(code=1)
+    
     options = AnalysisOptions(
         input=input,
         output=output,
         format=format,
+        analysis_level=analysis_level,
         using_codeql=using_codeql,
         using_ray=using_ray,
         rebuild_analysis=rebuild_analysis,
@@ -86,6 +107,7 @@ def main(
         cache_dir=cache_dir,
         clear_cache=clear_cache,
         verbosity=verbosity,
+        taint_config=taint_config,
     )
 
     _set_log_level(options.verbosity)

@@ -21,14 +21,23 @@ for Python projects and execute queries against them.
 """
 
 from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Tuple, Union
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
 
 from pandas import DataFrame
 
-from codeanalyzer.schema.py_schema import PyCallEdge, PyModule
+from codeanalyzer.schema.py_schema import PyCallEdge, PyCallsite, PyModule
 from codeanalyzer.semantic_analysis.call_graph import iter_callables_in_symbol_table
 from codeanalyzer.semantic_analysis.codeql.codeql_query_runner import CodeQLQueryRunner
+from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
+from codeanalyzer.schema.py_schema import (
+    TaintAnalysisConfig,
+    PyTaintAnalysisResult,
+    PyTaintSource,
+    PyTaintSink,
+    PyTaintFlow,
+)
 from codeanalyzer.utils import logger
 
 
@@ -49,11 +58,13 @@ class CodeQL:
         db_path: Path,
         codeql_bin: Union[str, Path, None] = None,
         codeql_packs_dir: Union[str, Path, None] = None,
+        taint_config: Optional[TaintAnalysisConfig] = None,
     ) -> None:
-        self.project_dir = project_dir
+        self.project_dir = Path(project_dir)
         self.db_path = db_path
         self.codeql_bin = codeql_bin
         self.codeql_packs_dir = codeql_packs_dir
+        self.taint_config = taint_config
         self._cached_df: "DataFrame | None" = None
 
     def _query_call_edges(self) -> DataFrame:
@@ -181,6 +192,33 @@ class CodeQL:
             index[(abs_path, c.start_line)] = c
         return index
 
+    @staticmethod
+    def _build_callsite_location_index(
+        symbol_table: Dict[str, PyModule],
+    ) -> Dict[Tuple[str, int], PyCallsite]:
+        """Build ``(absolute_file_path, start_line) -> PyCallsite`` from the symbol table.
+
+        Iterates every ``PyCallsite`` in every ``PyCallable.call_sites`` list so
+        that taint sources and sinks can be resolved to the rich call-site objects
+        already captured during syntactic analysis (receiver type, argument types,
+        callee signature, …).
+
+        Paths are resolved to absolute form to match CodeQL's ``getAbsolutePath()``.
+        When two call sites share the same (file, start_line) the first one wins
+        (ambiguity is rare and an approximation is acceptable here).
+        """
+        index: Dict[Tuple[str, int], PyCallsite] = {}
+        for callable_ in iter_callables_in_symbol_table(symbol_table):
+            try:
+                abs_path = str(Path(callable_.path).resolve())
+            except (OSError, RuntimeError):
+                abs_path = callable_.path
+            for cs in callable_.call_sites:
+                key = (abs_path, cs.start_line)
+                if key not in index:
+                    index[key] = cs
+        return index
+
     def _iter_resolved_rows(
         self, symbol_table: Dict[str, PyModule]
     ) -> "Iterator[Tuple[str, str, Any]]":
@@ -298,3 +336,137 @@ class CodeQL:
                 f"CodeQL: augmented {augmented} PyCallsite.callee_signature entries."
             )
         return augmented
+
+    def analyze_taint_flows(
+        self,
+        config_override: Optional[TaintAnalysisConfig] = None,
+        symbol_table: Optional[Dict[str, PyModule]] = None,
+    ) -> PyTaintAnalysisResult:
+        """Perform taint analysis with configurable sources/sinks/sanitizers.
+
+        Args:
+            config_override: Optional configuration to override instance config.
+            symbol_table: Optional symbol table produced by analysis level 1.
+                When provided, taint sources and sinks are resolved to the
+                matching ``PyCallsite`` objects already captured during syntactic
+                analysis (giving access to receiver type, argument types, callee
+                signature, …).  If a match cannot be found a new ``PyCallsite``
+                is constructed from the CodeQL location data as a fallback.
+
+        Returns:
+            PyTaintAnalysisResult: Complete taint analysis results
+
+        Raises:
+            ValueError: If no taint configuration is available
+        """
+        config = config_override or self.taint_config
+
+        if not config:
+            raise ValueError("No taint configuration provided. Pass config to __init__ or analyze_taint_flows()")
+
+        logger.info("Starting taint analysis...")
+        logger.debug(f"Configuration: {len(config.sources)} sources, "
+                     f"{len(config.sinks)} sinks, {len(config.sanitizers)} sanitizers")
+
+        # Build callsite index from symbol table for best-effort linkage
+        callsite_index: Dict[Tuple[str, int], PyCallsite] = (
+            self._build_callsite_location_index(symbol_table)
+            if symbol_table is not None
+            else {}
+        )
+        if callsite_index:
+            logger.debug(f"Built callsite index with {len(callsite_index)} entries from symbol table")
+
+        query_string = TaintQueryGenerator.generate_query(config)
+        column_names = TaintQueryGenerator.get_column_names()
+
+        logger.debug("Executing CodeQL taint analysis query...")
+        with CodeQLQueryRunner(
+            self.db_path,
+            codeql_bin=self.codeql_bin,
+            codeql_packs_dir=self.codeql_packs_dir,
+        ) as runner:
+            result_df = runner.execute(query_string, column_names)
+
+        logger.info(f"Query returned {len(result_df)} taint flows")
+
+        flows = []
+        sources_dict: Dict[str, PyTaintSource] = {}
+        sinks_dict: Dict[str, PyTaintSink] = {}
+        n_callsite_hits = 0
+
+        for _, row in result_df.iterrows():
+            source_key = f"{row['source_file']}:{row['source_start_line']}"
+            if source_key not in sources_dict:
+                # Try to resolve from symbol table; fall back to constructing new
+                src_cs_key = (row["source_file"], int(row["source_start_line"]))
+                source_call_site = callsite_index.get(src_cs_key) or PyCallsite(
+                    method_name=row["source_expr"] or row["source_function"],
+                    receiver_expr=None,
+                    start_line=int(row["source_start_line"]),
+                    end_line=int(row["source_end_line"]),
+                    start_column=int(row["source_start_col"]),
+                    end_column=int(row["source_end_col"]),
+                )
+                if src_cs_key in callsite_index:
+                    n_callsite_hits += 1
+                source = PyTaintSource(
+                    source_type=row["source_type"],
+                    call_site=source_call_site,
+                    description=f"Untrusted data from {row['source_type']} "
+                                f"in {row['source_qualified_function']} "
+                                f"({row['source_file']}:{row['source_start_line']})",
+                )
+                sources_dict[source_key] = source
+
+            sink_key = f"{row['sink_file']}:{row['sink_start_line']}"
+            if sink_key not in sinks_dict:
+                # Try to resolve from symbol table; fall back to constructing new
+                snk_cs_key = (row["sink_file"], int(row["sink_start_line"]))
+                sink_call_site = callsite_index.get(snk_cs_key) or PyCallsite(
+                    method_name=row["sink_expr"] or row["sink_function"],
+                    receiver_expr=None,
+                    start_line=int(row["sink_start_line"]),
+                    end_line=int(row["sink_end_line"]),
+                    start_column=int(row["sink_start_col"]),
+                    end_column=int(row["sink_end_col"]),
+                )
+                if snk_cs_key in callsite_index:
+                    n_callsite_hits += 1
+                sink = PyTaintSink(
+                    sink_type=row["sink_type"],
+                    call_site=sink_call_site,
+                    severity=row["severity"],
+                    description=f"Potential {row['vulnerability_type']} vulnerability "
+                                f"in {row['sink_qualified_function']} "
+                                f"({row['sink_file']}:{row['sink_start_line']})",
+                )
+                sinks_dict[sink_key] = sink
+
+            flow = PyTaintFlow(
+                flow_id=row["flow_id"],
+                source=sources_dict[source_key],
+                sink=sinks_dict[sink_key],
+                path=[],
+                vulnerability_type=row["vulnerability_type"],
+                severity=row["severity"],
+                confidence="medium",
+                description=row["message"],
+            )
+            flows.append(flow)
+
+        n_critical = sum(1 for f in flows if f.severity == "critical")
+        n_high = sum(1 for f in flows if f.severity == "high")
+        logger.info(f"Taint analysis complete: {len(flows)} flows, "
+                    f"{n_critical} critical, {n_high} high")
+        if callsite_index:
+            logger.debug(f"Symbol-table callsite linkage: {n_callsite_hits} of "
+                         f"{len(sources_dict) + len(sinks_dict)} source/sink nodes "
+                         f"resolved to existing PyCallsite objects")
+
+        return PyTaintAnalysisResult(
+            project_path=str(self.project_dir),
+            flows=flows,
+            analysis_timestamp=datetime.now(timezone.utc).isoformat(),
+            codeql_database_path=str(self.db_path),
+        )
