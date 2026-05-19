@@ -59,6 +59,36 @@ from codeanalyzer.schema.py_schema import (
 class TaintQueryGenerator:
     """Generates CodeQL queries from taint analysis configuration."""
 
+    # Built-in CodeQL sink models always included in the generated query,
+    # regardless of user configuration. Each entry is (module::SinkClass, vulnerability_type).
+    BUILTIN_SINKS: List[tuple] = [
+        ("SqlInjection::Sink",              "SQL Injection"),
+        ("CommandInjection::Sink",          "Command Injection"),
+        ("CodeInjection::Sink",             "Code Injection"),
+        ("PathInjection::Sink",             "Path Traversal"),
+        ("ReflectedXss::Sink",              "Cross-Site Scripting (XSS)"),
+        ("LdapInjection::DnSink",           "LDAP Injection"),
+        ("LdapInjection::FilterSink",       "LDAP Injection"),
+        ("Xxe::Sink",                       "XML External Entity (XXE)"),
+        ("ServerSideRequestForgery::Sink",  "Server-Side Request Forgery (SSRF)"),
+        ("TemplateInjection::Sink",         "Server-Side Template Injection (SSTI)"),
+        ("UnsafeDeserialization::Sink",     "Unsafe Deserialization"),
+        ("UrlRedirect::Sink",               "Open Redirect"),
+        ("LogInjection::Sink",              "Log Injection"),
+        ("NoSqlInjection::StringSink",      "NoSQL Injection"),
+        ("NoSqlInjection::DictSink",        "NoSQL Injection"),
+        ("XpathInjection::Sink",            "XPath Injection"),
+        ("TarSlip::Sink",                   "Tar/Zip Slip"),
+        ("HttpHeaderInjection::Sink",       "HTTP Header Injection"),
+        ("CookieInjection::Sink",           "Cookie Injection"),
+        ("PolynomialReDoS::Sink",           "Regular Expression Injection (ReDoS)"),
+    ]
+
+    @classmethod
+    def builtin_sink_count(cls) -> int:
+        """Number of built-in CodeQL sink models always active in the generated query."""
+        return len(cls.BUILTIN_SINKS)
+
     @staticmethod
     def generate_query(config: TaintAnalysisConfig) -> str:
         """Generate complete taint analysis CodeQL query from configuration.
@@ -116,13 +146,33 @@ class TaintQueryGenerator:
         security-sink/source classes from codeql/python-all so that the query
         benefits from CodeQL's comprehensive model library.
 
-        Module names verified against codeql/python-all 7.x:
-          - SqlInjectionCustomizations    → module SqlInjection { class Sink }
-          - CommandInjectionCustomizations → module CommandInjection { class Sink }
-          - CodeInjectionCustomizations   → module CodeInjection { class Sink }
-          - PathInjectionCustomizations   → module PathInjection { class Sink }
-          - ReflectedXSSCustomizations    → module ReflectedXss { class Sink }
-          - RemoteFlowSources             → class RemoteFlowSource
+        Module names verified against codeql/python-all 7.1.0:
+          - SqlInjectionCustomizations              → module SqlInjection { class Sink }
+          - CommandInjectionCustomizations          → module CommandInjection { class Sink }
+          - CodeInjectionCustomizations             → module CodeInjection { class Sink }
+          - PathInjectionCustomizations             → module PathInjection { class Sink }
+          - ReflectedXSSCustomizations              → module ReflectedXss { class Sink }
+          - LdapInjectionCustomizations             → module LdapInjection { class DnSink, FilterSink }
+          - XxeCustomizations                       → module Xxe { class Sink }
+          - ServerSideRequestForgeryCustomizations  → module ServerSideRequestForgery { class Sink }
+          - TemplateInjectionCustomizations         → module TemplateInjection { class Sink }
+          - UnsafeDeserializationCustomizations     → module UnsafeDeserialization { class Sink }
+          - UrlRedirectCustomizations               → module UrlRedirect { class Sink }
+          - LogInjectionCustomizations              → module LogInjection { class Sink }
+          - NoSqlInjectionCustomizations            → module NoSqlInjection { class StringSink, DictSink }
+          - XpathInjectionCustomizations            → module XpathInjection { class Sink }
+          - TarSlipCustomizations                   → module TarSlip { class Sink }
+          - HttpHeaderInjectionCustomizations       → module HttpHeaderInjection { class Sink }
+          - CookieInjectionCustomizations           → module CookieInjection { class Sink }
+          - PolynomialReDoSCustomizations           → module PolynomialReDoS { class Sink }
+          - RemoteFlowSources                       → class RemoteFlowSource
+
+        NOTE: CleartextStorageCustomizations and CleartextLoggingCustomizations are
+        intentionally excluded from this unified query. Those modules use SensitiveDataSource
+        (passwords, PII) as their built-in source, not RemoteFlowSource. Mixing them into a
+        query that uses general user-input sources produces false positives on every
+        print()/file.write() that receives user data. They are best used in a dedicated query
+        with SensitiveDataSource as the source.
         """
         return """import python
 import semmle.python.dataflow.new.DataFlow
@@ -133,6 +183,19 @@ import semmle.python.security.dataflow.CommandInjectionCustomizations
 import semmle.python.security.dataflow.CodeInjectionCustomizations
 import semmle.python.security.dataflow.PathInjectionCustomizations
 import semmle.python.security.dataflow.ReflectedXSSCustomizations
+import semmle.python.security.dataflow.LdapInjectionCustomizations
+import semmle.python.security.dataflow.XxeCustomizations
+import semmle.python.security.dataflow.ServerSideRequestForgeryCustomizations
+import semmle.python.security.dataflow.TemplateInjectionCustomizations
+import semmle.python.security.dataflow.UnsafeDeserializationCustomizations
+import semmle.python.security.dataflow.UrlRedirectCustomizations
+import semmle.python.security.dataflow.LogInjectionCustomizations
+import semmle.python.security.dataflow.NoSqlInjectionCustomizations
+import semmle.python.security.dataflow.XpathInjectionCustomizations
+import semmle.python.security.dataflow.TarSlipCustomizations
+import semmle.python.security.dataflow.HttpHeaderInjectionCustomizations
+import semmle.python.security.dataflow.CookieInjectionCustomizations
+import semmle.python.security.dataflow.PolynomialReDoSCustomizations
 import semmle.python.dataflow.new.RemoteFlowSources"""
 
     # ------------------------------------------------------------------
@@ -153,6 +216,14 @@ import semmle.python.dataflow.new.RemoteFlowSources"""
             api_node = pattern[:-len(".getACall()")]
             return f"{api_node}.getParameter({argument_index}).asSink()"
         return f"{pattern}.getParameter({argument_index}).asSink()"
+
+    @staticmethod
+    def _pattern_to_default_sink_node(pattern: str) -> str:
+        """Sink node for patterns without a specific argument index — matches any tainted argument."""
+        if pattern.endswith(".getACall()"):
+            base = pattern[:-len(".getACall()")]
+            return f"{base}.getACall().getAnArg()"
+        return f"{pattern}.asSink()"
 
     @staticmethod
     def _pattern_to_sanitizer_node(pattern: str) -> str:
@@ -227,6 +298,66 @@ import semmle.python.dataflow.new.RemoteFlowSources"""
             "  // Built-in: Reflected XSS sinks (Flask/Django template rendering, …)",
             "  (node instanceof ReflectedXss::Sink and",
             "   sinkType = \"template_rendering\" and severity = \"high\" and vulnerabilityType = \"Cross-Site Scripting (XSS)\")",
+            "  or",
+            "  // Built-in: LDAP injection — DN component",
+            "  (node instanceof LdapInjection::DnSink and",
+            "   sinkType = \"ldap_query\" and severity = \"high\" and vulnerabilityType = \"LDAP Injection\")",
+            "  or",
+            "  // Built-in: LDAP injection — filter component",
+            "  (node instanceof LdapInjection::FilterSink and",
+            "   sinkType = \"ldap_query\" and severity = \"high\" and vulnerabilityType = \"LDAP Injection\")",
+            "  or",
+            "  // Built-in: XML External Entity (XXE) injection",
+            "  (node instanceof Xxe::Sink and",
+            "   sinkType = \"xml_parsing\" and severity = \"high\" and vulnerabilityType = \"XML External Entity (XXE)\")",
+            "  or",
+            "  // Built-in: Server-Side Request Forgery (SSRF)",
+            "  (node instanceof ServerSideRequestForgery::Sink and",
+            "   sinkType = \"ssrf_request\" and severity = \"high\" and vulnerabilityType = \"Server-Side Request Forgery (SSRF)\")",
+            "  or",
+            "  // Built-in: Server-Side Template Injection (SSTI)",
+            "  (node instanceof TemplateInjection::Sink and",
+            "   sinkType = \"template_rendering\" and severity = \"critical\" and vulnerabilityType = \"Server-Side Template Injection (SSTI)\")",
+            "  or",
+            "  // Built-in: Unsafe Deserialization (pickle, yaml.load, …)",
+            "  (node instanceof UnsafeDeserialization::Sink and",
+            "   sinkType = \"deserialization\" and severity = \"critical\" and vulnerabilityType = \"Unsafe Deserialization\")",
+            "  or",
+            "  // Built-in: Open Redirect",
+            "  (node instanceof UrlRedirect::Sink and",
+            "   sinkType = \"url_redirect\" and severity = \"medium\" and vulnerabilityType = \"Open Redirect\")",
+            "  or",
+            "  // Built-in: Log Injection",
+            "  (node instanceof LogInjection::Sink and",
+            "   sinkType = \"log_output\" and severity = \"medium\" and vulnerabilityType = \"Log Injection\")",
+            "  or",
+            "  // Built-in: NoSQL Injection — string payload",
+            "  (node instanceof NoSqlInjection::StringSink and",
+            "   sinkType = \"nosql_query\" and severity = \"high\" and vulnerabilityType = \"NoSQL Injection\")",
+            "  or",
+            "  // Built-in: NoSQL Injection — dictionary/object payload",
+            "  (node instanceof NoSqlInjection::DictSink and",
+            "   sinkType = \"nosql_query\" and severity = \"high\" and vulnerabilityType = \"NoSQL Injection\")",
+            "  or",
+            "  // Built-in: XPath Injection",
+            "  (node instanceof XpathInjection::Sink and",
+            "   sinkType = \"xpath_query\" and severity = \"high\" and vulnerabilityType = \"XPath Injection\")",
+            "  or",
+            "  // Built-in: Tar/Zip Slip (path traversal via archive extraction)",
+            "  (node instanceof TarSlip::Sink and",
+            "   sinkType = \"file_access\" and severity = \"high\" and vulnerabilityType = \"Tar/Zip Slip\")",
+            "  or",
+            "  // Built-in: HTTP Header Injection",
+            "  (node instanceof HttpHeaderInjection::Sink and",
+            "   sinkType = \"http_header\" and severity = \"medium\" and vulnerabilityType = \"HTTP Header Injection\")",
+            "  or",
+            "  // Built-in: Cookie Injection",
+            "  (node instanceof CookieInjection::Sink and",
+            "   sinkType = \"cookie_write\" and severity = \"medium\" and vulnerabilityType = \"Cookie Injection\")",
+            "  or",
+            "  // Built-in: Regular Expression Injection / Polynomial ReDoS",
+            "  (node instanceof PolynomialReDoS::Sink and",
+            "   sinkType = \"regex_execution\" and severity = \"medium\" and vulnerabilityType = \"Regular Expression Injection (ReDoS)\")",
         ]
 
         for sink in sinks:
@@ -236,7 +367,7 @@ import semmle.python.dataflow.new.RemoteFlowSources"""
             if sink.argument_index is not None:
                 node_expr = TaintQueryGenerator._pattern_to_sink_node(sink.pattern, sink.argument_index)
             else:
-                node_expr = TaintQueryGenerator._pattern_to_source_node(sink.pattern)
+                node_expr = TaintQueryGenerator._pattern_to_default_sink_node(sink.pattern)
 
             lines.append("  (")
             lines.append(f"    node = {node_expr} and")

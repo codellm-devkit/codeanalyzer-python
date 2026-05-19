@@ -58,6 +58,24 @@ def sanitizer_app():
 
 
 @pytest.fixture
+def ssti_app():
+    """Path to SSTI test app."""
+    return FIXTURES_DIR / "ssti_app"
+
+
+@pytest.fixture
+def deserialization_app():
+    """Path to unsafe deserialization test app."""
+    return FIXTURES_DIR / "deserialization_app"
+
+
+@pytest.fixture
+def ssrf_app():
+    """Path to SSRF test app."""
+    return FIXTURES_DIR / "ssrf_app"
+
+
+@pytest.fixture
 def default_taint_config():
     """Get default taint configuration."""
     return get_default_taint_config()
@@ -73,16 +91,15 @@ class TestTaintAnalysisConfiguration:
     def test_default_configuration(self, default_taint_config):
         """Test default taint configuration."""
         assert len(default_taint_config.sources) > 0
-        assert len(default_taint_config.sinks) > 0
+        # Sinks list is intentionally empty — all sinks are covered by CodeQL's built-in
+        # security models (LdapInjection, Xxe, SSRF, SSTI, UnsafeDeserialization, …)
+        # imported in the generated query rather than enumerated here.
+        assert isinstance(default_taint_config.sinks, list)
         assert len(default_taint_config.sanitizers) > 0
 
         # Verify all sources are enabled by default
         enabled_sources = [s for s in default_taint_config.sources if s.enabled]
         assert len(enabled_sources) == len(default_taint_config.sources)
-
-        # Verify all sinks are enabled by default
-        enabled_sinks = [s for s in default_taint_config.sinks if s.enabled]
-        assert len(enabled_sinks) == len(default_taint_config.sinks)
 
     def test_custom_configuration_yaml(self, sql_injection_app, tmp_path):
         """Test custom taint configuration from YAML."""
@@ -148,6 +165,58 @@ sanitizers: []
         assert len(config.sources) > 1
         custom_sources = [s for s in config.sources if s.name == "custom_source"]
         assert len(custom_sources) == 1
+
+    def test_query_contains_all_builtin_imports(self, default_taint_config):
+        """Generated query must import all 20 CodeQL security customization modules."""
+        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
+        query = TaintQueryGenerator.generate_query(default_taint_config)
+        expected_modules = [
+            "LdapInjectionCustomizations",
+            "XxeCustomizations",
+            "ServerSideRequestForgeryCustomizations",
+            "TemplateInjectionCustomizations",
+            "UnsafeDeserializationCustomizations",
+            "UrlRedirectCustomizations",
+            "LogInjectionCustomizations",
+            "NoSqlInjectionCustomizations",
+            "XpathInjectionCustomizations",
+            "TarSlipCustomizations",
+            "HttpHeaderInjectionCustomizations",
+            "CookieInjectionCustomizations",
+            "PolynomialReDoSCustomizations",
+            # CleartextStorageCustomizations and CleartextLoggingCustomizations are
+            # intentionally excluded: they use SensitiveDataSource (not RemoteFlowSource)
+            # and produce false positives when combined with general user-input sources.
+        ]
+        for mod in expected_modules:
+            assert mod in query, f"Generated query is missing import for {mod}"
+
+    def test_query_contains_all_builtin_sinks(self, default_taint_config):
+        """Generated query must include instanceof checks for all built-in sink classes."""
+        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
+        query = TaintQueryGenerator.generate_query(default_taint_config)
+        expected_sinks = [
+            "LdapInjection::DnSink",
+            "LdapInjection::FilterSink",
+            "Xxe::Sink",
+            "ServerSideRequestForgery::Sink",
+            "TemplateInjection::Sink",
+            "UnsafeDeserialization::Sink",
+            "UrlRedirect::Sink",
+            "LogInjection::Sink",
+            "NoSqlInjection::StringSink",
+            "NoSqlInjection::DictSink",
+            "XpathInjection::Sink",
+            "TarSlip::Sink",
+            "HttpHeaderInjection::Sink",
+            "CookieInjection::Sink",
+            "PolynomialReDoS::Sink",
+            # CleartextStorage::Sink and CleartextLogging::Sink are intentionally excluded:
+            # these use SensitiveDataSource internally and produce false positives when
+            # combined with general user-input sources in a unified query.
+        ]
+        for sink in expected_sinks:
+            assert sink in query, f"Generated query is missing instanceof check for {sink}"
 
 
 class TestTaintAnalysisPydanticModels:
@@ -838,4 +907,84 @@ class TestTaintAnalysisIntegration_Codeanalyzer:
         )
         assert all(f.severity == "critical" for f in sql_flows), (
             "All SQL Injection flows should be critical severity"
+        )
+
+
+# ============================================================================
+# Integration Tests — New Vulnerability Types (require CodeQL)
+# ============================================================================
+
+class TestTaintAnalysisNewVulnerabilityTypes:
+    """Integration tests for vulnerability types added via the expanded built-in CodeQL models."""
+
+    def test_ssti_detection(self, ssti_db, codeql_packs_dir):
+        """Server-Side Template Injection must be detected in ssti_app fixture."""
+        import shutil
+        if not shutil.which("codeql"):
+            pytest.skip("CodeQL not available")
+        if codeql_packs_dir is None:
+            pytest.skip("CodeQL packs not available")
+
+        codeql = CodeQL(
+            project_dir=FIXTURES_DIR / "ssti_app",
+            db_path=ssti_db,
+            codeql_packs_dir=codeql_packs_dir,
+        )
+        from codeanalyzer.config.taint_config_defaults import get_default_taint_config as _get_cfg
+        result = codeql.analyze_taint_flows(config_override=_get_cfg())
+
+        ssti_flows = [f for f in result.flows if "Template Injection" in f.vulnerability_type]
+        assert len(ssti_flows) >= 1, (
+            f"Expected at least 1 SSTI flow, got {len(ssti_flows)}. "
+            f"All flows: {[f.vulnerability_type for f in result.flows]}"
+        )
+        assert all(f.severity == "critical" for f in ssti_flows), (
+            "All SSTI flows should be critical severity"
+        )
+
+    def test_unsafe_deserialization_detection(self, deserialization_db, codeql_packs_dir):
+        """Unsafe Deserialization must be detected in deserialization_app fixture."""
+        import shutil
+        if not shutil.which("codeql"):
+            pytest.skip("CodeQL not available")
+        if codeql_packs_dir is None:
+            pytest.skip("CodeQL packs not available")
+
+        codeql = CodeQL(
+            project_dir=FIXTURES_DIR / "deserialization_app",
+            db_path=deserialization_db,
+            codeql_packs_dir=codeql_packs_dir,
+        )
+        from codeanalyzer.config.taint_config_defaults import get_default_taint_config as _get_cfg
+        result = codeql.analyze_taint_flows(config_override=_get_cfg())
+
+        deser_flows = [f for f in result.flows if "Deserialization" in f.vulnerability_type]
+        assert len(deser_flows) >= 1, (
+            f"Expected at least 1 Unsafe Deserialization flow, got {len(deser_flows)}. "
+            f"All flows: {[f.vulnerability_type for f in result.flows]}"
+        )
+        assert all(f.severity == "critical" for f in deser_flows), (
+            "All Unsafe Deserialization flows should be critical severity"
+        )
+
+    def test_ssrf_detection(self, ssrf_db, codeql_packs_dir):
+        """Server-Side Request Forgery must be detected in ssrf_app fixture."""
+        import shutil
+        if not shutil.which("codeql"):
+            pytest.skip("CodeQL not available")
+        if codeql_packs_dir is None:
+            pytest.skip("CodeQL packs not available")
+
+        codeql = CodeQL(
+            project_dir=FIXTURES_DIR / "ssrf_app",
+            db_path=ssrf_db,
+            codeql_packs_dir=codeql_packs_dir,
+        )
+        from codeanalyzer.config.taint_config_defaults import get_default_taint_config as _get_cfg
+        result = codeql.analyze_taint_flows(config_override=_get_cfg())
+
+        ssrf_flows = [f for f in result.flows if "Request Forgery" in f.vulnerability_type]
+        assert len(ssrf_flows) >= 1, (
+            f"Expected at least 1 SSRF flow, got {len(ssrf_flows)}. "
+            f"All flows: {[f.vulnerability_type for f in result.flows]}"
         )

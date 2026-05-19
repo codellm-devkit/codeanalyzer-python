@@ -29,6 +29,7 @@ import yaml
 from codeanalyzer.schema.py_schema import TaintAnalysisConfig
 from codeanalyzer.config.taint_config_defaults import get_default_taint_config
 from codeanalyzer.utils import logger
+from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
 
 
 class TaintConfigLoader:
@@ -73,8 +74,13 @@ class TaintConfigLoader:
         # Filter out disabled items
         config = TaintConfigLoader._filter_disabled(config)
         
-        logger.info(f"Final taint configuration: {len(config.sources)} sources, "
-                   f"{len(config.sinks)} sinks, {len(config.sanitizers)} sanitizers")
+        n_builtin = TaintQueryGenerator.builtin_sink_count()
+        logger.info(
+            f"Final taint configuration: {len(config.sources)} sources, "
+            f"{len(config.sinks)} user-configured sinks "
+            f"(+{n_builtin} built-in CodeQL sink models always active), "
+            f"{len(config.sanitizers)} sanitizers"
+        )
         
         return config
     

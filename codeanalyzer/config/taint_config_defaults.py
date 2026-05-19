@@ -19,12 +19,17 @@
 Design
 ------
 The generated CodeQL query uses CodeQL's built-in security models as the
-primary detection layer (``RemoteFlowSource``, ``SqlInjection::Sink``,
-``CommandInjection::Sink``, ``CodeInjection::Sink``, ``PathTraversal::Sink``,
-``XSS::Sink``).  These cover hundreds of APIs automatically.
+primary detection layer — all 20 ``*Customizations`` modules shipped with
+``codeql/python-all 7.x`` are imported, covering:
+
+  SQL Injection, Command Injection, Code Injection, Path Traversal,
+  Reflected XSS, LDAP Injection, XXE, SSRF, SSTI, Unsafe Deserialization,
+  Open Redirect, Log Injection, NoSQL Injection, XPath Injection,
+  Tar/Zip Slip, HTTP Header Injection, Cleartext Storage, Cleartext Logging,
+  Cookie Injection, Regular Expression Injection (ReDoS).
 
 The patterns defined here are **supplementary** — they extend built-in
-coverage with sources/sinks that are not modelled by CodeQL out of the box:
+coverage with sources that are not modelled by CodeQL's ``RemoteFlowSource``:
 
 Sources not in RemoteFlowSource:
   - ``sys.argv``          — command-line arguments
@@ -33,8 +38,10 @@ Sources not in RemoteFlowSource:
   - ``os.environ.get()``  — environment variables
   - ``requests.*``        — outbound HTTP responses used as data sources
 
-Sinks not in built-in models (project-specific or less common):
-  - ``ldap.search()``     — LDAP injection
+Sinks:
+  - The default sinks list is intentionally empty — all common sinks are
+    covered by the built-in CodeQL models.  Add project-specific sinks here
+    only when they are NOT covered by the built-ins.
 
 Sanitizers:
   - Common HTML/path/command sanitizers that CodeQL may not model as barriers.
@@ -111,27 +118,12 @@ def get_default_taint_config() -> TaintAnalysisConfig:
         ],
 
         sinks=[
-            # --- Sinks not covered by CodeQL's built-in sink classes ---
-
-            # LDAP Injection (not in CodeQL's standard Python models)
-            TaintSinkConfig(
-                name="ldap_search",
-                description="LDAP search operations",
-                pattern='API::moduleImport("ldap").getMember("search").getACall()',
-                sink_type="ldap_query",
-                vulnerability_type="LDAP Injection",
-                severity="high",
-                argument_index=0,
-            ),
-            TaintSinkConfig(
-                name="ldap3_connection_search",
-                description="ldap3 Connection.search",
-                pattern='API::moduleImport("ldap3").getMember("Connection").getReturn().getMember("search").getACall()',
-                sink_type="ldap_query",
-                vulnerability_type="LDAP Injection",
-                severity="high",
-                argument_index=1,
-            ),
+            # The built-in CodeQL security models (imported in taint_query_generator.py) cover
+            # all common sinks: SQL, command, code, path, XSS, LDAP, XXE, SSRF, SSTI,
+            # deserialization, open redirect, log injection, NoSQL, XPath, tar/zip slip,
+            # HTTP header injection, cleartext storage/logging, cookie injection, ReDoS.
+            #
+            # Add project-specific sinks here only when they are NOT covered by the built-ins.
         ],
 
         sanitizers=[

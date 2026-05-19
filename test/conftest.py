@@ -51,6 +51,9 @@ _TAINT_FIXTURE_APPS = {
     "xss": _TAINT_FIXTURES_DIR / "xss_app",
     "flask": _TAINT_FIXTURES_DIR / "flask_app",
     "sanitizer": _TAINT_FIXTURES_DIR / "sanitizer_app",
+    "ssti": _TAINT_FIXTURES_DIR / "ssti_app",
+    "deserialization": _TAINT_FIXTURES_DIR / "deserialization_app",
+    "ssrf": _TAINT_FIXTURES_DIR / "ssrf_app",
 }
 
 
@@ -160,6 +163,39 @@ def sanitizer_db(codeql_databases):
     db = codeql_databases.get("sanitizer")
     if db is None:
         pytest.skip("Failed to create sanitizer CodeQL database")
+    return db
+
+
+@pytest.fixture(scope="session")
+def ssti_db(codeql_databases):
+    """Session-scoped CodeQL database for SSTI fixture."""
+    if codeql_databases is None:
+        pytest.skip("CodeQL not available")
+    db = codeql_databases.get("ssti")
+    if db is None:
+        pytest.skip("Failed to create SSTI CodeQL database")
+    return db
+
+
+@pytest.fixture(scope="session")
+def deserialization_db(codeql_databases):
+    """Session-scoped CodeQL database for unsafe deserialization fixture."""
+    if codeql_databases is None:
+        pytest.skip("CodeQL not available")
+    db = codeql_databases.get("deserialization")
+    if db is None:
+        pytest.skip("Failed to create deserialization CodeQL database")
+    return db
+
+
+@pytest.fixture(scope="session")
+def ssrf_db(codeql_databases):
+    """Session-scoped CodeQL database for SSRF fixture."""
+    if codeql_databases is None:
+        pytest.skip("CodeQL not available")
+    db = codeql_databases.get("ssrf")
+    if db is None:
+        pytest.skip("Failed to create SSRF CodeQL database")
     return db
 
 
