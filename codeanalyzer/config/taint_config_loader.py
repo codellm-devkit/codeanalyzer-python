@@ -56,32 +56,56 @@ class TaintConfigLoader:
             FileNotFoundError: If config_path is provided but file doesn't exist
             ValueError: If file format is unsupported or invalid
         """
+        # Log which of the three config modes is active
+        if config_path and use_defaults:
+            logger.info(f"Taint config mode: merging '{config_path}' with built-in defaults")
+        elif config_path:
+            logger.info(f"Taint config mode: custom only — '{config_path}' (built-in defaults disabled)")
+        else:
+            logger.info("Taint config mode: built-in defaults only")
+
         # Start with defaults if requested
         if use_defaults:
             config = get_default_taint_config()
-            logger.debug(f"Loaded default taint configuration with {len(config.sources)} sources, "
-                        f"{len(config.sinks)} sinks, {len(config.sanitizers)} sanitizers")
+            logger.debug(
+                f"  Defaults loaded: {len(config.sources)} sources, "
+                f"{len(config.sanitizers)} sanitizers"
+            )
         else:
             config = TaintAnalysisConfig()
-            logger.debug("Starting with empty taint configuration")
-        
+
         # Load and merge custom configuration
         if config_path:
             custom_config = TaintConfigLoader._load_from_file(config_path)
+            logger.debug(
+                f"  Custom file adds: {len(custom_config.sources)} sources, "
+                f"{len(custom_config.sinks)} sinks, "
+                f"{len(custom_config.sanitizers)} sanitizers"
+            )
             config = TaintConfigLoader._merge_configs(config, custom_config)
-            logger.info(f"Merged custom configuration from {config_path}")
-        
+
         # Filter out disabled items
         config = TaintConfigLoader._filter_disabled(config)
-        
+
+        # Warn on any structural problems (missing sources, empty patterns, etc.)
+        issues = TaintConfigLoader.validate_config(config)
+        for issue in issues:
+            logger.warning(f"Taint config: {issue}")
+
         n_builtin = TaintQueryGenerator.builtin_sink_count()
+        n_disabled = len(config.disabled_builtin_sinks)
+        active_builtin = n_builtin - n_disabled
+        builtin_label = (
+            f"{active_builtin} of {n_builtin} built-in CodeQL sinks"
+            if n_disabled
+            else f"{n_builtin} built-in CodeQL sinks"
+        )
         logger.info(
-            f"Final taint configuration: {len(config.sources)} sources, "
-            f"{len(config.sinks)} user-configured sinks "
-            f"(+{n_builtin} built-in CodeQL sink models always active), "
+            f"Active taint config: {len(config.sources)} sources, "
+            f"{len(config.sinks)} user-defined sinks (+{builtin_label}), "
             f"{len(config.sanitizers)} sanitizers"
         )
-        
+
         return config
     
     @staticmethod
@@ -185,19 +209,20 @@ class TaintConfigLoader:
         merged_exclude_files = list(set(base.exclude_files + custom.exclude_files))
         merged_exclude_functions = list(set(base.exclude_functions + custom.exclude_functions))
         
-        # Create merged config
-        # Use custom values for options if they differ from defaults
+        # Scalar options: custom always wins (it owns those knobs).
+        # Booleans that are "additive" (enabling features) use OR.
         return TaintAnalysisConfig(
             sources=list(base_sources.values()),
             sinks=list(base_sinks.values()),
             sanitizers=list(base_sanitizers.values()),
-            max_path_length=custom.max_path_length if custom.max_path_length != 10 else base.max_path_length,
+            max_path_length=custom.max_path_length,
             include_implicit_flows=custom.include_implicit_flows or base.include_implicit_flows,
-            confidence_threshold=custom.confidence_threshold if custom.confidence_threshold != "medium" else base.confidence_threshold,
+            confidence_threshold=custom.confidence_threshold,
             exclude_files=merged_exclude_files,
             exclude_functions=merged_exclude_functions,
             include_safe_flows=custom.include_safe_flows or base.include_safe_flows,
-            group_by_vulnerability=custom.group_by_vulnerability if not custom.group_by_vulnerability else base.group_by_vulnerability,
+            group_by_vulnerability=custom.group_by_vulnerability,
+            disabled_builtin_sinks=list(set(base.disabled_builtin_sinks + custom.disabled_builtin_sinks)),
         )
     
     @staticmethod
@@ -234,6 +259,7 @@ class TaintConfigLoader:
             exclude_functions=config.exclude_functions,
             include_safe_flows=config.include_safe_flows,
             group_by_vulnerability=config.group_by_vulnerability,
+            disabled_builtin_sinks=config.disabled_builtin_sinks,
         )
     
     @staticmethod

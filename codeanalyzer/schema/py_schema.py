@@ -523,6 +523,16 @@ class TaintAnalysisConfig(BaseModel):
     group_by_vulnerability: bool = True
     """When ``True``, results are grouped by vulnerability type in log output."""
 
+    disabled_builtin_sinks: List[str] = []
+    """Names of built-in CodeQL sink classes to suppress.
+
+    Each entry must match a ``class::SinkClass`` string from
+    ``TaintQueryGenerator.BUILTIN_SINKS`` (e.g. ``"PolynomialReDoS::Sink"``
+    or ``"CookieInjection::Sink"``).  Matching entries are skipped during
+    query generation so that specific vulnerability types can be excluded
+    without replacing the entire built-in sink set.
+    """
+
 
 @builder
 @msgpk

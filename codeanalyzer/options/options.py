@@ -24,3 +24,4 @@ class AnalysisOptions:
     clear_cache: bool = False
     verbosity: int = 0
     taint_config: Optional[Path] = None
+    taint_use_defaults: bool = True

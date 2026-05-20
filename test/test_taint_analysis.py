@@ -342,6 +342,212 @@ sanitizers: []
 
 
 # ============================================================================
+# Extensibility mechanism unit tests (no CodeQL required)
+# ============================================================================
+
+class TestTaintConfigExtensibility:
+    """Tests for the taint config extensibility mechanism: merge, disabled sinks,
+    use_defaults, and validate_config integration."""
+
+    # ------------------------------------------------------------------
+    # Scalar merge correctness
+    # ------------------------------------------------------------------
+
+    def test_merge_scalars_custom_wins(self):
+        """Custom config scalars always override base — was broken before fix."""
+        from codeanalyzer.schema.py_schema import TaintAnalysisConfig
+        base = TaintAnalysisConfig(max_path_length=15, group_by_vulnerability=False, confidence_threshold="low")
+        custom = TaintAnalysisConfig(max_path_length=5, group_by_vulnerability=True, confidence_threshold="high")
+        merged = TaintConfigLoader._merge_configs(base, custom)
+        assert merged.max_path_length == 5
+        assert merged.group_by_vulnerability is True
+        assert merged.confidence_threshold == "high"
+
+    def test_merge_scalars_custom_default_value_still_wins(self):
+        """Custom config with value == schema default (e.g. max_path_length=10) must win.
+        Previously a sentinel comparison '!= 10' silently ignored this case."""
+        from codeanalyzer.schema.py_schema import TaintAnalysisConfig
+        base = TaintAnalysisConfig(max_path_length=20, confidence_threshold="low")
+        custom = TaintAnalysisConfig(max_path_length=10, confidence_threshold="medium")
+        merged = TaintConfigLoader._merge_configs(base, custom)
+        assert merged.max_path_length == 10, "max_path_length=10 must not be silently discarded"
+        assert merged.confidence_threshold == "medium", "confidence_threshold='medium' must not be silently discarded"
+
+    def test_merge_additive_booleans(self):
+        """include_implicit_flows and include_safe_flows use OR (enabling is additive)."""
+        from codeanalyzer.schema.py_schema import TaintAnalysisConfig
+        base = TaintAnalysisConfig(include_implicit_flows=True, include_safe_flows=False)
+        custom = TaintAnalysisConfig(include_implicit_flows=False, include_safe_flows=True)
+        merged = TaintConfigLoader._merge_configs(base, custom)
+        assert merged.include_implicit_flows is True   # OR(True, False)
+        assert merged.include_safe_flows is True        # OR(False, True)
+
+    def test_merge_exclude_lists_combined(self):
+        """exclude_files and exclude_functions are unioned across base and custom."""
+        from codeanalyzer.schema.py_schema import TaintAnalysisConfig
+        base = TaintAnalysisConfig(exclude_files=["tests/**"], exclude_functions=["myapp.utils.safe"])
+        custom = TaintAnalysisConfig(exclude_files=["vendor/**"], exclude_functions=["myapp.debug.dump"])
+        merged = TaintConfigLoader._merge_configs(base, custom)
+        assert "tests/**" in merged.exclude_files
+        assert "vendor/**" in merged.exclude_files
+        assert "myapp.utils.safe" in merged.exclude_functions
+        assert "myapp.debug.dump" in merged.exclude_functions
+
+    # ------------------------------------------------------------------
+    # disabled_builtin_sinks
+    # ------------------------------------------------------------------
+
+    def test_disabled_builtin_sinks_removes_from_query(self):
+        """Sinks listed in disabled_builtin_sinks must not appear in generated query."""
+        from codeanalyzer.schema.py_schema import TaintAnalysisConfig
+        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
+        config = TaintAnalysisConfig(disabled_builtin_sinks=["PolynomialReDoS::Sink", "CookieInjection::Sink"])
+        query = TaintQueryGenerator.generate_query(config)
+        assert "PolynomialReDoS::Sink" not in query
+        assert "CookieInjection::Sink" not in query
+        assert "SqlInjection::Sink" in query  # others remain
+
+    def test_disabled_builtin_sinks_empty_keeps_all(self):
+        """Empty disabled_builtin_sinks list keeps all 20 built-in sinks in query."""
+        from codeanalyzer.schema.py_schema import TaintAnalysisConfig
+        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
+        config = TaintAnalysisConfig()
+        query = TaintQueryGenerator.generate_query(config)
+        for name in TaintQueryGenerator.builtin_sink_names():
+            assert name in query, f"Expected {name} in query with no disabled sinks"
+
+    def test_disabled_builtin_sinks_merged_from_both_sides(self):
+        """disabled_builtin_sinks from base and custom are unioned on merge."""
+        from codeanalyzer.schema.py_schema import TaintAnalysisConfig
+        base = TaintAnalysisConfig(disabled_builtin_sinks=["CookieInjection::Sink"])
+        custom = TaintAnalysisConfig(disabled_builtin_sinks=["PolynomialReDoS::Sink"])
+        merged = TaintConfigLoader._merge_configs(base, custom)
+        assert "CookieInjection::Sink" in merged.disabled_builtin_sinks
+        assert "PolynomialReDoS::Sink" in merged.disabled_builtin_sinks
+
+    def test_disabled_builtin_sinks_survives_filter_disabled(self):
+        """_filter_disabled must carry disabled_builtin_sinks through unchanged."""
+        from codeanalyzer.schema.py_schema import TaintAnalysisConfig
+        config = TaintAnalysisConfig(disabled_builtin_sinks=["TarSlip::Sink"])
+        filtered = TaintConfigLoader._filter_disabled(config)
+        assert "TarSlip::Sink" in filtered.disabled_builtin_sinks
+
+    def test_disabled_builtin_sinks_from_yaml(self, tmp_path):
+        """disabled_builtin_sinks loaded from YAML file is honoured in query."""
+        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
+        yaml_content = """
+disabled_builtin_sinks:
+  - PolynomialReDoS::Sink
+  - HttpHeaderInjection::Sink
+sources: []
+sinks: []
+sanitizers: []
+"""
+        config_file = tmp_path / "cfg.yaml"
+        config_file.write_text(yaml_content)
+        config = TaintConfigLoader.load_config(config_file, use_defaults=False)
+        assert "PolynomialReDoS::Sink" in config.disabled_builtin_sinks
+        query = TaintQueryGenerator.generate_query(config)
+        assert "PolynomialReDoS::Sink" not in query
+        assert "HttpHeaderInjection::Sink" not in query
+
+    # ------------------------------------------------------------------
+    # use_defaults flag / three modes
+    # ------------------------------------------------------------------
+
+    def test_use_defaults_false_no_custom_gives_empty_config(self):
+        """use_defaults=False with no config_path produces empty sources/sinks/sanitizers."""
+        config = TaintConfigLoader.load_config(use_defaults=False)
+        assert len(config.sources) == 0
+        assert len(config.sinks) == 0
+        assert len(config.sanitizers) == 0
+
+    def test_use_defaults_true_gives_default_sources(self):
+        """use_defaults=True (default) loads default sources and sanitizers."""
+        config = TaintConfigLoader.load_config(use_defaults=True)
+        assert len(config.sources) > 0
+        assert len(config.sanitizers) > 0
+
+    def test_use_defaults_false_with_custom_config_is_custom_only(self, tmp_path):
+        """Mode 2: --no-taint-defaults → only custom sources/sinks, no defaults."""
+        yaml_content = """
+sources:
+  - name: only_source
+    description: "Only this source"
+    pattern: 'API::builtin("input").getACall()'
+    source_type: user_input
+    enabled: true
+sinks: []
+sanitizers: []
+"""
+        config_file = tmp_path / "custom_only.yaml"
+        config_file.write_text(yaml_content)
+        config = TaintConfigLoader.load_config(config_file, use_defaults=False)
+        assert len(config.sources) == 1
+        assert config.sources[0].name == "only_source"
+
+    def test_use_defaults_true_with_custom_config_is_union(self, tmp_path):
+        """Mode 3: --taint-defaults + --taint-config → union of defaults and custom."""
+        yaml_content = """
+sources:
+  - name: extra_source
+    description: "Additional source"
+    pattern: 'API::builtin("input").getACall()'
+    source_type: user_input
+    enabled: true
+sinks: []
+sanitizers: []
+"""
+        config_file = tmp_path / "extra.yaml"
+        config_file.write_text(yaml_content)
+        config = TaintConfigLoader.load_config(config_file, use_defaults=True)
+        names = [s.name for s in config.sources]
+        assert "extra_source" in names
+        assert len(config.sources) > 1  # defaults present too
+
+    # ------------------------------------------------------------------
+    # validate_config integration
+    # ------------------------------------------------------------------
+
+    def test_validate_config_warns_no_sources(self):
+        """validate_config returns an issue when no sources are configured."""
+        from codeanalyzer.schema.py_schema import TaintAnalysisConfig
+        config = TaintAnalysisConfig(sources=[], sinks=[], sanitizers=[])
+        issues = TaintConfigLoader.validate_config(config)
+        assert any("No taint sources" in i for i in issues)
+
+    def test_validate_config_returns_issues_for_empty_pattern(self):
+        """validate_config catches empty pattern strings."""
+        from codeanalyzer.schema.py_schema import TaintAnalysisConfig, TaintSourceConfig
+        config = TaintAnalysisConfig(
+            sources=[TaintSourceConfig(name="bad", description="d", pattern="   ", source_type="t")]
+        )
+        issues = TaintConfigLoader.validate_config(config)
+        assert any("Empty pattern" in i for i in issues)
+
+    def test_validate_config_returns_issues_for_duplicates(self):
+        """validate_config catches duplicate source names."""
+        from codeanalyzer.schema.py_schema import TaintAnalysisConfig, TaintSourceConfig
+        src = TaintSourceConfig(name="dup", description="d", pattern="API::builtin(\"x\")", source_type="t")
+        config = TaintAnalysisConfig(sources=[src, src])
+        issues = TaintConfigLoader.validate_config(config)
+        assert any("Duplicate" in i for i in issues)
+
+    # ------------------------------------------------------------------
+    # builtin_sink_names helper
+    # ------------------------------------------------------------------
+
+    def test_builtin_sink_names_complete(self):
+        """builtin_sink_names() returns exactly 20 entries matching BUILTIN_SINKS."""
+        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
+        names = TaintQueryGenerator.builtin_sink_names()
+        assert len(names) == TaintQueryGenerator.builtin_sink_count()
+        assert "SqlInjection::Sink" in names
+        assert "UnsafeDeserialization::Sink" in names
+        assert "TemplateInjection::Sink" in names
+
+
+# ============================================================================
 # Integration Tests (require CodeQL databases)
 # ============================================================================
 

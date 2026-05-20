@@ -51,7 +51,6 @@ from typing import List
 from codeanalyzer.schema.py_schema import (
     TaintAnalysisConfig,
     TaintSourceConfig,
-    TaintSinkConfig,
     TaintSanitizerConfig,
 )
 
@@ -59,35 +58,42 @@ from codeanalyzer.schema.py_schema import (
 class TaintQueryGenerator:
     """Generates CodeQL queries from taint analysis configuration."""
 
-    # Built-in CodeQL sink models always included in the generated query,
-    # regardless of user configuration. Each entry is (module::SinkClass, vulnerability_type).
-    BUILTIN_SINKS: List[tuple] = [
-        ("SqlInjection::Sink",              "SQL Injection"),
-        ("CommandInjection::Sink",          "Command Injection"),
-        ("CodeInjection::Sink",             "Code Injection"),
-        ("PathInjection::Sink",             "Path Traversal"),
-        ("ReflectedXss::Sink",              "Cross-Site Scripting (XSS)"),
-        ("LdapInjection::DnSink",           "LDAP Injection"),
-        ("LdapInjection::FilterSink",       "LDAP Injection"),
-        ("Xxe::Sink",                       "XML External Entity (XXE)"),
-        ("ServerSideRequestForgery::Sink",  "Server-Side Request Forgery (SSRF)"),
-        ("TemplateInjection::Sink",         "Server-Side Template Injection (SSTI)"),
-        ("UnsafeDeserialization::Sink",     "Unsafe Deserialization"),
-        ("UrlRedirect::Sink",               "Open Redirect"),
-        ("LogInjection::Sink",              "Log Injection"),
-        ("NoSqlInjection::StringSink",      "NoSQL Injection"),
-        ("NoSqlInjection::DictSink",        "NoSQL Injection"),
-        ("XpathInjection::Sink",            "XPath Injection"),
-        ("TarSlip::Sink",                   "Tar/Zip Slip"),
-        ("HttpHeaderInjection::Sink",       "HTTP Header Injection"),
-        ("CookieInjection::Sink",           "Cookie Injection"),
-        ("PolynomialReDoS::Sink",           "Regular Expression Injection (ReDoS)"),
+    # Built-in CodeQL sink models included in the generated query by default.
+    # Each dict has: class (CodeQL class expression), sink_type, severity,
+    # vulnerability_type, and comment (used as inline documentation in the query).
+    # Individual entries can be suppressed via TaintAnalysisConfig.disabled_builtin_sinks.
+    BUILTIN_SINKS: List[dict] = [
+        {"class": "SqlInjection::Sink",             "sink_type": "sql_execution",    "severity": "critical", "vulnerability_type": "SQL Injection",                          "comment": "sqlite3, psycopg2, SQLAlchemy, Django ORM raw, …"},
+        {"class": "CommandInjection::Sink",         "sink_type": "command_execution","severity": "critical", "vulnerability_type": "Command Injection",                      "comment": "subprocess.*, os.system, os.popen, …"},
+        {"class": "CodeInjection::Sink",            "sink_type": "code_execution",   "severity": "critical", "vulnerability_type": "Code Injection",                         "comment": "eval, exec, compile, …"},
+        {"class": "PathInjection::Sink",            "sink_type": "file_access",      "severity": "high",     "vulnerability_type": "Path Traversal",                         "comment": "open, os.path.*, pathlib.Path.open, …"},
+        {"class": "ReflectedXss::Sink",             "sink_type": "template_rendering","severity": "high",    "vulnerability_type": "Cross-Site Scripting (XSS)",             "comment": "Flask/Django template rendering, …"},
+        {"class": "LdapInjection::DnSink",          "sink_type": "ldap_query",       "severity": "high",     "vulnerability_type": "LDAP Injection",                         "comment": "LDAP DN component"},
+        {"class": "LdapInjection::FilterSink",      "sink_type": "ldap_query",       "severity": "high",     "vulnerability_type": "LDAP Injection",                         "comment": "LDAP filter component"},
+        {"class": "Xxe::Sink",                      "sink_type": "xml_parsing",      "severity": "high",     "vulnerability_type": "XML External Entity (XXE)",              "comment": "XML parsers with external entity expansion"},
+        {"class": "ServerSideRequestForgery::Sink", "sink_type": "ssrf_request",     "severity": "high",     "vulnerability_type": "Server-Side Request Forgery (SSRF)",     "comment": "outbound HTTP requests with user-controlled URL"},
+        {"class": "TemplateInjection::Sink",        "sink_type": "template_rendering","severity": "critical","vulnerability_type": "Server-Side Template Injection (SSTI)",  "comment": "render_template_string, Jinja2 Environment.from_string, …"},
+        {"class": "UnsafeDeserialization::Sink",    "sink_type": "deserialization",  "severity": "critical", "vulnerability_type": "Unsafe Deserialization",                 "comment": "pickle.loads, yaml.load, …"},
+        {"class": "UrlRedirect::Sink",              "sink_type": "url_redirect",     "severity": "medium",   "vulnerability_type": "Open Redirect",                          "comment": "redirect(), HttpResponseRedirect, …"},
+        {"class": "LogInjection::Sink",             "sink_type": "log_output",       "severity": "medium",   "vulnerability_type": "Log Injection",                          "comment": "logging.*, structlog, …"},
+        {"class": "NoSqlInjection::StringSink",     "sink_type": "nosql_query",      "severity": "high",     "vulnerability_type": "NoSQL Injection",                        "comment": "MongoDB/Redis string queries"},
+        {"class": "NoSqlInjection::DictSink",       "sink_type": "nosql_query",      "severity": "high",     "vulnerability_type": "NoSQL Injection",                        "comment": "MongoDB dict/object queries"},
+        {"class": "XpathInjection::Sink",           "sink_type": "xpath_query",      "severity": "high",     "vulnerability_type": "XPath Injection",                        "comment": "lxml, ElementTree XPath expressions"},
+        {"class": "TarSlip::Sink",                  "sink_type": "file_access",      "severity": "high",     "vulnerability_type": "Tar/Zip Slip",                           "comment": "tarfile.extract, zipfile.extractall, …"},
+        {"class": "HttpHeaderInjection::Sink",      "sink_type": "http_header",      "severity": "medium",   "vulnerability_type": "HTTP Header Injection",                  "comment": "Response.headers, …"},
+        {"class": "CookieInjection::Sink",          "sink_type": "cookie_write",     "severity": "medium",   "vulnerability_type": "Cookie Injection",                       "comment": "set_cookie, …"},
+        {"class": "PolynomialReDoS::Sink",          "sink_type": "regex_execution",  "severity": "medium",   "vulnerability_type": "Regular Expression Injection (ReDoS)",   "comment": "re.match/search/fullmatch with user-supplied pattern"},
     ]
 
     @classmethod
     def builtin_sink_count(cls) -> int:
         """Number of built-in CodeQL sink models always active in the generated query."""
         return len(cls.BUILTIN_SINKS)
+
+    @classmethod
+    def builtin_sink_names(cls) -> List[str]:
+        """All built-in sink class names (usable in ``disabled_builtin_sinks``)."""
+        return [s["class"] for s in cls.BUILTIN_SINKS]
 
     @staticmethod
     def generate_query(config: TaintAnalysisConfig) -> str:
@@ -108,7 +114,7 @@ class TaintQueryGenerator:
         query_parts.append(TaintQueryGenerator._generate_header())
         query_parts.append(TaintQueryGenerator._generate_imports())
         query_parts.append(TaintQueryGenerator._generate_source_predicate(config.sources))
-        query_parts.append(TaintQueryGenerator._generate_sink_predicate(config.sinks))
+        query_parts.append(TaintQueryGenerator._generate_sink_predicate(config))
 
         if config.sanitizers:
             query_parts.append(TaintQueryGenerator._generate_sanitizer_predicate(config.sanitizers))
@@ -262,105 +268,30 @@ import semmle.python.dataflow.new.RemoteFlowSources"""
         lines.append("}")
         return "\n".join(lines)
 
-    @staticmethod
-    def _generate_sink_predicate(sinks: List[TaintSinkConfig]) -> str:
+    @classmethod
+    def _generate_sink_predicate(cls, config: "TaintAnalysisConfig") -> str:
         """Generate isSink predicate combining built-in security sinks with
         any user-configured sinks.
 
-        Built-in sink classes from ``codeql/python-all`` cover:
-        - ``SqlInjection::Sink``   — sqlite3, psycopg2, mysql-connector,
-                                     SQLAlchemy, Django ORM raw queries, …
-        - ``CommandInjection::Sink`` — subprocess.*, os.system, os.popen, …
-        - ``CodeInjection::Sink``  — eval(), exec(), compile(), …
-        - ``PathTraversal::Sink``  — open(), os.path.*, pathlib.Path.open(), …
-        - ``XSS::Sink``            — Flask/Django template rendering, …
-
-        User-configured patterns extend this with project-specific sinks.
+        Built-in sinks are driven by ``BUILTIN_SINKS``; any whose ``class``
+        appears in ``config.disabled_builtin_sinks`` are omitted.
+        User-configured patterns in ``config.sinks`` are appended afterward.
         """
+        disabled = set(config.disabled_builtin_sinks)
+        active_builtins = [s for s in cls.BUILTIN_SINKS if s["class"] not in disabled]
+
         lines = [
             "predicate isConfiguredSink(DataFlow::Node node, string sinkType, string severity, string vulnerabilityType) {",
-            "  // Built-in: SQL injection sinks (sqlite3, psycopg2, SQLAlchemy, Django ORM raw, …)",
-            "  (node instanceof SqlInjection::Sink and",
-            "   sinkType = \"sql_execution\" and severity = \"critical\" and vulnerabilityType = \"SQL Injection\")",
-            "  or",
-            "  // Built-in: Command injection sinks (subprocess.*, os.system, os.popen, …)",
-            "  (node instanceof CommandInjection::Sink and",
-            "   sinkType = \"command_execution\" and severity = \"critical\" and vulnerabilityType = \"Command Injection\")",
-            "  or",
-            "  // Built-in: Code injection sinks (eval, exec, compile, …)",
-            "  (node instanceof CodeInjection::Sink and",
-            "   sinkType = \"code_execution\" and severity = \"critical\" and vulnerabilityType = \"Code Injection\")",
-            "  or",
-            "  // Built-in: Path injection sinks (open, os.path.*, pathlib.Path.open, …)",
-            "  (node instanceof PathInjection::Sink and",
-            "   sinkType = \"file_access\" and severity = \"high\" and vulnerabilityType = \"Path Traversal\")",
-            "  or",
-            "  // Built-in: Reflected XSS sinks (Flask/Django template rendering, …)",
-            "  (node instanceof ReflectedXss::Sink and",
-            "   sinkType = \"template_rendering\" and severity = \"high\" and vulnerabilityType = \"Cross-Site Scripting (XSS)\")",
-            "  or",
-            "  // Built-in: LDAP injection — DN component",
-            "  (node instanceof LdapInjection::DnSink and",
-            "   sinkType = \"ldap_query\" and severity = \"high\" and vulnerabilityType = \"LDAP Injection\")",
-            "  or",
-            "  // Built-in: LDAP injection — filter component",
-            "  (node instanceof LdapInjection::FilterSink and",
-            "   sinkType = \"ldap_query\" and severity = \"high\" and vulnerabilityType = \"LDAP Injection\")",
-            "  or",
-            "  // Built-in: XML External Entity (XXE) injection",
-            "  (node instanceof Xxe::Sink and",
-            "   sinkType = \"xml_parsing\" and severity = \"high\" and vulnerabilityType = \"XML External Entity (XXE)\")",
-            "  or",
-            "  // Built-in: Server-Side Request Forgery (SSRF)",
-            "  (node instanceof ServerSideRequestForgery::Sink and",
-            "   sinkType = \"ssrf_request\" and severity = \"high\" and vulnerabilityType = \"Server-Side Request Forgery (SSRF)\")",
-            "  or",
-            "  // Built-in: Server-Side Template Injection (SSTI)",
-            "  (node instanceof TemplateInjection::Sink and",
-            "   sinkType = \"template_rendering\" and severity = \"critical\" and vulnerabilityType = \"Server-Side Template Injection (SSTI)\")",
-            "  or",
-            "  // Built-in: Unsafe Deserialization (pickle, yaml.load, …)",
-            "  (node instanceof UnsafeDeserialization::Sink and",
-            "   sinkType = \"deserialization\" and severity = \"critical\" and vulnerabilityType = \"Unsafe Deserialization\")",
-            "  or",
-            "  // Built-in: Open Redirect",
-            "  (node instanceof UrlRedirect::Sink and",
-            "   sinkType = \"url_redirect\" and severity = \"medium\" and vulnerabilityType = \"Open Redirect\")",
-            "  or",
-            "  // Built-in: Log Injection",
-            "  (node instanceof LogInjection::Sink and",
-            "   sinkType = \"log_output\" and severity = \"medium\" and vulnerabilityType = \"Log Injection\")",
-            "  or",
-            "  // Built-in: NoSQL Injection — string payload",
-            "  (node instanceof NoSqlInjection::StringSink and",
-            "   sinkType = \"nosql_query\" and severity = \"high\" and vulnerabilityType = \"NoSQL Injection\")",
-            "  or",
-            "  // Built-in: NoSQL Injection — dictionary/object payload",
-            "  (node instanceof NoSqlInjection::DictSink and",
-            "   sinkType = \"nosql_query\" and severity = \"high\" and vulnerabilityType = \"NoSQL Injection\")",
-            "  or",
-            "  // Built-in: XPath Injection",
-            "  (node instanceof XpathInjection::Sink and",
-            "   sinkType = \"xpath_query\" and severity = \"high\" and vulnerabilityType = \"XPath Injection\")",
-            "  or",
-            "  // Built-in: Tar/Zip Slip (path traversal via archive extraction)",
-            "  (node instanceof TarSlip::Sink and",
-            "   sinkType = \"file_access\" and severity = \"high\" and vulnerabilityType = \"Tar/Zip Slip\")",
-            "  or",
-            "  // Built-in: HTTP Header Injection",
-            "  (node instanceof HttpHeaderInjection::Sink and",
-            "   sinkType = \"http_header\" and severity = \"medium\" and vulnerabilityType = \"HTTP Header Injection\")",
-            "  or",
-            "  // Built-in: Cookie Injection",
-            "  (node instanceof CookieInjection::Sink and",
-            "   sinkType = \"cookie_write\" and severity = \"medium\" and vulnerabilityType = \"Cookie Injection\")",
-            "  or",
-            "  // Built-in: Regular Expression Injection / Polynomial ReDoS",
-            "  (node instanceof PolynomialReDoS::Sink and",
-            "   sinkType = \"regex_execution\" and severity = \"medium\" and vulnerabilityType = \"Regular Expression Injection (ReDoS)\")",
         ]
 
-        for sink in sinks:
+        for i, sink in enumerate(active_builtins):
+            if i > 0:
+                lines.append("  or")
+            lines.append(f"  // Built-in: {sink['vulnerability_type']} ({sink['comment']})")
+            lines.append(f"  (node instanceof {sink['class']} and")
+            lines.append(f"   sinkType = \"{sink['sink_type']}\" and severity = \"{sink['severity']}\" and vulnerabilityType = \"{sink['vulnerability_type']}\")")
+
+        for sink in config.sinks:
             lines.append("  or")
             lines.append(f"  // User-configured: {sink.description}")
 

@@ -41,6 +41,18 @@ def main(
             help="Path to taint analysis configuration file (YAML or JSON). Used with --analysis-level 3.",
         ),
     ] = None,
+    taint_use_defaults: Annotated[
+        bool,
+        typer.Option(
+            "--taint-defaults/--no-taint-defaults",
+            help=(
+                "Controls which taint sources/sinks/sanitizers are active:\n\n"
+                "  (no --taint-config)          → built-in defaults only\n"
+                "  --taint-config + --taint-defaults  → union of defaults and custom config [default]\n"
+                "  --taint-config + --no-taint-defaults → custom config only, replaces all defaults"
+            ),
+        ),
+    ] = True,
     using_ray: Annotated[
         bool,
         typer.Option("--ray/--no-ray", help="Enable Ray for distributed analysis."),
@@ -89,9 +101,13 @@ def main(
     if analysis_level >= 2 and not using_codeql:
         logger.error("Analysis levels 2 and 3 require --codeql flag")
         raise typer.Exit(code=1)
-    
+
     if analysis_level >= 3 and taint_config and not taint_config.exists():
         logger.error(f"Taint configuration file '{taint_config}' does not exist.")
+        raise typer.Exit(code=1)
+
+    if not taint_use_defaults and not taint_config:
+        logger.error("--no-taint-defaults requires --taint-config (otherwise nothing would be analyzed).")
         raise typer.Exit(code=1)
     
     options = AnalysisOptions(
@@ -108,6 +124,7 @@ def main(
         clear_cache=clear_cache,
         verbosity=verbosity,
         taint_config=taint_config,
+        taint_use_defaults=taint_use_defaults,
     )
 
     _set_log_level(options.verbosity)

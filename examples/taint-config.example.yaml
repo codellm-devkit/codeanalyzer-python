@@ -1,0 +1,137 @@
+# Taint analysis configuration for codeanalyzer --analysis-level 3
+#
+# Usage modes (controlled by --taint-defaults / --no-taint-defaults):
+#
+#   Defaults only (no --taint-config):
+#     codeanalyzer -i ./myproject -a 3 --codeql
+#
+#   Extend defaults with custom config (union):
+#     codeanalyzer -i ./myproject -a 3 --codeql --taint-config taint-config.yaml
+#
+#   Custom config only (replace all defaults):
+#     codeanalyzer -i ./myproject -a 3 --codeql --taint-config taint-config.yaml --no-taint-defaults
+#
+# All three sections (sources, sinks, sanitizers) are optional.
+# Omitted sections default to empty lists — the built-in CodeQL models
+# (RemoteFlowSource, SqlInjection::Sink, CommandInjection::Sink, …) are
+# always active unless explicitly suppressed via disabled_builtin_sinks.
+
+# ---------------------------------------------------------------------------
+# Global options
+# ---------------------------------------------------------------------------
+max_path_length: 10          # Maximum taint-path steps reported (default: 10)
+confidence_threshold: medium # Minimum confidence to include: high | medium | low
+group_by_vulnerability: true # Group log output by vulnerability type
+
+# ---------------------------------------------------------------------------
+# Suppress specific built-in CodeQL sink models
+# ---------------------------------------------------------------------------
+# Useful for noisy or irrelevant vulnerability types.
+# Full list: run `python -c "from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator; print(*TaintQueryGenerator.builtin_sink_names(), sep='\n')"`
+#
+# disabled_builtin_sinks:
+#   - PolynomialReDoS::Sink        # very noisy on regex-heavy codebases
+#   - CookieInjection::Sink
+
+# ---------------------------------------------------------------------------
+# Additional taint sources (extends or replaces RemoteFlowSource)
+# ---------------------------------------------------------------------------
+# Pattern must be a valid CodeQL API-graph expression evaluating to a
+# DataFlow::Node.  Use double quotes inside the pattern — CodeQL does not
+# support single-quoted strings.
+#
+sources:
+  # Environment variables (e.g. config loaded from os.environ)
+  - name: env_var
+    description: "os.environ and os.getenv calls"
+    pattern: 'API::moduleImport("os").getMember("environ").asSource()'
+    source_type: environment_variable
+    enabled: true
+
+  # CLI arguments (sys.argv)
+  - name: sys_argv
+    description: "sys.argv command-line arguments"
+    pattern: 'API::moduleImport("sys").getMember("argv").asSource()'
+    source_type: cli_argument
+    enabled: true
+
+  # Standard input
+  - name: builtin_input
+    description: "input() built-in"
+    pattern: 'API::builtin("input").getACall()'
+    source_type: user_input
+    enabled: true
+
+  # Disable one of the above without removing it:
+  # - name: some_source
+  #   ...
+  #   enabled: false
+
+# ---------------------------------------------------------------------------
+# Additional taint sinks (supplements built-in CodeQL sinks)
+# ---------------------------------------------------------------------------
+# Built-in sinks (SQL, command, path traversal, XSS, SSTI, SSRF, …) are
+# always active.  Add entries here for project-specific APIs not covered
+# by CodeQL's model library.
+#
+sinks:
+  # Project-specific DB wrapper
+  - name: custom_db_execute
+    description: "Internal db.execute() wrapper"
+    pattern: 'API::moduleImport("myapp.db").getMember("execute").getACall()'
+    sink_type: sql_execution
+    vulnerability_type: SQL Injection
+    severity: critical
+    argument_index: 0   # Only the first argument (the query string) is the sink
+
+  # Custom HTTP client
+  - name: internal_http_get
+    description: "Internal HTTP client get()"
+    pattern: 'API::moduleImport("myapp.http").getMember("get").getACall()'
+    sink_type: ssrf_request
+    vulnerability_type: Server-Side Request Forgery (SSRF)
+    severity: high
+    # argument_index omitted → any tainted argument triggers the sink
+
+# ---------------------------------------------------------------------------
+# Sanitizers (blocks taint propagation through the matching node)
+# ---------------------------------------------------------------------------
+# All enabled sanitizers unconditionally block all taint flows passing
+# through them.  The `sanitizes` list is informational documentation only.
+#
+sanitizers:
+  # HTML escaping
+  - name: html_escape
+    description: "html.escape() neutralises XSS"
+    pattern: 'API::moduleImport("html").getMember("escape").getACall()'
+    sanitizes: [xss, template_injection]
+    enabled: true
+
+  # Shell quoting
+  - name: shlex_quote
+    description: "shlex.quote() neutralises command injection"
+    pattern: 'API::moduleImport("shlex").getMember("quote").getACall()'
+    sanitizes: [command_injection]
+    enabled: true
+
+  # SQL parameter binding via parameterised query (cursor.execute with args)
+  # Note: prefer argument_index on the sink side for this; sanitizer shown
+  # here is illustrative.
+  - name: bleach_clean
+    description: "bleach.clean() HTML sanitiser"
+    pattern: 'API::moduleImport("bleach").getMember("clean").getACall()'
+    sanitizes: [xss]
+    enabled: true
+
+# ---------------------------------------------------------------------------
+# Exclusions
+# ---------------------------------------------------------------------------
+# exclude_files: glob patterns relative to the project root
+# exclude_functions: fully-qualified function names to exclude as sources/sinks
+#
+# exclude_files:
+#   - "tests/**"
+#   - "**/*_test.py"
+#
+# exclude_functions:
+#   - myapp.utils.sanitize_input

@@ -758,22 +758,15 @@ class Codeanalyzer:
         if not self.db_path:
             raise ValueError("CodeQL database not available for taint analysis")
 
-        # Load taint configuration
+        # Load taint configuration — load_config logs the mode and active counts
+        use_defaults = getattr(self.options, "taint_use_defaults", True)
         if self.options.taint_config:
-            logger.info(f"Loading taint configuration from {self.options.taint_config}")
             taint_config = TaintConfigLoader.load_config(
                 self.options.taint_config,
-                use_defaults=True
+                use_defaults=use_defaults,
             )
         else:
-            logger.info("Using default taint analysis configuration")
             taint_config = TaintConfigLoader.load_config(use_defaults=True)
-
-        # Log configuration summary
-        logger.info(f"Taint analysis configuration:")
-        logger.info(f"  - Sources: {len(taint_config.sources)}")
-        logger.info(f"  - Sinks: {len(taint_config.sinks)}")
-        logger.info(f"  - Sanitizers: {len(taint_config.sanitizers)}")
 
         # Perform analysis
         codeql = CodeQL(
