@@ -141,6 +141,43 @@ sanitizers:
         assert config.sources[0].name == "user_input"
         assert config.sinks[0].vulnerability_type == "SQL Injection"
 
+    def test_custom_configuration_json(self, tmp_path):
+        """Test custom taint configuration loaded from a JSON file."""
+        import json
+        config_data = {
+            "sources": [
+                {
+                    "name": "user_input",
+                    "description": "User input from input() function",
+                    "pattern": 'API::builtin("input").getACall()',
+                    "source_type": "user_input",
+                    "enabled": True,
+                }
+            ],
+            "sinks": [
+                {
+                    "name": "sql_execute",
+                    "description": "SQL query execution",
+                    "pattern": 'API::moduleImport("sqlite3").getMember("execute").getACall()',
+                    "sink_type": "sql_execution",
+                    "vulnerability_type": "SQL Injection",
+                    "severity": "critical",
+                    "enabled": True,
+                }
+            ],
+            "sanitizers": [],
+        }
+        config_file = tmp_path / "custom_taint_config.json"
+        config_file.write_text(json.dumps(config_data))
+
+        config = TaintConfigLoader.load_config(config_file, use_defaults=False)
+
+        assert len(config.sources) == 1
+        assert len(config.sinks) == 1
+        assert len(config.sanitizers) == 0
+        assert config.sources[0].name == "user_input"
+        assert config.sinks[0].vulnerability_type == "SQL Injection"
+
     def test_config_merge_with_defaults(self, tmp_path):
         """Test merging custom config with defaults."""
         # Create minimal custom config
