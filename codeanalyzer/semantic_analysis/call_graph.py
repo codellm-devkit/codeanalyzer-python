@@ -1,5 +1,5 @@
 ################################################################################
-# Copyright IBM Corporation 2025
+# Copyright IBM Corporation 2026
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -134,6 +134,7 @@ def to_digraph(app: PyApplication) -> nx.DiGraph:
             type=e.type,
             weight=e.weight,
             provenance=list(e.provenance),
+            tags=dict(e.tags),
         )
     return g
 
@@ -155,6 +156,7 @@ def from_digraph(g: nx.DiGraph) -> list:
                 type=data.get("type", "CALL_DEP"),
                 weight=int(data.get("weight", 1)),
                 provenance=list(data.get("provenance", [])),
+                tags=dict(data.get("tags", {})),
             )
         )
     return edges
@@ -250,8 +252,9 @@ def merge_edges(*edge_lists: list) -> list:
     """Merge multiple ``List[PyCallEdge]`` into one.
 
     Edges with the same ``(source, target)`` are coalesced: weights sum,
-    provenance is the sorted union. Useful for combining edges produced
-    by different backends (e.g. Jedi + CodeQL).
+    provenance is the sorted union, ``tags`` are dict-merged (later edge
+    lists win on key collision). Useful for combining edges produced by
+    different backends (e.g. Jedi + CodeQL) and by analysis passes.
     """
     by_key: Dict[Tuple[str, str], PyCallEdge] = {}
     for edges in edge_lists:
@@ -261,6 +264,7 @@ def merge_edges(*edge_lists: list) -> list:
                 cur = by_key[k]
                 cur.weight += e.weight
                 cur.provenance = sorted(set(cur.provenance) | set(e.provenance))
+                cur.tags = {**cur.tags, **e.tags}
             else:
                 by_key[k] = e.model_copy()
     return list(by_key.values())

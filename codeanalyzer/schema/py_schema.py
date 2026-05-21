@@ -1,5 +1,5 @@
 ################################################################################
-# Copyright IBM Corporation 2025
+# Copyright IBM Corporation 2026
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ from __future__ import annotations
 import gzip
 import inspect
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 import msgpack
 from pydantic import BaseModel
@@ -66,7 +66,7 @@ def msgpk(cls):
     def to_msgpack_bytes(self) -> bytes:
         """Serialize the model to compact binary format using MessagePack + gzip."""
         data = _prepare_for_serialization(self.model_dump())
-        msgpack_data = msgpack.packb(data, use_bin_type=True)
+        msgpack_data = cast(bytes, msgpack.packb(data, use_bin_type=True))
         return gzip.compress(msgpack_data)
 
     @classmethod
@@ -230,6 +230,30 @@ class PyVariableDeclaration(BaseModel):
 
 @builder
 @msgpk
+class PyDecorator(BaseModel):
+    """Represents a Python decorator applied to a class or callable.
+
+    Structured counterpart to a raw decorator source string. ``name`` is the
+    locally-written name (e.g. ``"route"``, ``"shared_task"``); ``qualified_name``
+    is the Jedi-resolved fully-qualified form when available (e.g.
+    ``"flask.Flask.route"``). Positional and keyword arguments are stored as
+    raw source-text fragments so downstream entrypoint finders can extract
+    framework-specific metadata (URL paths, HTTP methods, Celery task names)
+    without re-parsing decorator source.
+    """
+
+    name: str
+    qualified_name: Optional[str] = None
+    positional_arguments: List[str] = []
+    keyword_arguments: Dict[str, str] = {}
+    start_line: int = -1
+    end_line: int = -1
+    start_column: int = -1
+    end_column: int = -1
+
+
+@builder
+@msgpk
 class PyCallableParameter(BaseModel):
     """Represents a parameter of a Python callable (function/method)."""
 
@@ -269,10 +293,10 @@ class PyCallable(BaseModel):
     path: str
     signature: str  # e.g., module.<class_name>.function_name
     comments: List[PyComment] = []
-    decorators: List[str] = []
+    decorators: List[PyDecorator] = []
     parameters: List[PyCallableParameter] = []
     return_type: Optional[str] = None
-    code: str = None
+    code: str | None = None
     start_line: int = -1
     end_line: int = -1
     code_start_line: int = -1
@@ -310,9 +334,8 @@ class PyClass(BaseModel):
     name: str
     signature: str  # e.g., module.class_name
     comments: List[PyComment] = []
-    code: str = None
-    is_entrypoint: bool = False
-    entrypoint_framework: Optional[str] = None
+    code: str | None = None
+    decorators: List[PyDecorator] = []
     base_classes: List[str] = []
     methods: Dict[str, PyCallable] = {}
     attributes: Dict[str, PyClassAttribute] = {}
@@ -359,7 +382,70 @@ class PyCallEdge(BaseModel):
     target: str  # callee's PyCallable.signature
     type: Literal["CALL_DEP"] = "CALL_DEP"
     weight: int = 1
-    provenance: List[Literal["jedi", "codeql", "joern"]] = []
+    # Open vocabulary. Core backends stamp ``"jedi"`` / ``"codeql"`` /
+    # ``"joern"``; out-of-tree analysis passes use their own provenance
+    # token (e.g. ``"odoo_orm_dispatch"``). Kept as plain ``str`` so a
+    # persisted ``analysis.json`` round-trips regardless of which passes
+    # were installed when it was written.
+    provenance: List[str] = []
+    # Free-form, extension-namespaced metadata. For synthetic ORM-dispatch
+    # edges this carries the *trigger predicate* an LLM needs to reason
+    # about reachability (e.g. ``{"odoo.trigger.op": "write",
+    # "odoo.trigger.fields": "partner_id,pricelist_id",
+    # "odoo.trigger.model": "sale.order"}``). Never interpreted by core.
+    tags: Dict[str, str] = {}
+
+
+@builder
+@msgpk
+class PyEntrypoint(BaseModel):
+    """Represents a framework entrypoint into the application.
+
+    Mirrors the JackEE (Antoniadis et al., PLDI 2020) notion of a framework-
+    independent entrypoint, populated by the per-framework finders under
+    ``codeanalyzer/frameworks/``. Each ``PyEntrypoint`` is a *reference* to a
+    ``PyCallable`` (by signature, like ``PyCallEdge.source``/``target``); the
+    callable itself lives in the symbol table.
+
+    Class-level entrypoints (Tornado ``RequestHandler``, Django CBV, gRPC
+    ``Servicer``) are expanded by the finder into one ``PyEntrypoint`` per
+    framework-dispatched method (``get``/``post``/...), so this collection is
+    callable-keyed.
+
+    Framework-specific metadata for *core* frameworks is carried via flat
+    optional fields rather than a polymorphic ``details`` union to keep
+    downstream consumers simple. Out-of-tree extensions instead use the
+    free-form, namespaced ``tags`` dict (see below), since core cannot
+    grow a field per extension-defined concept.
+    """
+
+    signature: str  # references a PyCallable.signature in the symbol table
+    framework: str
+    # Open vocabulary. Core finders use the curated tokens below; an
+    # out-of-tree pass may emit its own (and should set
+    # ``detection_source="extension"`` plus describe specifics in
+    # ``tags``). Kept as ``str`` so persisted analysis round-trips
+    # regardless of which extensions were installed.
+    #   decorator | base_class | url_resolver | router_mount | blueprint |
+    #   lambda_template | typer_subapp | click_add_command |
+    #   argparse_dispatch | convention | extension
+    detection_source: str
+    route_path: Optional[str] = None
+    http_methods: List[str] = []
+    # Framework-specific identifiers (populated only when applicable).
+    celery_task_name: Optional[str] = None
+    cli_command_name: Optional[str] = None
+    lambda_handler_key: Optional[str] = None
+    grpc_service_name: Optional[str] = None
+    source_file: Optional[str] = (
+        None  # file declaring the binding (urls.py, template.yaml, ...)
+    )
+    # Free-form, extension-namespaced metadata. For an HTTP route this
+    # carries the *auth guard* an LLM needs to judge exploitability
+    # (e.g. ``{"odoo.guard.http_auth": "public"}``); the LLM joins this
+    # with synthetic-edge ``tags`` along the call path. Never interpreted
+    # by core.
+    tags: Dict[str, str] = {}
 
 
 @builder
@@ -369,3 +455,4 @@ class PyApplication(BaseModel):
 
     symbol_table: Dict[str, PyModule]
     call_graph: List[PyCallEdge] = []
+    entrypoints: Dict[str, List[PyEntrypoint]] = {}

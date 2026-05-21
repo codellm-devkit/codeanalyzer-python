@@ -10,6 +10,7 @@ import ray
 from codeanalyzer.utils import logger
 from codeanalyzer.schema import PyApplication, PyModule, model_dump_json, model_validate_json
 from codeanalyzer.schema.py_schema import PyCallEdge
+from codeanalyzer.analysis import run_pipeline
 from codeanalyzer.semantic_analysis.call_graph import (
     jedi_call_graph_edges,
     merge_edges,
@@ -399,10 +400,21 @@ class Codeanalyzer:
 
         # Recreate pyapplication
         app = PyApplication.builder().symbol_table(symbol_table).call_graph(call_graph).build()
-        
-        # Save to cache
+
+        # Cache the BASE application (symbol table + Jedi/CodeQL call
+        # graph) before running analysis passes. Pass output —
+        # entrypoints and synthetic dispatch edges — is deliberately
+        # never cached so it cannot go stale when an out-of-tree
+        # extension is added, changed, or removed; the pipeline re-runs
+        # on every analyze().
         self._save_analysis_cache(app, cache_file)
-        
+
+        # Enrich with the pluggable analysis-pass pipeline: in-tree
+        # entrypoint finders plus out-of-tree passes registered via the
+        # ``codeanalyzer.analysis_passes`` entry-point group (e.g. the
+        # Odoo ORM-dispatch edge synthesizer).
+        app = run_pipeline(app)
+
         return app
 
     def _load_pyapplication_from_cache(self, cache_file: Path) -> PyApplication:
