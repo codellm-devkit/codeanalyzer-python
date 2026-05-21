@@ -1,0 +1,170 @@
+================================================================================
+PROGRESS — Issue #27: JackEE-style entrypoint detection for Python
+Branch: 27-framework-independent-entrypoint-detection-jackee-style-finders
+================================================================================
+
+OBJECTIVE
+---------
+Port the JackEE entrypoint-finder architecture (Antoniadis et al., PLDI 2020)
+that codeanalyzer-java uses under com.ibm.cldk.javaee to this Python analyzer.
+A pluggable pass layer discovers per-framework entrypoints (Flask, FastAPI,
+Django, Tornado, Celery, Click, gRPC, AWS Lambda, ...) plus out-of-tree
+extensions (e.g. Odoo ORM-dispatch synthetic edges) without core knowing
+their vocabulary. CRUD detection is intentionally out of scope.
+
+
+(a) STAGED CHANGES — uncommitted, currently in the index
+--------------------------------------------------------
+Note: `git log main..HEAD` is empty — no commits have landed on this branch
+yet; everything below is staged work pending commit.
+
+New files (the pass layer + framework scaffolding):
+  codeanalyzer/analysis/__init__.py          (50 lines)
+    Public surface: AnalysisPass, AnalysisContext, AnalysisResult,
+    BindingFact, BindingKind, discover_passes, order_passes, run_pipeline,
+    ANALYSIS_PASS_ENTRYPOINT_GROUP.
+
+  codeanalyzer/analysis/_pass.py             (164 lines)
+    Defines the AnalysisPass superset abstraction. A pass runs after the
+    symbol table and base (Jedi/CodeQL) call graph are built and may
+    contribute entrypoints and/or synthetic call edges. Declares the
+    `codeanalyzer.analysis_passes` entry-point group for out-of-tree
+    extensions. BindingFact / BindingKind capture routing pre-pass output
+    (Django path()/re_path()/include(), FastAPI include_router/mount,
+    Flask blueprints, AWS SAM templates, Typer/Click/argparse CLI bindings).
+    AnalysisContext is frozen, carries `external_bindings`,
+    `resolve_base_chain`, and a mutable `shared` dict for inter-pass
+    handoff via requires/provides capability tokens.
+
+  codeanalyzer/analysis/registry.py          (252 lines)
+    discover_passes — instantiates BUILTIN_PASS_FACTORIES (currently empty;
+    concrete finders to be added) plus entry-point-registered passes,
+    skipping broken extensions with a warning.
+    order_passes — topological sort on requires/provides; unsatisfied
+    requirements or cycles raise PassOrderingError. Ties broken by name
+    for determinism.
+    make_default_context — builds resolve_base_chain by walking the symbol
+    table (handles short-name fallback for unresolved base classes).
+    run_pipeline — runs ordered passes, merging each result into the
+    running PyApplication (entrypoints keyed by framework; edges folded
+    in via merge_edges) so downstream passes see upstream contributions.
+    Pass output is intentionally never cached.
+
+  codeanalyzer/frameworks/__init__.py        (empty package marker)
+  codeanalyzer/frameworks/_base.py           (133 lines)
+    AbstractEntrypointFinder — a thin AnalysisPass subclass mirroring
+    com.ibm.cldk.javaee.AbstractEntrypointFinder. Subclasses set
+    `framework_name` and implement two predicates:
+      find_function(func, ctx) -> Optional[PyEntrypoint]
+        for decorator / convention / binding-table-bound entrypoints
+        (Flask @app.route, FastAPI @router.get, Celery @shared_task,
+        Click @cli.command, AWS Lambda `def handler(event, context)`,
+        Django function views via urls.py).
+      find_class(cls, ctx) -> List[PyEntrypoint]
+        for inheritance-based entrypoints (Tornado RequestHandler,
+        Django CBV, gRPC Servicer) — one PyEntrypoint per dispatched
+        method on the subclass.
+    Provided `run` iterates `iter_callables_in_symbol_table` and
+    `iter_classes_in_symbol_table` and collects results.
+
+  poetry.lock                                (3169 lines — new lockfile)
+
+Modified files:
+  codeanalyzer/core.py
+    Imports and invokes `run_pipeline` from the analysis layer at the
+    end of analyze(). The BASE PyApplication (symbol table + Jedi/CodeQL
+    call graph) is cached BEFORE pass enrichment; pass output is never
+    cached so it cannot go stale when extensions change.
+
+  codeanalyzer/schema/py_schema.py
+    + New PyDecorator model — structured replacement for raw decorator
+      source strings. Carries name, qualified_name (Jedi-resolved when
+      available; currently None), positional_arguments and
+      keyword_arguments as raw source-text fragments so finders can read
+      framework metadata (URL paths, HTTP methods, Celery task names)
+      without re-parsing.
+    + PyCallable.decorators changed from List[str] to List[PyDecorator].
+    + PyClass.decorators added (List[PyDecorator]).
+    + PyCallEdge.provenance widened from Literal["jedi","codeql","joern"]
+      to open List[str] so extensions can stamp their own provenance
+      tokens (e.g. "odoo_orm_dispatch"). Adds free-form `tags: Dict[str,
+      str]` for extension-namespaced metadata (e.g. ORM-dispatch trigger
+      predicate: odoo.trigger.op/fields/model).
+    + New PyEntrypoint model — references a PyCallable by signature.
+      Fields: framework, detection_source (open vocabulary: decorator |
+      base_class | url_resolver | router_mount | blueprint |
+      lambda_template | typer_subapp | click_add_command |
+      argparse_dispatch | convention | extension), optional route_path,
+      http_methods, celery_task_name, cli_command_name,
+      lambda_handler_key, grpc_service_name, source_file, plus
+      free-form `tags` for extension metadata (e.g. auth guard:
+      odoo.guard.http_auth).
+    + PyApplication grows `entrypoints: Dict[str, List[PyEntrypoint]]`
+      keyed by framework name.
+    + Type hygiene: `code: str = None` -> `code: str | None = None`,
+      explicit cast on msgpack.packb.
+
+  codeanalyzer/syntactic_analysis/symbol_table_builder.py
+    + New _pydecorators helper — converts ast decorator nodes to
+      PyDecorator (handles ast.Call vs bare ast.Name / ast.Attribute,
+      extracts positional + keyword args via ast.unparse, captures
+      source ranges).
+    + Wired into PyClass and PyCallable construction so decorators are
+      structured from the moment the symbol table is built.
+
+  codeanalyzer/semantic_analysis/call_graph.py
+    + to_digraph / from_digraph propagate the new `tags` field on
+      PyCallEdge.
+    + merge_edges dict-merges `tags` (later edge lists win on key
+      collision) alongside the existing weight-sum + provenance-union.
+
+  codeanalyzer/semantic_analysis/codeql/__init__.py
+  codeanalyzer/semantic_analysis/codeql/codeql_analysis.py
+  codeanalyzer/semantic_analysis/codeql/codeql_query_runner.py
+    Copyright header bumped 2025 -> 2026; one formatting cleanup in
+    _CallableResolver.resolve. No behavioral change.
+
+  .python-version
+    Pinned to 3.14.5 (was empty).
+
+
+(b) RECENT COMMITS ON THIS BRANCH
+---------------------------------
+No commits have been added on top of main yet on this branch; all the
+work above is staged but uncommitted. For context, the most recent
+commits already on main (which this branch is based on) are:
+
+  3b3e10e  Merge PR #26 — codeql-edge-startline-join-fallback
+  95ec64a  Fix CodeQL call-graph edges dropped on (file, start_line)
+           join miss (#25)
+  eae4e9c  Ignore analysis.json output files
+  a639a1b  Merge PR #23 — feat/add-codeql-call-graph
+  aec915f  Release 0.1.14: call graph + CodeQL integration
+  1238c03  Fix formatting for command options in README
+  b4ba1a6  Edit version number and changelog
+  920192b  Add help messages
+  83edd3a  Merge PR #21 — AnalysisOptions configuration refactor
+  3bbf565  refactor: replace Codeanalyzer constructor parameters with
+           AnalysisOptions dataclass
+
+These provide the substrate this work builds on: the merged call graph
+(Jedi + CodeQL backends, edge-merge semantics in call_graph.merge_edges)
+and the AnalysisOptions-based configuration entry point that core.py
+invokes.
+
+
+WHAT'S STILL OPEN
+-----------------
+- BUILTIN_PASS_FACTORIES in codeanalyzer/analysis/registry.py is empty;
+  concrete in-tree finders under codeanalyzer/frameworks/ (Flask,
+  FastAPI, Django, Tornado, Celery, Click, gRPC, AWS Lambda, ...) have
+  not landed yet.
+- No routing pre-pass is wired in core, so AnalysisContext.
+  external_bindings is currently always empty — Django urls.py /
+  FastAPI include_router / Flask blueprints will not produce
+  binding-table-bound entrypoints until a pre-pass populates it.
+- qualified_name on PyDecorator is left None; Jedi-based resolution is
+  a follow-up so finders currently match on the locally-written name.
+- Tests for the pass discovery/ordering/pipeline machinery and for the
+  new schema fields are not in this staged set.
+- Nothing has been committed yet on this branch.

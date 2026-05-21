@@ -17,6 +17,7 @@ from codeanalyzer.schema.py_schema import (
     PyClass,
     PyClassAttribute,
     PyComment,
+    PyDecorator,
     PyImport,
     PyModule,
     PySymbol,
@@ -220,6 +221,7 @@ class SymbolTableBuilder:
                     for base in child.bases
                     if isinstance(base, ast.expr)
                 ])
+                .decorators(self._pydecorators(child.decorator_list))
                 .methods(self._callables(child, script, prefix=signature))  # Pass class signature as prefix
                 .attributes(self._class_attributes(child, script))
                 .inner_classes(self._add_class(child, script, prefix=signature))  # Pass class signature as prefix
@@ -240,7 +242,7 @@ class SymbolTableBuilder:
                 start_line = child.lineno
                 end_line = getattr(child, "end_lineno", start_line + len(child.body))
                 code = ast.unparse(child).strip()
-                decorators = [ast.unparse(d) for d in child.decorator_list]
+                decorators = self._pydecorators(child.decorator_list)
                 
                 if prefix:
                     # We're in a nested context - build signature with prefix
@@ -288,7 +290,51 @@ class SymbolTableBuilder:
                 callables[method_name] = py_callable  # Key by method name, not full signature
 
         return callables
-    
+
+    def _pydecorators(self, decorator_list: List[ast.expr]) -> List[PyDecorator]:
+        """Convert ``ast`` decorator nodes to structured ``PyDecorator``.
+
+        ``positional_arguments``/``keyword_arguments`` keep raw source
+        fragments (via ``ast.unparse``) so entrypoint finders can read
+        framework metadata — route paths, HTTP methods, Celery task names —
+        without re-parsing. ``qualified_name`` is left ``None``; Jedi-based
+        resolution is not done here and finders fall back to ``name``.
+        """
+        decorators: List[PyDecorator] = []
+        for d in decorator_list:
+            if isinstance(d, ast.Call):
+                func = d.func
+                positional = [ast.unparse(a) for a in d.args]
+                keywords: Dict[str, str] = {
+                    (kw.arg if kw.arg is not None else "**"): ast.unparse(kw.value)
+                    for kw in d.keywords
+                }
+            else:
+                func = d
+                positional = []
+                keywords = {}
+
+            if isinstance(func, ast.Attribute):
+                name = func.attr
+            elif isinstance(func, ast.Name):
+                name = func.id
+            else:
+                name = ast.unparse(func)
+
+            decorators.append(
+                PyDecorator(
+                    name=name,
+                    qualified_name=None,
+                    positional_arguments=positional,
+                    keyword_arguments=keywords,
+                    start_line=getattr(d, "lineno", -1),
+                    end_line=getattr(d, "end_lineno", -1),
+                    start_column=getattr(d, "col_offset", -1),
+                    end_column=getattr(d, "end_col_offset", -1),
+                )
+            )
+        return decorators
+
     def _pycomments(self, node: ast.AST, source: str) -> List[PyComment]:
         """
         Extracts all PyComment instances (docstring and # comments) from within a specific AST node's body.

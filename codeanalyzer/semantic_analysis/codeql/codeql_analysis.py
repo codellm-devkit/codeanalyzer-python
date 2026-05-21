@@ -1,5 +1,5 @@
 ################################################################################
-# Copyright IBM Corporation 2025
+# Copyright IBM Corporation 2026
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -75,9 +75,7 @@ class _CallableResolver:
             resolver._by_name.setdefault((abs_path, c.name), []).append(c)
         return resolver
 
-    def resolve(
-        self, file: str, start_line: int, name: str, arity: int
-    ) -> Any:
+    def resolve(self, file: str, start_line: int, name: str, arity: int) -> Any:
         exact = self._by_loc.get((file, start_line))
         if exact is not None:
             return exact
