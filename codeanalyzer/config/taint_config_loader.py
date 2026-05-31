@@ -211,6 +211,7 @@ class TaintConfigLoader:
         
         # Scalar options: custom always wins (it owns those knobs).
         # Booleans that are "additive" (enabling features) use OR.
+        # include_remote_flow_source: custom wins (False disables the built-in source).
         return TaintAnalysisConfig(
             sources=list(base_sources.values()),
             sinks=list(base_sinks.values()),
@@ -223,6 +224,7 @@ class TaintConfigLoader:
             include_safe_flows=custom.include_safe_flows or base.include_safe_flows,
             group_by_vulnerability=custom.group_by_vulnerability,
             disabled_builtin_sinks=list(set(base.disabled_builtin_sinks + custom.disabled_builtin_sinks)),
+            include_remote_flow_source=custom.include_remote_flow_source,
         )
     
     @staticmethod
@@ -260,6 +262,7 @@ class TaintConfigLoader:
             include_safe_flows=config.include_safe_flows,
             group_by_vulnerability=config.group_by_vulnerability,
             disabled_builtin_sinks=config.disabled_builtin_sinks,
+            include_remote_flow_source=config.include_remote_flow_source,
         )
     
     @staticmethod
@@ -326,17 +329,17 @@ class TaintConfigLoader:
             duplicates = [name for name in sanitizer_names if sanitizer_names.count(name) > 1]
             issues.append(f"Duplicate sanitizer names found: {', '.join(set(duplicates))}")
         
-        # Validate patterns are not empty
+        # Validate that pattern strings are not blank when provided
         for source in config.sources:
-            if not source.pattern.strip():
+            if source.pattern is not None and not source.pattern.strip():
                 issues.append(f"Empty pattern for source: {source.name}")
-        
+
         for sink in config.sinks:
-            if not sink.pattern.strip():
+            if sink.pattern is not None and not sink.pattern.strip():
                 issues.append(f"Empty pattern for sink: {sink.name}")
-        
+
         for sanitizer in config.sanitizers:
-            if not sanitizer.pattern.strip():
+            if sanitizer.pattern is not None and not sanitizer.pattern.strip():
                 issues.append(f"Empty pattern for sanitizer: {sanitizer.name}")
         
         # Check if there are any sources and sinks

@@ -50,7 +50,9 @@ Uses the modern CodeQL Python API (codeql/python-all >= 7.x):
 from typing import List
 from codeanalyzer.schema.py_schema import (
     TaintAnalysisConfig,
+    TaintNodeRef,
     TaintSourceConfig,
+    TaintSinkConfig,
     TaintSanitizerConfig,
 )
 
@@ -100,21 +102,27 @@ class TaintQueryGenerator:
         """Generate complete taint analysis CodeQL query from configuration.
 
         The query combines CodeQL's built-in security models with any
-        user-configured patterns, giving comprehensive coverage without
-        requiring exhaustive manual API enumeration.
+        user-configured patterns and/or explicit call-site locations from
+        ``TaintSourceConfig.locations``, ``TaintSinkConfig.locations``, and
+        ``TaintSanitizerConfig.locations``.
+
+        For focused queries (pinned to specific call sites), callers should
+        build a ``TaintAnalysisConfig`` whose source/sink entries use the
+        ``locations`` field — typically via
+        ``CodeQL._build_source_configs()`` / ``CodeQL._build_sink_configs()``.
 
         Args:
-            config: Taint analysis configuration
+            config: Taint analysis configuration.
 
         Returns:
             str: Complete CodeQL query ready for execution
         """
-        query_parts = []
-
-        query_parts.append(TaintQueryGenerator._generate_header())
-        query_parts.append(TaintQueryGenerator._generate_imports())
-        query_parts.append(TaintQueryGenerator._generate_source_predicate(config.sources))
-        query_parts.append(TaintQueryGenerator._generate_sink_predicate(config))
+        query_parts = [
+            TaintQueryGenerator._generate_header(),
+            TaintQueryGenerator._generate_imports(),
+            TaintQueryGenerator._generate_source_predicate(config),
+            TaintQueryGenerator._generate_sink_predicate(config),
+        ]
 
         if config.sanitizers:
             query_parts.append(TaintQueryGenerator._generate_sanitizer_predicate(config.sanitizers))
@@ -239,43 +247,126 @@ import semmle.python.dataflow.new.RemoteFlowSources"""
         return f"{pattern}.asSource()"
 
     # ------------------------------------------------------------------
+    # Location clause helpers (shared by source, sink, sanitizer generators)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _location_source_clause(ref: TaintNodeRef, source_type: str) -> List[str]:
+        """QL lines for one location-pinned source clause (without a preceding 'or')."""
+        escaped = ref.file_path.replace("\\", "\\\\").replace('"', '\\"')
+        conds = [
+            f'node.getLocation().getFile().getAbsolutePath() = "{escaped}"',
+            f"node.getLocation().getStartLine() = {ref.start_line}",
+        ]
+        if ref.start_column >= 0:
+            conds.append(f"node.getLocation().getStartColumn() = {ref.start_column}")
+        conds.append(f'sourceType = "{source_type}"')
+        ind = "    "
+        return [
+            f"  // Location-pinned: {ref.file_path}:{ref.start_line}",
+            "  (\n" + ind + (" and\n" + ind).join(conds) + "\n  )",
+        ]
+
+    @staticmethod
+    def _location_sink_clause(
+        ref: TaintNodeRef, sink_type: str, severity: str, vulnerability_type: str
+    ) -> List[str]:
+        """QL lines for one location-pinned sink clause (without a preceding 'or')."""
+        escaped = ref.file_path.replace("\\", "\\\\").replace('"', '\\"')
+        conds = [
+            f'node.getLocation().getFile().getAbsolutePath() = "{escaped}"',
+            f"node.getLocation().getStartLine() = {ref.start_line}",
+        ]
+        if ref.start_column >= 0:
+            conds.append(f"node.getLocation().getStartColumn() = {ref.start_column}")
+        conds += [
+            f'sinkType = "{sink_type}"',
+            f'severity = "{severity}"',
+            f'vulnerabilityType = "{vulnerability_type}"',
+        ]
+        ind = "    "
+        return [
+            f"  // Location-pinned: {ref.file_path}:{ref.start_line}",
+            "  (\n" + ind + (" and\n" + ind).join(conds) + "\n  )",
+        ]
+
+    @staticmethod
+    def _location_sanitizer_clause(ref: TaintNodeRef) -> List[str]:
+        """QL lines for one location-pinned sanitizer clause (without a preceding 'or')."""
+        escaped = ref.file_path.replace("\\", "\\\\").replace('"', '\\"')
+        conds = [
+            f'node.getLocation().getFile().getAbsolutePath() = "{escaped}"',
+            f"node.getLocation().getStartLine() = {ref.start_line}",
+        ]
+        if ref.start_column >= 0:
+            conds.append(f"node.getLocation().getStartColumn() = {ref.start_column}")
+        ind = "    "
+        return [
+            f"  // Location-pinned: {ref.file_path}:{ref.start_line}",
+            "  (\n" + ind + (" and\n" + ind).join(conds) + "\n  )",
+        ]
+
+    # ------------------------------------------------------------------
     # Predicate generators
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _generate_source_predicate(sources: List[TaintSourceConfig]) -> str:
-        """Generate isSource predicate combining built-in RemoteFlowSource with
-        any user-configured sources.
+    def _generate_source_predicate(config: "TaintAnalysisConfig") -> str:
+        """Generate isSource predicate from configuration.
 
-        Built-in ``RemoteFlowSource`` covers all web-framework request inputs
-        (Flask ``request.args/form/json``, Django ``request.GET/POST``,
-        FastAPI, aiohttp, Tornado, …) recognised by CodeQL's model library.
-        User-configured patterns extend this with project-specific sources
-        (e.g. ``sys.argv``, ``input()``, custom HTTP clients).
+        Combines (in order):
+        1. Built-in ``RemoteFlowSource`` when ``config.include_remote_flow_source``
+           is ``True`` (covers all web-framework request inputs).
+        2. For each ``TaintSourceConfig`` entry:
+           - A pattern-based clause when ``entry.pattern`` is set.
+           - One location-pinned clause per ``TaintNodeRef`` in
+             ``entry.locations``, with optional column precision.
+
+        When ``config.include_remote_flow_source`` is ``False`` (set
+        automatically by the focused-query helpers) only the explicitly
+        listed sources are active.
         """
         lines = [
             "predicate isConfiguredSource(DataFlow::Node node, string sourceType) {",
-            "  // Built-in: all web-framework request sources recognised by CodeQL",
-            "  (node instanceof RemoteFlowSource and sourceType = \"web_request\")",
         ]
 
-        for source in sources:
-            lines.append("  or")
-            lines.append(f"  // User-configured: {source.description}")
-            node_expr = TaintQueryGenerator._pattern_to_source_node(source.pattern)
-            lines.append(f"  (node = {node_expr} and sourceType = \"{source.source_type}\")")
+        first = True
+        if config.include_remote_flow_source:
+            lines.append("  // Built-in: all web-framework request sources recognised by CodeQL")
+            lines.append('  (node instanceof RemoteFlowSource and sourceType = "web_request")')
+            first = False
+
+        for source in config.sources:
+            if source.pattern:
+                if not first:
+                    lines.append("  or")
+                lines.append(f"  // User-configured: {source.description}")
+                node_expr = TaintQueryGenerator._pattern_to_source_node(source.pattern)
+                lines.append(f'  (node = {node_expr} and sourceType = "{source.source_type}")')
+                first = False
+            for ref in source.locations:
+                if not first:
+                    lines.append("  or")
+                lines.extend(TaintQueryGenerator._location_source_clause(ref, source.source_type))
+                first = False
+
+        if first:
+            lines.append("  none()")
 
         lines.append("}")
         return "\n".join(lines)
 
     @classmethod
     def _generate_sink_predicate(cls, config: "TaintAnalysisConfig") -> str:
-        """Generate isSink predicate combining built-in security sinks with
-        any user-configured sinks.
+        """Generate isSink predicate from configuration.
 
-        Built-in sinks are driven by ``BUILTIN_SINKS``; any whose ``class``
-        appears in ``config.disabled_builtin_sinks`` are omitted.
-        User-configured patterns in ``config.sinks`` are appended afterward.
+        Combines (in order):
+        1. Built-in CodeQL sink classes from ``BUILTIN_SINKS`` unless suppressed
+           via ``config.disabled_builtin_sinks``.
+        2. For each ``TaintSinkConfig`` entry:
+           - A pattern-based clause when ``entry.pattern`` is set.
+           - One location-pinned clause per ``TaintNodeRef`` in
+             ``entry.locations``, with optional column precision.
         """
         disabled = set(config.disabled_builtin_sinks)
         active_builtins = [s for s in cls.BUILTIN_SINKS if s["class"] not in disabled]
@@ -284,45 +375,76 @@ import semmle.python.dataflow.new.RemoteFlowSources"""
             "predicate isConfiguredSink(DataFlow::Node node, string sinkType, string severity, string vulnerabilityType) {",
         ]
 
-        for i, sink in enumerate(active_builtins):
-            if i > 0:
+        first = True
+        for sink in active_builtins:
+            if not first:
                 lines.append("  or")
             lines.append(f"  // Built-in: {sink['vulnerability_type']} ({sink['comment']})")
             lines.append(f"  (node instanceof {sink['class']} and")
-            lines.append(f"   sinkType = \"{sink['sink_type']}\" and severity = \"{sink['severity']}\" and vulnerabilityType = \"{sink['vulnerability_type']}\")")
+            lines.append(
+                f'   sinkType = "{sink["sink_type"]}" and severity = "{sink["severity"]}"'
+                f' and vulnerabilityType = "{sink["vulnerability_type"]}")'
+            )
+            first = False
 
         for sink in config.sinks:
-            lines.append("  or")
-            lines.append(f"  // User-configured: {sink.description}")
+            if sink.pattern:
+                if not first:
+                    lines.append("  or")
+                lines.append(f"  // User-configured: {sink.description}")
+                if sink.argument_index is not None:
+                    node_expr = TaintQueryGenerator._pattern_to_sink_node(sink.pattern, sink.argument_index)
+                else:
+                    node_expr = TaintQueryGenerator._pattern_to_default_sink_node(sink.pattern)
+                lines.extend([
+                    "  (",
+                    f'    node = {node_expr} and',
+                    f'    sinkType = "{sink.sink_type}" and',
+                    f'    severity = "{sink.severity}" and',
+                    f'    vulnerabilityType = "{sink.vulnerability_type}"',
+                    "  )",
+                ])
+                first = False
+            for ref in sink.locations:
+                if not first:
+                    lines.append("  or")
+                lines.extend(TaintQueryGenerator._location_sink_clause(
+                    ref, sink.sink_type, sink.severity, sink.vulnerability_type
+                ))
+                first = False
 
-            if sink.argument_index is not None:
-                node_expr = TaintQueryGenerator._pattern_to_sink_node(sink.pattern, sink.argument_index)
-            else:
-                node_expr = TaintQueryGenerator._pattern_to_default_sink_node(sink.pattern)
-
-            lines.append("  (")
-            lines.append(f"    node = {node_expr} and")
-            lines.append(f"    sinkType = \"{sink.sink_type}\" and")
-            lines.append(f"    severity = \"{sink.severity}\" and")
-            lines.append(f"    vulnerabilityType = \"{sink.vulnerability_type}\"")
-            lines.append("  )")
+        if first:
+            lines.append("  none()")
 
         lines.append("}")
         return "\n".join(lines)
 
     @staticmethod
     def _generate_sanitizer_predicate(sanitizers: List[TaintSanitizerConfig]) -> str:
-        """Generate isConfiguredSanitizer predicate from configuration."""
+        """Generate isConfiguredSanitizer predicate from configuration.
+
+        For each ``TaintSanitizerConfig`` entry:
+        - A pattern-based clause when ``entry.pattern`` is set.
+        - One location-pinned clause per ``TaintNodeRef`` in ``entry.locations``.
+        """
         lines = [
             "predicate isConfiguredSanitizer(DataFlow::Node node) {",
         ]
 
-        for i, sanitizer in enumerate(sanitizers):
-            if i > 0:
-                lines.append("  or")
-            lines.append(f"  // {sanitizer.description}")
-            node_expr = TaintQueryGenerator._pattern_to_sanitizer_node(sanitizer.pattern)
-            lines.append(f"  node = {node_expr}")
+        first = True
+        for sanitizer in sanitizers:
+            if sanitizer.pattern:
+                if not first:
+                    lines.append("  or")
+                lines.append(f"  // {sanitizer.description}")
+                node_expr = TaintQueryGenerator._pattern_to_sanitizer_node(sanitizer.pattern)
+                lines.append(f"  node = {node_expr}")
+                first = False
+            for ref in sanitizer.locations:
+                if not first:
+                    lines.append("  or")
+                lines.extend(TaintQueryGenerator._location_sanitizer_clause(ref))
+                first = False
 
         lines.append("}")
         return "\n".join(lines)

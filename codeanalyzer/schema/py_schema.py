@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 import gzip
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from typing_extensions import Literal
 import msgpack
 
@@ -256,6 +256,9 @@ class PyCallsite(BaseModel):
     start_column: int = -1
     end_line: int = -1
     end_column: int = -1
+    file_path: Optional[str] = None
+    """Relative path of the source file from the project root.
+    Populated when the call site is derived from CodeQL analysis results."""
 
 
 @builder
@@ -343,6 +346,34 @@ class PyModule(BaseModel):
 # Taint Analysis Models (Analysis Level 3)
 # ============================================================================
 
+class TaintNodeRef(BaseModel):
+    """Minimal call-site reference for pinning taint query nodes to specific
+    source locations.
+
+    Accepted wherever ``PyTaintSource`` / ``PyTaintSink`` are used in the
+    focused taint APIs, and also as a location-based alternative to CodeQL
+    patterns in ``TaintSourceConfig``, ``TaintSinkConfig``, and
+    ``TaintSanitizerConfig``.
+
+    Only the source-code location is required — no knowledge of CodeQL
+    API-graph syntax is needed.  Useful when integrating call-site data
+    from other tools (Joern, grep, symbol-table analysis, etc.).
+    """
+
+    file_path: str
+    """Absolute path to the source file containing the call site."""
+
+    start_line: int
+    """1-based line number of the call-site expression."""
+
+    start_column: int = -1
+    """0-based column offset of the call-site expression.
+    When ``-1`` (default) the column constraint is omitted from the generated
+    query, giving line-level precision.  When set, the query adds a
+    ``getStartColumn()`` constraint for sub-line precision — useful when two
+    calls share the same line (e.g. ``foo(bar(x))``)."""
+
+
 @builder
 @msgpk
 class TaintSourceConfig(BaseModel):
@@ -359,7 +390,7 @@ class TaintSourceConfig(BaseModel):
     description: str
     """Human-readable explanation of what this source represents."""
 
-    pattern: str
+    pattern: Optional[str] = None
     """CodeQL API-graph expression that matches the source call site.
 
     Must be a valid CodeQL expression that evaluates to a ``DataFlow::Node``,
@@ -367,6 +398,21 @@ class TaintSourceConfig(BaseModel):
     ``API::moduleImport("flask").getMember("request").getMember("args").asSource()``.
     All string literals inside the pattern must use double quotes (CodeQL
     does not support single-quoted strings).
+
+    Either ``pattern`` or a non-empty ``locations`` list must be provided.
+    """
+
+    locations: List["TaintNodeRef"] = []
+    """Explicit call-site locations to use as sources instead of (or in
+    addition to) a ``pattern``.
+
+    Each ``TaintNodeRef`` pins the source predicate to a specific
+    ``(file, line)`` — or ``(file, line, column)`` when
+    ``TaintNodeRef.start_column >= 0``.  Useful when call-site data comes
+    from another analysis tool (Joern, symbol-table scan, grep, …) rather
+    than a CodeQL API-graph expression.
+
+    All locations in this list are labelled with ``source_type``.
     """
 
     source_type: str
@@ -379,6 +425,15 @@ class TaintSourceConfig(BaseModel):
 
     enabled: bool = True
     """When ``False`` this entry is filtered out before query generation."""
+
+    @model_validator(mode="after")
+    def _require_pattern_or_locations(self) -> "TaintSourceConfig":
+        if not self.pattern and not self.locations:
+            raise ValueError(
+                f"TaintSourceConfig '{self.name}': either 'pattern' or a non-empty "
+                "'locations' list must be provided."
+            )
+        return self
 
 
 @builder
@@ -397,12 +452,24 @@ class TaintSinkConfig(BaseModel):
     description: str
     """Human-readable explanation of what this sink represents."""
 
-    pattern: str
+    pattern: Optional[str] = None
     """CodeQL API-graph expression that matches the sink call site.
 
     Must be a valid CodeQL expression that evaluates to a ``DataFlow::Node``,
     e.g. ``API::moduleImport("sqlite3").getMember("execute").getACall()``.
     All string literals inside the pattern must use double quotes.
+
+    Either ``pattern`` or a non-empty ``locations`` list must be provided.
+    """
+
+    locations: List["TaintNodeRef"] = []
+    """Explicit call-site locations to use as sinks instead of (or in
+    addition to) a ``pattern``.
+
+    Each ``TaintNodeRef`` pins the sink predicate to a specific
+    ``(file, line)`` — or ``(file, line, column)`` when
+    ``TaintNodeRef.start_column >= 0``.  All locations are labelled with
+    ``sink_type``, ``vulnerability_type``, and ``severity`` from this entry.
     """
 
     sink_type: str
@@ -432,12 +499,21 @@ class TaintSinkConfig(BaseModel):
     argument_index: Optional[int] = None
     """Zero-based index of the argument that must be tainted for the sink to fire.
 
-    When set, the generated predicate uses
-    ``pattern.getParameter(argument_index).asSink()`` so that only the
+    Only applicable when ``pattern`` is set.  When set, the generated predicate
+    uses ``pattern.getParameter(argument_index).asSink()`` so that only the
     specific argument position is tracked (e.g. index ``0`` for the query
     string in ``cursor.execute(query, params)``).  When ``None`` the call
     itself is used as the sink node.
     """
+
+    @model_validator(mode="after")
+    def _require_pattern_or_locations(self) -> "TaintSinkConfig":
+        if not self.pattern and not self.locations:
+            raise ValueError(
+                f"TaintSinkConfig '{self.name}': either 'pattern' or a non-empty "
+                "'locations' list must be provided."
+            )
+        return self
 
 
 @builder
@@ -456,12 +532,22 @@ class TaintSanitizerConfig(BaseModel):
     description: str
     """Human-readable explanation of what this sanitizer does."""
 
-    pattern: str
+    pattern: Optional[str] = None
     """CodeQL API-graph expression that matches the sanitizing call site.
 
     Must be a valid CodeQL expression that evaluates to a ``DataFlow::Node``,
     e.g. ``API::moduleImport("html").getMember("escape").getACall()``.
     All string literals inside the pattern must use double quotes.
+
+    Either ``pattern`` or a non-empty ``locations`` list must be provided.
+    """
+
+    locations: List["TaintNodeRef"] = []
+    """Explicit call-site locations to treat as sanitizers.
+
+    Each ``TaintNodeRef`` pins the sanitizer predicate to a specific
+    ``(file, line)`` — or ``(file, line, column)`` when
+    ``TaintNodeRef.start_column >= 0``.
     """
 
     sanitizes: List[str] = []
@@ -474,6 +560,15 @@ class TaintSanitizerConfig(BaseModel):
 
     enabled: bool = True
     """When ``False`` this entry is filtered out before query generation."""
+
+    @model_validator(mode="after")
+    def _require_pattern_or_locations(self) -> "TaintSanitizerConfig":
+        if not self.pattern and not self.locations:
+            raise ValueError(
+                f"TaintSanitizerConfig '{self.name}': either 'pattern' or a non-empty "
+                "'locations' list must be provided."
+            )
+        return self
 
 
 @builder
@@ -533,6 +628,19 @@ class TaintAnalysisConfig(BaseModel):
     without replacing the entire built-in sink set.
     """
 
+    include_remote_flow_source: bool = True
+    """Whether to include CodeQL's built-in ``RemoteFlowSource`` as a taint source.
+
+    When ``True`` (default), all web-framework request inputs recognised by
+    CodeQL (Flask ``request.args``, Django ``request.GET``, FastAPI, …) are
+    included as sources automatically.
+
+    Set to ``False`` when building a focused query restricted to only the
+    user-configured sources in ``sources`` — for example when calling
+    ``analyze_taint_flows_from_source("env_variable")`` to find only
+    environment-variable flows, not web-request flows.
+    """
+
 
 @builder
 @msgpk
@@ -574,6 +682,9 @@ class PyTaintSink(BaseModel):
     """The call-site in the symbol table where tainted data is consumed."""
 
     severity: Literal["critical", "high", "medium", "low"] = "medium"
+    vulnerability_type: Optional[str] = None
+    """The specific vulnerability class this sink instance represents
+    (e.g. ``"SQL Injection"``).  Populated from CodeQL analysis results."""
     description: Optional[str] = None
 
 

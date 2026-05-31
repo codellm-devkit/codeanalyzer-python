@@ -1231,3 +1231,1107 @@ class TestTaintAnalysisNewVulnerabilityTypes:
             f"Expected at least 1 SSRF flow, got {len(ssrf_flows)}. "
             f"All flows: {[f.vulnerability_type for f in result.flows]}"
         )
+
+
+class TestFocusedTaintAPIs_Unit:
+    """Unit tests (no CodeQL) for TaintNodeRef, location-based config, and focused query generation."""
+
+    # ---- helpers -------------------------------------------------------
+
+    def _make_source(self, file_path="/abs/app/views.py", line=20, col=-1, source_type="web_request"):
+        from codeanalyzer.schema.py_schema import PyTaintSource, PyCallsite
+        return PyTaintSource(
+            source_type=source_type,
+            call_site=PyCallsite(
+                method_name="request.args.get",
+                start_line=line,
+                end_line=line,
+                start_column=col,
+                file_path=file_path,
+            ),
+        )
+
+    def _make_sink(self, file_path="/abs/app/views.py", line=35, col=-1,
+                   sink_type="sql_execution", severity="critical",
+                   vulnerability_type="SQL Injection"):
+        from codeanalyzer.schema.py_schema import PyTaintSink, PyCallsite
+        return PyTaintSink(
+            sink_type=sink_type,
+            severity=severity,
+            vulnerability_type=vulnerability_type,
+            call_site=PyCallsite(
+                method_name="cursor.execute",
+                start_line=line,
+                end_line=line,
+                start_column=col,
+                file_path=file_path,
+            ),
+        )
+
+    def _focused_source_query(self, sources, base_config=None):
+        from codeanalyzer.semantic_analysis.codeql.codeql_analysis import CodeQL
+        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
+        cfg = base_config or get_default_taint_config()
+        focused = cfg.model_copy(update={
+            "sources": CodeQL._build_source_configs(sources),
+            "include_remote_flow_source": False,
+        })
+        return TaintQueryGenerator.generate_query(focused)
+
+    def _focused_sink_query(self, sinks, base_config=None):
+        from codeanalyzer.semantic_analysis.codeql.codeql_analysis import CodeQL
+        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
+        cfg = base_config or get_default_taint_config()
+        focused = cfg.model_copy(update={
+            "sinks": CodeQL._build_sink_configs(sinks),
+            "disabled_builtin_sinks": TaintQueryGenerator.builtin_sink_names(),
+        })
+        return TaintQueryGenerator.generate_query(focused)
+
+    # ---- TaintNodeRef construction -------------------------------------
+
+    def test_taint_node_ref_requires_file_and_line(self):
+        """TaintNodeRef must require file_path and start_line."""
+        from codeanalyzer.schema.py_schema import TaintNodeRef
+        ref = TaintNodeRef(file_path="/abs/app.py", start_line=42)
+        assert ref.file_path == "/abs/app.py"
+        assert ref.start_line == 42
+        assert ref.start_column == -1
+
+    def test_taint_node_ref_with_column(self):
+        """TaintNodeRef with start_column stores the column for sub-line precision."""
+        from codeanalyzer.schema.py_schema import TaintNodeRef
+        ref = TaintNodeRef(file_path="/abs/app.py", start_line=10, start_column=8)
+        assert ref.start_column == 8
+
+    # ---- TaintSourceConfig / TaintSinkConfig with locations -----------
+
+    def test_source_config_with_locations_no_pattern(self):
+        """TaintSourceConfig accepts locations as a replacement for pattern."""
+        from codeanalyzer.schema.py_schema import TaintNodeRef, TaintSourceConfig
+        ref = TaintNodeRef(file_path="/abs/app.py", start_line=42)
+        sc = TaintSourceConfig(name="x", description="d", source_type="web_request", locations=[ref])
+        assert sc.pattern is None
+        assert len(sc.locations) == 1
+
+    def test_source_config_requires_pattern_or_locations(self):
+        """TaintSourceConfig must raise ValueError when neither pattern nor locations is given."""
+        from codeanalyzer.schema.py_schema import TaintSourceConfig
+        with pytest.raises(ValueError, match="pattern.*locations|locations.*pattern"):
+            TaintSourceConfig(name="bad", description="d", source_type="t")
+
+    def test_sink_config_requires_pattern_or_locations(self):
+        """TaintSinkConfig must raise ValueError when neither pattern nor locations is given."""
+        from codeanalyzer.schema.py_schema import TaintSinkConfig
+        with pytest.raises(ValueError):
+            TaintSinkConfig(name="bad", description="d", sink_type="sql_execution",
+                            vulnerability_type="SQL Injection", severity="critical")
+
+    # ---- generate_query: location-based source ------------------------
+
+    def test_location_source_in_query_contains_file_and_line(self):
+        """A TaintSourceConfig with locations must embed file and line in the query."""
+        source = self._make_source(file_path="/myapp/views.py", line=42, source_type="web_request")
+        query = self._focused_source_query([source])
+        assert 'getAbsolutePath() = "/myapp/views.py"' in query
+        assert "getStartLine() = 42" in query
+        assert 'sourceType = "web_request"' in query
+
+    def test_location_source_does_not_use_isinstance(self):
+        """Location-pinned source predicate must not reference RemoteFlowSource or other classes."""
+        source = self._make_source()
+        query = self._focused_source_query([source])
+        assert "node instanceof RemoteFlowSource" not in query
+        assert "instanceof" not in query.split("predicate isConfiguredSource")[1].split("predicate isConfiguredSink")[0]
+
+    def test_location_source_with_column_adds_column_constraint(self):
+        """When start_column >= 0, the query includes a getStartColumn() constraint."""
+        source = self._make_source(file_path="/app.py", line=10, col=8)
+        query = self._focused_source_query([source])
+        assert "getStartColumn() = 8" in query
+
+    def test_location_source_without_column_omits_column_constraint(self):
+        """When start_column == -1 (default), the isConfiguredSource predicate has no getStartColumn()."""
+        source = self._make_source(file_path="/app.py", line=10, col=-1)
+        query = self._focused_source_query([source])
+        # Isolate just the isConfiguredSource predicate body
+        src_pred = query.split("predicate isConfiguredSource")[1].split("predicate isConfiguredSink")[0]
+        assert "getStartColumn()" not in src_pred
+
+    def test_focused_source_query_keeps_builtin_sinks(self):
+        """Pinning the source side must not suppress built-in sink classes."""
+        source = self._make_source(file_path="/routes.py", line=15)
+        query = self._focused_source_query([source])
+        assert "SqlInjection::Sink" in query
+
+    # ---- generate_query: location-based sink --------------------------
+
+    def test_location_sink_in_query_contains_file_line_and_metadata(self):
+        """A TaintSinkConfig with locations must embed file, line, and metadata."""
+        sink = self._make_sink(file_path="/db/queries.py", line=88,
+                               sink_type="sql_execution", severity="critical",
+                               vulnerability_type="SQL Injection")
+        query = self._focused_sink_query([sink])
+        assert 'getAbsolutePath() = "/db/queries.py"' in query
+        assert "getStartLine() = 88" in query
+        assert 'sinkType = "sql_execution"' in query
+        assert 'severity = "critical"' in query
+        assert 'vulnerabilityType = "SQL Injection"' in query
+
+    def test_location_sink_does_not_use_isinstance(self):
+        """Location-pinned sink predicate must not reference SqlInjection::Sink or other classes."""
+        sink = self._make_sink()
+        query = self._focused_sink_query([sink])
+        # Only the source predicate section should have no instanceof in it either, but
+        # specifically verify no class-based instanceof in the sink predicate.
+        assert "SqlInjection::Sink" not in query
+
+    def test_location_sink_with_column_adds_column_constraint(self):
+        """When start_column >= 0, the sink predicate includes a getStartColumn() constraint."""
+        sink = self._make_sink(file_path="/db.py", line=5, col=4)
+        query = self._focused_sink_query([sink])
+        assert "getStartColumn() = 4" in query
+
+    def test_focused_sink_query_keeps_remote_flow_source(self):
+        """Pinning the sink side must not suppress RemoteFlowSource on the source side."""
+        sink = self._make_sink(file_path="/db.py", line=50)
+        query = self._focused_sink_query([sink])
+        assert "node instanceof RemoteFlowSource" in query
+
+    # ---- multiple locations OR-combined --------------------------------
+
+    def test_multiple_sources_or_combined_in_query(self):
+        """Two source locations must both appear in the generated predicate."""
+        from codeanalyzer.schema.py_schema import TaintNodeRef
+        src_a = self._make_source(file_path="/a.py", line=1)
+        src_b = TaintNodeRef(file_path="/b.py", start_line=2)
+        query = self._focused_source_query([src_a, src_b])
+        assert 'getAbsolutePath() = "/a.py"' in query
+        assert 'getAbsolutePath() = "/b.py"' in query
+
+    def test_multiple_sinks_or_combined_in_query(self):
+        """Two sink locations must both appear in the generated predicate."""
+        from codeanalyzer.schema.py_schema import TaintNodeRef
+        sink_a = self._make_sink(file_path="/db1.py", line=10)
+        sink_b = TaintNodeRef(file_path="/db2.py", start_line=20)
+        query = self._focused_sink_query([sink_a, sink_b])
+        assert 'getAbsolutePath() = "/db1.py"' in query
+        assert 'getAbsolutePath() = "/db2.py"' in query
+
+    # ---- both sides pinned (analyze_taint_flow_paths) -----------------
+
+    def test_both_sides_pinned_excludes_remote_flow_source_and_builtin_sinks(self):
+        """Pinning both source and sink must exclude RemoteFlowSource and built-in sink classes."""
+        from codeanalyzer.semantic_analysis.codeql.codeql_analysis import CodeQL
+        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
+        source = self._make_source(file_path="/views.py", line=10)
+        sink = self._make_sink(file_path="/models.py", line=99)
+        cfg = get_default_taint_config()
+        focused = cfg.model_copy(update={
+            "sources": CodeQL._build_source_configs([source]),
+            "sinks": CodeQL._build_sink_configs([sink]),
+            "include_remote_flow_source": False,
+            "disabled_builtin_sinks": TaintQueryGenerator.builtin_sink_names(),
+        })
+        query = TaintQueryGenerator.generate_query(focused)
+        assert 'getAbsolutePath() = "/views.py"' in query
+        assert "getStartLine() = 10" in query
+        assert 'getAbsolutePath() = "/models.py"' in query
+        assert "getStartLine() = 99" in query
+        assert "node instanceof RemoteFlowSource" not in query
+        assert "node instanceof SqlInjection::Sink" not in query
+
+    # ---- _build_source_configs / _build_sink_configs ------------------
+
+    def test_build_source_configs_groups_by_source_type(self):
+        """PyTaintSource items with the same source_type share one TaintSourceConfig."""
+        from codeanalyzer.semantic_analysis.codeql.codeql_analysis import CodeQL
+        s1 = self._make_source(file_path="/a.py", line=1, source_type="web_request")
+        s2 = self._make_source(file_path="/b.py", line=2, source_type="web_request")
+        s3 = self._make_source(file_path="/c.py", line=3, source_type="user_input")
+        configs = CodeQL._build_source_configs([s1, s2, s3])
+        assert len(configs) == 2
+        web_cfg = next(c for c in configs if c.source_type == "web_request")
+        assert len(web_cfg.locations) == 2
+
+    def test_build_source_configs_preserves_column(self):
+        """Column information from PyTaintSource.call_site must be carried into TaintNodeRef."""
+        from codeanalyzer.semantic_analysis.codeql.codeql_analysis import CodeQL
+        source = self._make_source(file_path="/app.py", line=5, col=12)
+        configs = CodeQL._build_source_configs([source])
+        assert configs[0].locations[0].start_column == 12
+
+    def test_build_source_configs_taint_node_ref_labelled_pinned_source(self):
+        """Raw TaintNodeRef items are labelled 'pinned_source' in the config."""
+        from codeanalyzer.schema.py_schema import TaintNodeRef
+        from codeanalyzer.semantic_analysis.codeql.codeql_analysis import CodeQL
+        ref = TaintNodeRef(file_path="/x.py", start_line=99)
+        configs = CodeQL._build_source_configs([ref])
+        assert configs[0].source_type == "pinned_source"
+
+    def test_build_sink_configs_groups_by_type_triple(self):
+        """PyTaintSink items with the same (sink_type, vuln_type, severity) share one config."""
+        from codeanalyzer.semantic_analysis.codeql.codeql_analysis import CodeQL
+        s1 = self._make_sink(file_path="/db1.py", line=1)
+        s2 = self._make_sink(file_path="/db2.py", line=2)
+        configs = CodeQL._build_sink_configs([s1, s2])
+        assert len(configs) == 1
+        assert len(configs[0].locations) == 2
+
+    def test_build_sink_configs_fallback_vulnerability_type(self):
+        """When PyTaintSink.vulnerability_type is None, sink_type is used as the fallback."""
+        from codeanalyzer.schema.py_schema import PyTaintSink, PyCallsite
+        from codeanalyzer.semantic_analysis.codeql.codeql_analysis import CodeQL
+        sink = PyTaintSink(
+            sink_type="sql_execution",
+            severity="high",
+            vulnerability_type=None,
+            call_site=PyCallsite(method_name="execute", start_line=5, end_line=5, file_path="/x.py"),
+        )
+        configs = CodeQL._build_sink_configs([sink])
+        assert configs[0].vulnerability_type == "sql_execution"
+
+    # ---- schema field round-trips -------------------------------------
+
+    def test_callsite_file_path_is_set_on_synthetic_source(self):
+        """PyCallsite built directly must accept file_path."""
+        from codeanalyzer.schema.py_schema import PyCallsite
+        cs = PyCallsite(method_name="input", start_line=7, end_line=7, file_path="main.py")
+        assert cs.file_path == "main.py"
+
+    def test_taint_sink_vulnerability_type_field(self):
+        """PyTaintSink must store vulnerability_type and it must be round-trippable."""
+        from codeanalyzer.schema.py_schema import PyTaintSink, PyCallsite
+        sink = PyTaintSink(
+            sink_type="sql_execution",
+            severity="critical",
+            vulnerability_type="SQL Injection",
+            call_site=PyCallsite(method_name="execute", start_line=1, end_line=1, file_path="x.py"),
+        )
+        assert sink.vulnerability_type == "SQL Injection"
+        d = sink.model_dump()
+        assert d["vulnerability_type"] == "SQL Injection"
+
+
+class TestFocusedTaintAPIs_Integration:
+    """Integration tests for the three focused taint APIs using the flask_app fixture.
+
+    The flask_app contains SQL injection, command injection, path traversal, XSS,
+    and SSTI — all originating from web_request (Flask request.args / URL params).
+
+    Each focused test first runs analyze_taint_flows() to obtain real
+    PyTaintSource / PyTaintSink instances with populated file_path fields,
+    then calls the focused API with those concrete callsite objects.
+    """
+
+    def _skip_if_no_codeql(self, codeql_packs_dir):
+        import shutil
+        if not shutil.which("codeql"):
+            pytest.skip("CodeQL not available")
+        if codeql_packs_dir is None:
+            pytest.skip("CodeQL packs not available")
+
+    def test_analyze_from_sources_singular_returns_flows_for_that_source(self, flask_db, codeql_packs_dir):
+        """analyze_taint_flows_from_sources([source]) must return only flows from that callsite."""
+        self._skip_if_no_codeql(codeql_packs_dir)
+        codeql = CodeQL(
+            project_dir=FIXTURES_DIR / "flask_app",
+            db_path=flask_db,
+            codeql_packs_dir=codeql_packs_dir,
+        )
+        cfg = get_default_taint_config()
+        full = codeql.analyze_taint_flows(config_override=cfg)
+        assert len(full.flows) >= 1, "Full analysis must find at least one flow"
+
+        first_source = full.flows[0].source
+        assert first_source.call_site.file_path, "file_path must be set after analyze_taint_flows"
+
+        focused = codeql.analyze_taint_flows_from_sources([first_source], config_override=cfg)
+        assert len(focused.flows) >= 1
+        src_key = (first_source.call_site.file_path, first_source.call_site.start_line)
+        assert all(
+            (f.source.call_site.file_path, f.source.call_site.start_line) == src_key
+            for f in focused.flows
+        ), "All focused flows must originate from the pinned source call site"
+
+    def test_analyze_to_sinks_singular_returns_flows_for_that_sink(self, flask_db, codeql_packs_dir):
+        """analyze_taint_flows_to_sinks([sink]) must return only flows reaching that callsite."""
+        self._skip_if_no_codeql(codeql_packs_dir)
+        codeql = CodeQL(
+            project_dir=FIXTURES_DIR / "flask_app",
+            db_path=flask_db,
+            codeql_packs_dir=codeql_packs_dir,
+        )
+        cfg = get_default_taint_config()
+        full = codeql.analyze_taint_flows(config_override=cfg)
+        assert len(full.flows) >= 1
+
+        sql_flow = next((f for f in full.flows if f.vulnerability_type == "SQL Injection"), None)
+        assert sql_flow is not None, "flask_app must have at least one SQL Injection flow"
+        target_sink = sql_flow.sink
+        assert target_sink.call_site.file_path, "file_path must be set on sink"
+
+        focused = codeql.analyze_taint_flows_to_sinks([target_sink], config_override=cfg)
+        assert len(focused.flows) >= 1
+        snk_key = (target_sink.call_site.file_path, target_sink.call_site.start_line)
+        assert all(
+            (f.sink.call_site.file_path, f.sink.call_site.start_line) == snk_key
+            for f in focused.flows
+        ), "All focused flows must reach the pinned sink call site"
+
+    def test_analyze_flow_paths_returns_flows_between_source_and_sink(self, flask_db, codeql_packs_dir):
+        """analyze_taint_flow_paths([source], [sink]) must return only flows between those callsites."""
+        self._skip_if_no_codeql(codeql_packs_dir)
+        codeql = CodeQL(
+            project_dir=FIXTURES_DIR / "flask_app",
+            db_path=flask_db,
+            codeql_packs_dir=codeql_packs_dir,
+        )
+        cfg = get_default_taint_config()
+        full = codeql.analyze_taint_flows(config_override=cfg)
+
+        sql_flow = next((f for f in full.flows if f.vulnerability_type == "SQL Injection"), None)
+        assert sql_flow is not None
+        pinned_source = sql_flow.source
+        pinned_sink = sql_flow.sink
+
+        focused = codeql.analyze_taint_flow_paths([pinned_source], [pinned_sink], config_override=cfg)
+        assert len(focused.flows) >= 1
+        src_key = (pinned_source.call_site.file_path, pinned_source.call_site.start_line)
+        snk_key = (pinned_sink.call_site.file_path, pinned_sink.call_site.start_line)
+        for f in focused.flows:
+            assert (f.source.call_site.file_path, f.source.call_site.start_line) == src_key
+            assert (f.sink.call_site.file_path, f.sink.call_site.start_line) == snk_key
+
+    def test_analyze_from_sources_taint_node_ref_accepted(self, flask_db, codeql_packs_dir):
+        """analyze_taint_flows_from_sources must accept TaintNodeRef without bootstrapping."""
+        self._skip_if_no_codeql(codeql_packs_dir)
+        from codeanalyzer.schema.py_schema import TaintNodeRef
+        codeql = CodeQL(
+            project_dir=FIXTURES_DIR / "flask_app",
+            db_path=flask_db,
+            codeql_packs_dir=codeql_packs_dir,
+        )
+        cfg = get_default_taint_config()
+        # Discover a real source location first, then pass it as a TaintNodeRef
+        full = codeql.analyze_taint_flows(config_override=cfg)
+        first_source = full.flows[0].source
+        ref = TaintNodeRef(
+            file_path=first_source.call_site.file_path,
+            start_line=first_source.call_site.start_line,
+        )
+        focused = codeql.analyze_taint_flows_from_sources([ref], config_override=cfg)
+        assert len(focused.flows) >= 1
+        src_key = (first_source.call_site.file_path, first_source.call_site.start_line)
+        assert all(
+            (f.source.call_site.file_path, f.source.call_site.start_line) == src_key
+            for f in focused.flows
+        ), "TaintNodeRef must pin correctly without a full PyTaintSource"
+
+
+# ============================================================================
+# New coverage additions
+# ============================================================================
+
+class TestQueryGeneratorInternals:
+    """Unit tests for TaintQueryGenerator code paths not covered elsewhere.
+
+    Focuses on the pattern-helper else-branches, location-based sanitizer
+    predicates, empty-predicate guards, config-sig structure, special
+    characters in file paths, and the sanitizer predicate presence toggle.
+    """
+
+    # ------------------------------------------------------------------
+    # A1-A5: Pattern-helper else-branches
+    # ------------------------------------------------------------------
+
+    def test_pattern_to_source_node_non_getcall_appends_assource(self):
+        """Pattern without .getACall() suffix must be returned with .asSource() appended."""
+        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
+        pattern = 'API::moduleImport("flask").getMember("request").getMember("args")'
+        result = TaintQueryGenerator._pattern_to_source_node(pattern)
+        assert result == f"{pattern}.asSource()"
+
+    def test_pattern_to_source_node_getcall_returned_unchanged(self):
+        """Pattern already ending in .getACall() must be returned as-is."""
+        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
+        pattern = 'API::builtin("input").getACall()'
+        assert TaintQueryGenerator._pattern_to_source_node(pattern) == pattern
+
+    def test_pattern_to_sink_node_non_getcall_uses_getparameter_assink(self):
+        """Pattern without .getACall() must use .getParameter(N).asSink() directly."""
+        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
+        pattern = 'API::moduleImport("sqlite3").getMember("execute")'
+        result = TaintQueryGenerator._pattern_to_sink_node(pattern, 0)
+        assert result == f"{pattern}.getParameter(0).asSink()"
+
+    def test_pattern_to_default_sink_node_non_getcall_uses_assink(self):
+        """Pattern without .getACall() and no argument_index must use .asSink()."""
+        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
+        pattern = 'API::moduleImport("sqlite3").getMember("execute")'
+        result = TaintQueryGenerator._pattern_to_default_sink_node(pattern)
+        assert result == f"{pattern}.asSink()"
+
+    def test_pattern_to_default_sink_node_getcall_uses_getanarg(self):
+        """Pattern ending in .getACall() and no argument_index must use .getAnArg()."""
+        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
+        pattern = 'API::moduleImport("foo").getMember("bar").getACall()'
+        result = TaintQueryGenerator._pattern_to_default_sink_node(pattern)
+        assert ".getAnArg()" in result
+        assert ".asSink()" not in result
+
+    def test_pattern_to_sanitizer_node_non_getcall_appends_assource(self):
+        """Pattern without .getACall() must be returned with .asSource() appended."""
+        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
+        pattern = 'API::moduleImport("html").getMember("escape")'
+        result = TaintQueryGenerator._pattern_to_sanitizer_node(pattern)
+        assert result == f"{pattern}.asSource()"
+
+    # ------------------------------------------------------------------
+    # A4 in generated query: argument_index=None + .getACall() → .getAnArg()
+    # ------------------------------------------------------------------
+
+    def test_sink_predicate_argument_index_none_generates_getanarg_in_query(self):
+        """`argument_index=None` with a .getACall() pattern must produce .getAnArg() in the query."""
+        from codeanalyzer.schema.py_schema import TaintAnalysisConfig, TaintSinkConfig
+        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
+        config = TaintAnalysisConfig(
+            sinks=[TaintSinkConfig(
+                name="s",
+                description="d",
+                pattern='API::moduleImport("foo").getMember("bar").getACall()',
+                sink_type="foo_sink",
+                vulnerability_type="Test Vuln",
+                severity="low",
+                argument_index=None,
+            )]
+        )
+        query = TaintQueryGenerator.generate_query(config)
+        assert ".getAnArg()" in query
+
+    # ------------------------------------------------------------------
+    # A6: Location-based sanitizer clause
+    # ------------------------------------------------------------------
+
+    def test_location_sanitizer_clause_in_query(self):
+        """TaintSanitizerConfig with locations must embed file/line in the generated query."""
+        from codeanalyzer.schema.py_schema import TaintNodeRef, TaintSanitizerConfig
+        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
+        ref = TaintNodeRef(file_path="/abs/san.py", start_line=15)
+        config = get_default_taint_config().model_copy(update={
+            "sanitizers": [TaintSanitizerConfig(
+                name="loc_san", description="d", locations=[ref], sanitizes=["xss"],
+            )]
+        })
+        query = TaintQueryGenerator.generate_query(config)
+        assert "predicate isConfiguredSanitizer" in query
+        assert 'getAbsolutePath() = "/abs/san.py"' in query
+        assert "getStartLine() = 15" in query
+
+    def test_location_sanitizer_with_column_adds_column_constraint(self):
+        """Location-based sanitizer with start_column >= 0 must add getStartColumn()."""
+        from codeanalyzer.schema.py_schema import TaintNodeRef, TaintSanitizerConfig
+        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
+        ref = TaintNodeRef(file_path="/abs/san.py", start_line=15, start_column=4)
+        config = get_default_taint_config().model_copy(update={
+            "sanitizers": [TaintSanitizerConfig(
+                name="loc_san", description="d", locations=[ref], sanitizes=["xss"],
+            )]
+        })
+        query = TaintQueryGenerator.generate_query(config)
+        assert "getStartColumn() = 4" in query
+
+    # ------------------------------------------------------------------
+    # A7-A8: Empty-predicate guards
+    # ------------------------------------------------------------------
+
+    def test_empty_source_config_with_remote_disabled_generates_none(self):
+        """sources=[] + include_remote_flow_source=False must produce none() in source predicate."""
+        from codeanalyzer.schema.py_schema import TaintAnalysisConfig
+        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
+        config = TaintAnalysisConfig(sources=[], include_remote_flow_source=False)
+        query = TaintQueryGenerator.generate_query(config)
+        src_pred = query.split("predicate isConfiguredSource")[1].split("predicate isConfiguredSink")[0]
+        assert "none()" in src_pred
+        assert "RemoteFlowSource" not in src_pred
+
+    def test_all_builtin_sinks_disabled_no_user_sinks_generates_none(self):
+        """All builtins disabled + empty user sinks must produce none() in sink predicate."""
+        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
+        config = get_default_taint_config().model_copy(update={
+            "sinks": [],
+            "disabled_builtin_sinks": TaintQueryGenerator.builtin_sink_names(),
+        })
+        query = TaintQueryGenerator.generate_query(config)
+        sink_pred = query.split("predicate isConfiguredSink")[1].split("private module")[0]
+        assert "none()" in sink_pred
+
+    # ------------------------------------------------------------------
+    # A9: ConfigSig with and without isBarrier
+    # ------------------------------------------------------------------
+
+    def test_config_sig_with_sanitizers_includes_isbarrier(self):
+        """_generate_config_sig(has_sanitizers=True) must include isBarrier block."""
+        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
+        block = TaintQueryGenerator._generate_config_sig(has_sanitizers=True)
+        assert "isBarrier" in block
+        assert "isConfiguredSanitizer" in block
+
+    def test_config_sig_without_sanitizers_excludes_isbarrier(self):
+        """_generate_config_sig(has_sanitizers=False) must not include isBarrier."""
+        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
+        block = TaintQueryGenerator._generate_config_sig(has_sanitizers=False)
+        assert "isBarrier" not in block
+        assert "isConfiguredSanitizer" not in block
+
+    # ------------------------------------------------------------------
+    # A10: Special characters in file paths
+    # ------------------------------------------------------------------
+
+    def test_location_clause_escapes_backslash_in_path(self):
+        """Backslashes in a TaintNodeRef file_path must be doubled in the generated QL string."""
+        from codeanalyzer.schema.py_schema import TaintNodeRef, TaintSourceConfig
+        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
+        win_path = r"C:\Users\dev\app.py"
+        ref = TaintNodeRef(file_path=win_path, start_line=1)
+        config = get_default_taint_config().model_copy(update={
+            "sources": [TaintSourceConfig(
+                name="win", description="d", source_type="t", locations=[ref],
+            )],
+            "include_remote_flow_source": False,
+        })
+        query = TaintQueryGenerator.generate_query(config)
+        # Each \ must appear as \\ in the QL string literal
+        assert win_path.replace("\\", "\\\\") in query
+
+    def test_location_clause_escapes_double_quote_in_path(self):
+        """Double quotes in a TaintNodeRef file_path must be escaped in the QL string."""
+        from codeanalyzer.schema.py_schema import TaintNodeRef, TaintSourceConfig
+        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
+        quoted_path = '/abs/my"app.py'
+        ref = TaintNodeRef(file_path=quoted_path, start_line=1)
+        config = get_default_taint_config().model_copy(update={
+            "sources": [TaintSourceConfig(
+                name="q", description="d", source_type="t", locations=[ref],
+            )],
+            "include_remote_flow_source": False,
+        })
+        query = TaintQueryGenerator.generate_query(config)
+        assert '\\"' in query
+
+    # ------------------------------------------------------------------
+    # A11: Sanitizer predicate presence toggle
+    # ------------------------------------------------------------------
+
+    def test_generate_query_includes_sanitizer_predicate_when_sanitizers_present(self):
+        """Full query must contain predicate isConfiguredSanitizer when sanitizers are configured."""
+        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
+        # Default config has 6 sanitizers
+        assert len(get_default_taint_config().sanitizers) > 0
+        query = TaintQueryGenerator.generate_query(get_default_taint_config())
+        assert "predicate isConfiguredSanitizer" in query
+
+    def test_generate_query_excludes_sanitizer_predicate_when_no_sanitizers(self):
+        """Full query must NOT contain predicate isConfiguredSanitizer when sanitizers list is empty."""
+        from codeanalyzer.schema.py_schema import TaintAnalysisConfig
+        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
+        config = TaintAnalysisConfig(sanitizers=[])
+        query = TaintQueryGenerator.generate_query(config)
+        assert "predicate isConfiguredSanitizer" not in query
+
+
+class TestFocusedTaintAPIs_ErrorPaths:
+    """Unit tests for error-path and input-shape behavior of the focused taint APIs.
+
+    None of these tests require CodeQL — they only exercise argument validation
+    and the _build_*_configs helpers.
+    """
+
+    # ------------------------------------------------------------------
+    # B3-B5: ValueError guards
+    # ------------------------------------------------------------------
+
+    def test_analyze_taint_flows_raises_when_no_config(self):
+        """analyze_taint_flows() with no config on the instance and no override must raise."""
+        codeql = CodeQL(project_dir=Path("/fake"), db_path=Path("/fake.db"))
+        with pytest.raises(ValueError, match="No taint configuration"):
+            codeql.analyze_taint_flows()
+
+    def test_analyze_from_sources_raises_on_empty_list(self):
+        """analyze_taint_flows_from_sources([]) must raise ValueError immediately."""
+        codeql = CodeQL(project_dir=Path("/fake"), db_path=Path("/fake.db"))
+        with pytest.raises(ValueError, match="empty"):
+            codeql.analyze_taint_flows_from_sources([])
+
+    def test_analyze_to_sinks_raises_on_empty_list(self):
+        """analyze_taint_flows_to_sinks([]) must raise ValueError immediately."""
+        codeql = CodeQL(project_dir=Path("/fake"), db_path=Path("/fake.db"))
+        with pytest.raises(ValueError, match="empty"):
+            codeql.analyze_taint_flows_to_sinks([])
+
+    def test_analyze_flow_paths_raises_on_empty_sources(self):
+        """analyze_taint_flow_paths with empty sources list must raise ValueError."""
+        from codeanalyzer.schema.py_schema import TaintNodeRef
+        codeql = CodeQL(project_dir=Path("/fake"), db_path=Path("/fake.db"))
+        with pytest.raises(ValueError, match="empty"):
+            codeql.analyze_taint_flow_paths(
+                sources=[],
+                sinks=[TaintNodeRef(file_path="/x.py", start_line=1)],
+            )
+
+    def test_analyze_flow_paths_raises_on_empty_sinks(self):
+        """analyze_taint_flow_paths with empty sinks list must raise ValueError."""
+        from codeanalyzer.schema.py_schema import TaintNodeRef
+        codeql = CodeQL(project_dir=Path("/fake"), db_path=Path("/fake.db"))
+        with pytest.raises(ValueError, match="empty"):
+            codeql.analyze_taint_flow_paths(
+                sources=[TaintNodeRef(file_path="/x.py", start_line=1)],
+                sinks=[],
+            )
+
+    def test_analyze_from_sources_raises_when_no_config(self):
+        """analyze_taint_flows_from_sources with a non-empty list but no config must raise."""
+        from codeanalyzer.schema.py_schema import TaintNodeRef
+        codeql = CodeQL(project_dir=Path("/fake"), db_path=Path("/fake.db"))
+        ref = TaintNodeRef(file_path="/x.py", start_line=1)
+        with pytest.raises(ValueError, match="No taint configuration"):
+            codeql.analyze_taint_flows_from_sources([ref])
+
+    def test_analyze_to_sinks_raises_when_no_config(self):
+        """analyze_taint_flows_to_sinks with a non-empty list but no config must raise."""
+        from codeanalyzer.schema.py_schema import TaintNodeRef
+        codeql = CodeQL(project_dir=Path("/fake"), db_path=Path("/fake.db"))
+        ref = TaintNodeRef(file_path="/db.py", start_line=1)
+        with pytest.raises(ValueError, match="No taint configuration"):
+            codeql.analyze_taint_flows_to_sinks([ref])
+
+    # ------------------------------------------------------------------
+    # B6-B8: Mixed-input shapes for _build_*_configs
+    # ------------------------------------------------------------------
+
+    def test_build_source_configs_mixed_types_produces_separate_entries(self):
+        """A list with both PyTaintSource and TaintNodeRef must produce two TaintSourceConfig entries."""
+        from codeanalyzer.schema.py_schema import TaintNodeRef, PyTaintSource, PyCallsite
+        src = PyTaintSource(
+            source_type="web_request",
+            call_site=PyCallsite(method_name="req", start_line=5, end_line=5, file_path="/a.py"),
+        )
+        ref = TaintNodeRef(file_path="/b.py", start_line=10)
+        configs = CodeQL._build_source_configs([src, ref])
+        source_types = {c.source_type for c in configs}
+        assert "web_request" in source_types
+        assert "pinned_source" in source_types
+        all_locs = [loc for c in configs for loc in c.locations]
+        assert any(loc.file_path == "/a.py" for loc in all_locs)
+        assert any(loc.file_path == "/b.py" for loc in all_locs)
+
+    def test_build_sink_configs_taint_node_ref_labelled_pinned_sink(self):
+        """A bare TaintNodeRef passed to _build_sink_configs must produce sink_type='pinned_sink'."""
+        from codeanalyzer.schema.py_schema import TaintNodeRef
+        ref = TaintNodeRef(file_path="/db.py", start_line=42)
+        configs = CodeQL._build_sink_configs([ref])
+        assert len(configs) == 1
+        assert configs[0].sink_type == "pinned_sink"
+        assert configs[0].severity == "medium"
+
+    def test_build_sink_configs_mixed_types_produces_separate_entries(self):
+        """A list with both PyTaintSink and TaintNodeRef must produce two TaintSinkConfig entries."""
+        from codeanalyzer.schema.py_schema import TaintNodeRef, PyTaintSink, PyCallsite
+        sink = PyTaintSink(
+            sink_type="sql_execution", severity="critical",
+            vulnerability_type="SQL Injection",
+            call_site=PyCallsite(method_name="execute", start_line=5, end_line=5, file_path="/db.py"),
+        )
+        ref = TaintNodeRef(file_path="/other.py", start_line=10)
+        configs = CodeQL._build_sink_configs([sink, ref])
+        sink_types = {c.sink_type for c in configs}
+        assert "sql_execution" in sink_types
+        assert "pinned_sink" in sink_types
+
+    # ------------------------------------------------------------------
+    # B9: Singular wrappers delegate to plural
+    # ------------------------------------------------------------------
+
+    def test_singular_from_source_delegates_to_plural(self, monkeypatch):
+        """analyze_taint_flows_from_source(x) must call analyze_taint_flows_from_sources([x])."""
+        from codeanalyzer.schema.py_schema import TaintNodeRef, PyTaintAnalysisResult
+        codeql = CodeQL(project_dir=Path("/fake"), db_path=Path("/fake.db"))
+        calls = []
+
+        def mock_plural(sources, config_override=None, symbol_table=None):
+            calls.append(list(sources))
+            return PyTaintAnalysisResult(project_path="x", flows=[])
+
+        monkeypatch.setattr(codeql, "analyze_taint_flows_from_sources", mock_plural)
+        ref = TaintNodeRef(file_path="/x.py", start_line=1)
+        codeql.analyze_taint_flows_from_source(ref)
+        assert calls == [[ref]]
+
+    def test_singular_to_sink_delegates_to_plural(self, monkeypatch):
+        """analyze_taint_flows_to_sink(x) must call analyze_taint_flows_to_sinks([x])."""
+        from codeanalyzer.schema.py_schema import TaintNodeRef, PyTaintAnalysisResult
+        codeql = CodeQL(project_dir=Path("/fake"), db_path=Path("/fake.db"))
+        calls = []
+
+        def mock_plural(sinks, config_override=None, symbol_table=None):
+            calls.append(list(sinks))
+            return PyTaintAnalysisResult(project_path="x", flows=[])
+
+        monkeypatch.setattr(codeql, "analyze_taint_flows_to_sinks", mock_plural)
+        ref = TaintNodeRef(file_path="/db.py", start_line=1)
+        codeql.analyze_taint_flows_to_sink(ref)
+        assert calls == [[ref]]
+
+
+class TestConfigLoaderEdgeCases:
+    """Unit tests for TaintConfigLoader code paths not covered by TestTaintConfigExtensibility.
+
+    Covers: duplicate sink/sanitizer names, empty sink/sanitizer patterns,
+    no-sinks warning, name-collision overrides, include_remote_flow_source
+    carry-through, disabled sanitizers, file-not-found, unsupported extension,
+    invalid JSON, invalid Pydantic structure, save_config round-trips, and
+    edge-case YAML shapes.
+    """
+
+    # ------------------------------------------------------------------
+    # C1-C3: validate_config gaps
+    # ------------------------------------------------------------------
+
+    def test_validate_config_warns_duplicate_sink_names(self):
+        """validate_config must report duplicate sink names."""
+        from codeanalyzer.schema.py_schema import TaintAnalysisConfig, TaintSinkConfig
+        sink = TaintSinkConfig(
+            name="dup", description="d",
+            pattern='API::moduleImport("sqlite3").getMember("execute").getACall()',
+            sink_type="sql_execution", vulnerability_type="SQL Injection", severity="critical",
+        )
+        config = TaintAnalysisConfig(sinks=[sink, sink])
+        issues = TaintConfigLoader.validate_config(config)
+        assert any("Duplicate" in i and "sink" in i.lower() for i in issues)
+
+    def test_validate_config_warns_duplicate_sanitizer_names(self):
+        """validate_config must report duplicate sanitizer names."""
+        from codeanalyzer.schema.py_schema import TaintAnalysisConfig, TaintSanitizerConfig
+        san = TaintSanitizerConfig(
+            name="dup", description="d",
+            pattern='API::moduleImport("html").getMember("escape").getACall()',
+        )
+        config = TaintAnalysisConfig(sanitizers=[san, san])
+        issues = TaintConfigLoader.validate_config(config)
+        assert any("Duplicate" in i and "sanitizer" in i.lower() for i in issues)
+
+    def test_validate_config_warns_empty_pattern_for_sink(self):
+        """validate_config must report blank patterns for sinks."""
+        from codeanalyzer.schema.py_schema import TaintAnalysisConfig, TaintSinkConfig
+        config = TaintAnalysisConfig(
+            sinks=[TaintSinkConfig(
+                name="bad", description="d", pattern="   ",
+                sink_type="sql_execution", vulnerability_type="SQL", severity="critical",
+            )]
+        )
+        issues = TaintConfigLoader.validate_config(config)
+        assert any("Empty pattern" in i and "sink" in i.lower() for i in issues)
+
+    def test_validate_config_warns_empty_pattern_for_sanitizer(self):
+        """validate_config must report blank patterns for sanitizers."""
+        from codeanalyzer.schema.py_schema import TaintAnalysisConfig, TaintSanitizerConfig
+        config = TaintAnalysisConfig(
+            sanitizers=[TaintSanitizerConfig(name="bad", description="d", pattern="   ")]
+        )
+        issues = TaintConfigLoader.validate_config(config)
+        assert any("Empty pattern" in i and "sanitizer" in i.lower() for i in issues)
+
+    def test_validate_config_warns_no_sinks(self):
+        """validate_config must warn when no user-defined or built-in sinks remain."""
+        from codeanalyzer.schema.py_schema import TaintAnalysisConfig
+        config = TaintAnalysisConfig(sources=[], sinks=[], sanitizers=[])
+        issues = TaintConfigLoader.validate_config(config)
+        assert any("No taint sinks" in i for i in issues)
+
+    # ------------------------------------------------------------------
+    # C4-C5: _merge_configs name-collision and include_remote_flow_source
+    # ------------------------------------------------------------------
+
+    def test_merge_source_name_collision_custom_wins(self):
+        """A custom source with the same name as a base source must replace the base entry."""
+        from codeanalyzer.schema.py_schema import TaintAnalysisConfig, TaintSourceConfig
+        base_src = TaintSourceConfig(
+            name="x", description="base",
+            pattern='API::builtin("a").getACall()', source_type="base_type",
+        )
+        custom_src = TaintSourceConfig(
+            name="x", description="custom",
+            pattern='API::builtin("b").getACall()', source_type="custom_type",
+        )
+        merged = TaintConfigLoader._merge_configs(
+            TaintAnalysisConfig(sources=[base_src]),
+            TaintAnalysisConfig(sources=[custom_src]),
+        )
+        colliding = [s for s in merged.sources if s.name == "x"]
+        assert len(colliding) == 1
+        assert colliding[0].source_type == "custom_type"
+
+    def test_merge_sink_name_collision_custom_wins(self):
+        """A custom sink with the same name as a base sink must replace the base entry."""
+        from codeanalyzer.schema.py_schema import TaintAnalysisConfig, TaintSinkConfig
+        base_sk = TaintSinkConfig(
+            name="y", description="base",
+            pattern='API::builtin("a").getACall()',
+            sink_type="base_sink", vulnerability_type="Base", severity="low",
+        )
+        custom_sk = TaintSinkConfig(
+            name="y", description="custom",
+            pattern='API::builtin("b").getACall()',
+            sink_type="custom_sink", vulnerability_type="Custom", severity="critical",
+        )
+        merged = TaintConfigLoader._merge_configs(
+            TaintAnalysisConfig(sinks=[base_sk]),
+            TaintAnalysisConfig(sinks=[custom_sk]),
+        )
+        colliding = [s for s in merged.sinks if s.name == "y"]
+        assert len(colliding) == 1
+        assert colliding[0].sink_type == "custom_sink"
+
+    def test_merge_include_remote_flow_source_custom_wins(self):
+        """include_remote_flow_source=False in custom must override True in base."""
+        from codeanalyzer.schema.py_schema import TaintAnalysisConfig
+        base = TaintAnalysisConfig(include_remote_flow_source=True)
+        custom = TaintAnalysisConfig(include_remote_flow_source=False)
+        merged = TaintConfigLoader._merge_configs(base, custom)
+        assert merged.include_remote_flow_source is False
+
+    # ------------------------------------------------------------------
+    # C6: _filter_disabled sanitizer branch
+    # ------------------------------------------------------------------
+
+    def test_filter_disabled_removes_disabled_sanitizers(self):
+        """_filter_disabled must strip sanitizers whose enabled field is False."""
+        from codeanalyzer.schema.py_schema import TaintAnalysisConfig, TaintSanitizerConfig
+        san = TaintSanitizerConfig(
+            name="san", description="d",
+            pattern='API::builtin("x").getACall()',
+            enabled=False,
+        )
+        config = TaintAnalysisConfig(sanitizers=[san])
+        filtered = TaintConfigLoader._filter_disabled(config)
+        assert len(filtered.sanitizers) == 0
+
+    def test_filter_disabled_keeps_enabled_sanitizers(self):
+        """_filter_disabled must retain sanitizers whose enabled field is True."""
+        from codeanalyzer.schema.py_schema import TaintAnalysisConfig, TaintSanitizerConfig
+        san = TaintSanitizerConfig(
+            name="san", description="d",
+            pattern='API::builtin("x").getACall()',
+            enabled=True,
+        )
+        config = TaintAnalysisConfig(sanitizers=[san])
+        filtered = TaintConfigLoader._filter_disabled(config)
+        assert len(filtered.sanitizers) == 1
+
+    # ------------------------------------------------------------------
+    # C7-C10: _load_from_file error paths
+    # ------------------------------------------------------------------
+
+    def test_load_config_raises_file_not_found(self, tmp_path):
+        """load_config with a path to a non-existent file must raise FileNotFoundError."""
+        with pytest.raises(FileNotFoundError):
+            TaintConfigLoader.load_config(tmp_path / "does_not_exist.yaml")
+
+    def test_load_config_raises_for_unsupported_extension(self, tmp_path):
+        """load_config with a .toml file must raise ValueError mentioning supported formats."""
+        f = tmp_path / "config.toml"
+        f.write_text("[sources]\n")
+        with pytest.raises(ValueError, match="Unsupported"):
+            TaintConfigLoader.load_config(f)
+
+    def test_load_config_raises_for_invalid_json(self, tmp_path):
+        """load_config with a malformed JSON file must raise ValueError."""
+        f = tmp_path / "config.json"
+        f.write_text("{invalid json}")
+        with pytest.raises(ValueError, match="Invalid JSON"):
+            TaintConfigLoader.load_config(f)
+
+    def test_load_config_raises_for_invalid_pydantic_structure(self, tmp_path):
+        """load_config with well-formed YAML but wrong structure must raise ValueError."""
+        f = tmp_path / "config.yaml"
+        f.write_text("sources: not_a_list\n")  # sources must be a list
+        with pytest.raises(ValueError, match="Invalid taint configuration"):
+            TaintConfigLoader.load_config(f)
+
+    # ------------------------------------------------------------------
+    # C11: save_config round-trips
+    # ------------------------------------------------------------------
+
+    def test_save_config_round_trip_yaml(self, tmp_path):
+        """save_config + load_config round-trip via YAML must preserve all config values."""
+        config = get_default_taint_config()
+        out = tmp_path / "config.yaml"
+        TaintConfigLoader.save_config(config, out, format="yaml")
+        loaded = TaintConfigLoader.load_config(out, use_defaults=False)
+        assert len(loaded.sources) == len(config.sources)
+        assert len(loaded.sanitizers) == len(config.sanitizers)
+        assert loaded.max_path_length == config.max_path_length
+        assert loaded.confidence_threshold == config.confidence_threshold
+
+    def test_save_config_round_trip_json(self, tmp_path):
+        """save_config + load_config round-trip via JSON must preserve all config values."""
+        config = get_default_taint_config()
+        out = tmp_path / "config.json"
+        TaintConfigLoader.save_config(config, out, format="json")
+        loaded = TaintConfigLoader.load_config(out, use_defaults=False)
+        assert len(loaded.sources) == len(config.sources)
+        assert loaded.confidence_threshold == config.confidence_threshold
+        assert loaded.include_remote_flow_source == config.include_remote_flow_source
+
+    def test_save_config_raises_for_unsupported_format(self, tmp_path):
+        """save_config with an unsupported format string must raise ValueError."""
+        config = get_default_taint_config()
+        with pytest.raises(ValueError, match="Unsupported"):
+            TaintConfigLoader.save_config(config, tmp_path / "out.toml", format="toml")
+
+    # ------------------------------------------------------------------
+    # F1-F4: YAML edge cases
+    # ------------------------------------------------------------------
+
+    def test_load_config_accepts_yml_extension(self, tmp_path):
+        """Files with .yml extension must be parsed as YAML."""
+        f = tmp_path / "config.yml"
+        f.write_text("max_path_length: 5\n")
+        config = TaintConfigLoader.load_config(f, use_defaults=False)
+        assert config.max_path_length == 5
+
+    def test_disabled_builtin_sink_unknown_name_silently_ignored(self):
+        """An unrecognised name in disabled_builtin_sinks must leave all builtins intact."""
+        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
+        config = get_default_taint_config().model_copy(update={
+            "disabled_builtin_sinks": ["FakeSink::Sink"],
+        })
+        query = TaintQueryGenerator.generate_query(config)
+        # All real builtins still present
+        assert "SqlInjection::Sink" in query
+        assert "CommandInjection::Sink" in query
+
+    def test_config_with_scalar_overrides_only_preserves_default_sources(self, tmp_path):
+        """A YAML file with only scalar overrides merged with defaults keeps default sources."""
+        f = tmp_path / "scalars.yaml"
+        f.write_text("max_path_length: 15\nconfidence_threshold: high\n")
+        config = TaintConfigLoader.load_config(f, use_defaults=True)
+        assert config.max_path_length == 15
+        assert config.confidence_threshold == "high"
+        assert len(config.sources) > 0  # defaults preserved
+
+
+class TestSchemaValidatorEdgeCases:
+    """Unit tests for TaintNodeRef, config-entry validators, and schema model field coverage."""
+
+    # ------------------------------------------------------------------
+    # D1-D2: Both pattern + locations accepted simultaneously
+    # ------------------------------------------------------------------
+
+    def test_source_config_accepts_both_pattern_and_locations(self):
+        """TaintSourceConfig with both pattern and locations must be valid."""
+        from codeanalyzer.schema.py_schema import TaintNodeRef, TaintSourceConfig
+        ref = TaintNodeRef(file_path="/app.py", start_line=1)
+        sc = TaintSourceConfig(
+            name="x", description="d", source_type="t",
+            pattern='API::builtin("input").getACall()',
+            locations=[ref],
+        )
+        assert sc.pattern is not None
+        assert len(sc.locations) == 1
+
+    def test_sink_config_accepts_both_pattern_and_locations(self):
+        """TaintSinkConfig with both pattern and locations must be valid."""
+        from codeanalyzer.schema.py_schema import TaintNodeRef, TaintSinkConfig
+        ref = TaintNodeRef(file_path="/db.py", start_line=1)
+        sk = TaintSinkConfig(
+            name="x", description="d",
+            sink_type="sql_execution", vulnerability_type="SQL Injection", severity="critical",
+            pattern='API::moduleImport("sqlite3").getMember("execute").getACall()',
+            locations=[ref],
+        )
+        assert sk.pattern is not None
+        assert len(sk.locations) == 1
+
+    # ------------------------------------------------------------------
+    # D3-D4: TaintSanitizerConfig validator
+    # ------------------------------------------------------------------
+
+    def test_sanitizer_config_requires_pattern_or_locations(self):
+        """TaintSanitizerConfig with neither pattern nor locations must raise ValueError."""
+        from codeanalyzer.schema.py_schema import TaintSanitizerConfig
+        with pytest.raises(ValueError):
+            TaintSanitizerConfig(name="x", description="d", sanitizes=["xss"])
+
+    def test_sanitizer_config_accepts_locations_only(self):
+        """TaintSanitizerConfig with only a locations list (no pattern) must be valid."""
+        from codeanalyzer.schema.py_schema import TaintNodeRef, TaintSanitizerConfig
+        ref = TaintNodeRef(file_path="/san.py", start_line=5)
+        san = TaintSanitizerConfig(name="x", description="d", locations=[ref], sanitizes=["xss"])
+        assert san.pattern is None
+        assert len(san.locations) == 1
+
+    # ------------------------------------------------------------------
+    # D5: TaintNodeRef boundary / optional column
+    # ------------------------------------------------------------------
+
+    def test_taint_node_ref_default_column_is_minus_one(self):
+        """TaintNodeRef without start_column must default to -1 (no column constraint)."""
+        from codeanalyzer.schema.py_schema import TaintNodeRef
+        ref = TaintNodeRef(file_path="/x.py", start_line=10)
+        assert ref.start_column == -1
+
+    def test_taint_node_ref_accepts_zero_start_line(self):
+        """TaintNodeRef places no positive-integer constraint on start_line."""
+        from codeanalyzer.schema.py_schema import TaintNodeRef
+        ref = TaintNodeRef(file_path="/x.py", start_line=0)
+        assert ref.start_line == 0
+
+    # ------------------------------------------------------------------
+    # D6: PyTaintFlowStep field coverage
+    # ------------------------------------------------------------------
+
+    def test_taint_flow_step_all_fields_populated(self):
+        """PyTaintFlowStep must store all optional fields when provided explicitly."""
+        from codeanalyzer.schema.py_schema import PyTaintFlowStep
+        step = PyTaintFlowStep(
+            location="app.py:10:4",
+            function_name="handler",
+            start_line=10,
+            end_line=10,
+            start_column=4,
+            end_column=20,
+            expression="user_input",
+            step_type="source",
+            description="entry point",
+        )
+        assert step.location == "app.py:10:4"
+        assert step.function_name == "handler"
+        assert step.start_column == 4
+        assert step.end_column == 20
+        assert step.expression == "user_input"
+        assert step.step_type == "source"
+        assert step.description == "entry point"
+
+    def test_taint_flow_step_optional_fields_default_correctly(self):
+        """PyTaintFlowStep with only required fields must default optionals correctly."""
+        from codeanalyzer.schema.py_schema import PyTaintFlowStep
+        step = PyTaintFlowStep(location="x.py:1", function_name="f")
+        assert step.start_line == -1
+        assert step.end_line == -1
+        assert step.start_column == -1
+        assert step.expression is None
+        assert step.step_type == "propagation"
+        assert step.description is None
+
+    def test_taint_analysis_result_optional_fields_round_trip(self):
+        """PyTaintAnalysisResult must store and expose analysis_timestamp and codeql_database_path."""
+        from codeanalyzer.schema.py_schema import PyTaintAnalysisResult
+        result = PyTaintAnalysisResult(
+            project_path="/proj",
+            flows=[],
+            analysis_timestamp="2025-01-01T12:00:00+00:00",
+            codeql_database_path="/path/to/db",
+        )
+        assert result.analysis_timestamp == "2025-01-01T12:00:00+00:00"
+        assert result.codeql_database_path == "/path/to/db"
