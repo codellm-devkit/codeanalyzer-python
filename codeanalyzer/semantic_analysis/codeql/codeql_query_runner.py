@@ -63,6 +63,7 @@ class CodeQLQueryRunner:
             Path(codeql_packs_dir) if codeql_packs_dir is not None else None
         )
         self.temp_file_path: Path = None
+        self._temp_qlpack_dir: "tempfile.TemporaryDirectory | None" = None
 
     def __enter__(self):
         """Context entry that prepares paths to execute a CodeQL query.

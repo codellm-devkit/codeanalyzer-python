@@ -70,6 +70,7 @@ class Codeanalyzer:
         self.virtualenv: Optional[Path] = None
         self.using_ray: bool = options.using_ray
         self.file_name: Optional[Path] = options.file_name
+        self.analysis_depth: int = options.analysis_level
 
     @staticmethod
     def _cmd_exec_helper(
@@ -361,11 +362,21 @@ class Codeanalyzer:
     def analyze(self) -> PyApplication:
         """Analyze the project and return a PyApplication with symbol table.
         
+        Analysis levels:
+        - Level 1: Symbol table only
+        - Level 2: Symbol table + call graph (requires CodeQL)
+        - Level 3: Symbol table + call graph + taint analysis (requires CodeQL)
+        
         Uses caching to avoid re-analyzing unchanged files.
         """
+        # Validate analysis level requirements
+        if self.analysis_depth >= 2 and not self.using_codeql:
+            logger.error("Analysis levels 2 and 3 require --codeql flag")
+            raise ValueError("CodeQL is required for analysis levels 2 and above")
+        
         cache_file = self.cache_dir / "analysis_cache.json"
         
-        # Try to load existing cached analysis 
+        # Try to load existing cached analysis
         cached_pyapplication = None
         if not self.rebuild_analysis and cache_file.exists():
             try:
@@ -375,7 +386,7 @@ class Codeanalyzer:
                 logger.warning(f"Failed to load cache: {e}. Rebuilding analysis.")
                 cached_pyapplication = None
 
-        # Build symbol table from cached application if available (if no available, the build a new one)
+        # Level 1: Build symbol table
         symbol_table = self._build_symbol_table(cached_pyapplication.symbol_table if cached_pyapplication else {})
 
         # Build the call graph in four steps:
@@ -399,10 +410,17 @@ class Codeanalyzer:
 
         # Recreate pyapplication
         app = PyApplication.builder().symbol_table(symbol_table).call_graph(call_graph).build()
-        
+
+        # Level 3: Add taint analysis (if CodeQL is enabled)
+        if self.analysis_depth >= 3 and self.using_codeql:
+            logger.info("Performing taint analysis (Level 3)...")
+            taint_results = self._perform_taint_analysis(symbol_table=symbol_table)
+            app.taint_analysis = taint_results
+            logger.info(f"✅ Taint analysis complete. Found {len(taint_results.flows)} flows.")
+
         # Save to cache
         self._save_analysis_cache(app, cache_file)
-        
+
         return app
 
     def _load_pyapplication_from_cache(self, cache_file: Path) -> PyApplication:
@@ -718,3 +736,61 @@ class Codeanalyzer:
         except Exception as exc:
             logger.warning(f"CodeQL call-graph extraction failed: {exc}")
             return []
+
+    def _perform_taint_analysis(self, symbol_table: Optional[Dict[str, PyModule]] = None):
+        """Perform taint analysis using CodeQL.
+
+        Args:
+            symbol_table: Optional symbol table from analysis level 1.  When
+                provided, taint sources and sinks are resolved to the matching
+                ``PyCallsite`` objects already captured during syntactic analysis.
+
+        Returns:
+            PyTaintAnalysisResult: Complete taint analysis results
+
+        Raises:
+            ValueError: If CodeQL database is not available
+        """
+        from codeanalyzer.semantic_analysis.codeql.codeql_analysis import CodeQL
+        from codeanalyzer.config.taint_config_loader import TaintConfigLoader
+        from codeanalyzer.schema.py_schema import PyTaintAnalysisResult
+
+        if not self.db_path:
+            raise ValueError("CodeQL database not available for taint analysis")
+
+        # Load taint configuration — load_config logs the mode and active counts
+        use_defaults = getattr(self.options, "taint_use_defaults", True)
+        if self.options.taint_config:
+            taint_config = TaintConfigLoader.load_config(
+                self.options.taint_config,
+                use_defaults=use_defaults,
+            )
+        else:
+            taint_config = TaintConfigLoader.load_config(use_defaults=True)
+
+        # Perform analysis
+        codeql = CodeQL(
+            project_dir=self.project_dir,
+            db_path=self.db_path,
+            codeql_bin=self.codeql_bin,
+            codeql_packs_dir=self.codeql_packs_dir,
+            taint_config=taint_config,
+        )
+
+        results = codeql.analyze_taint_flows(symbol_table=symbol_table)
+
+        # Log summary
+        logger.info(f"Taint analysis summary:")
+        logger.info(f"  - Total flows detected: {len(results.flows)}")
+
+        n_critical = sum(1 for f in results.flows if f.severity == "critical")
+        n_high = sum(1 for f in results.flows if f.severity == "high")
+        n_medium = sum(1 for f in results.flows if f.severity == "medium")
+        n_low = sum(1 for f in results.flows if f.severity == "low")
+        if results.flows:
+            logger.info(f"  - Critical: {n_critical}")
+            logger.info(f"  - High: {n_high}")
+            logger.info(f"  - Medium: {n_medium}")
+            logger.info(f"  - Low: {n_low}")
+
+        return results

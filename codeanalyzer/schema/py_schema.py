@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 import gzip
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from typing_extensions import Literal
 import msgpack
 
@@ -256,6 +256,9 @@ class PyCallsite(BaseModel):
     start_column: int = -1
     end_line: int = -1
     end_column: int = -1
+    file_path: Optional[str] = None
+    """Relative path of the source file from the project root.
+    Populated when the call site is derived from CodeQL analysis results."""
 
 
 @builder
@@ -339,6 +342,522 @@ class PyModule(BaseModel):
     file_size: Optional[int] = None
 
 
+# ============================================================================
+# Taint Analysis Models (Analysis Level 3)
+# ============================================================================
+
+class TaintNodeRef(BaseModel):
+    """Minimal call-site reference for pinning taint query nodes to specific
+    source locations.
+
+    Accepted wherever ``PyTaintSource`` / ``PyTaintSink`` are used in the
+    focused taint APIs, and also as a location-based alternative to CodeQL
+    patterns in ``TaintSourceConfig``, ``TaintSinkConfig``, and
+    ``TaintSanitizerConfig``.
+
+    Only the source-code location is required — no knowledge of CodeQL
+    API-graph syntax is needed.  Useful when integrating call-site data
+    from other tools (Joern, grep, symbol-table analysis, etc.).
+
+    **``file_path`` must be an absolute path.**  The generated CodeQL predicate
+    matches against ``getAbsolutePath()``, which CodeQL constructs as
+    ``sourceLocationPrefix + "/" + getRelativePath()`` where
+    ``sourceLocationPrefix`` is the absolute source-root baked into the
+    database at creation time.  A relative path will never match and the
+    query will silently return zero results.
+
+    ``PyTaintSource`` / ``PyTaintSink`` objects obtained from
+    ``analyze_taint_flows()`` always carry absolute paths in their
+    ``call_site.file_path`` fields and can be passed directly without
+    constructing a ``TaintNodeRef``.
+    """
+
+    file_path: str
+    """Absolute path to the source file containing the call site.
+
+    Must be absolute — relative paths will not match CodeQL's
+    ``getAbsolutePath()`` and produce zero results without an error.
+    """
+
+    start_line: int
+    """1-based line number of the call-site expression."""
+
+    start_column: int = -1
+    """0-based column offset of the call-site expression.
+    When ``-1`` (default) the column constraint is omitted from the generated
+    query, giving line-level precision.  When set, the query adds a
+    ``getStartColumn()`` constraint for sub-line precision — useful when two
+    calls share the same line (e.g. ``foo(bar(x))``)."""
+
+    @model_validator(mode="after")
+    def _require_absolute_path(self) -> "TaintNodeRef":
+        from pathlib import PurePosixPath as _Posix, PureWindowsPath as _Win
+        # Accept Unix-absolute (/…) and Windows-absolute (C:\… or \\server\…)
+        # so the validator works correctly on both platforms.
+        if not (_Posix(self.file_path).is_absolute() or _Win(self.file_path).is_absolute()):
+            raise ValueError(
+                f"TaintNodeRef.file_path must be an absolute path; "
+                f"got relative path {self.file_path!r}.  "
+                "The generated CodeQL predicate uses getAbsolutePath() which "
+                "always returns the full absolute path from the database creation root."
+            )
+        return self
+
+
+@builder
+@msgpk
+class TaintSourceConfig(BaseModel):
+    """Configuration entry that tells the CodeQL query generator where
+    untrusted data can enter the application.
+
+    Each entry is turned into a predicate clause inside the generated
+    ``isConfiguredSource`` CodeQL predicate.
+    """
+
+    name: str
+    """Unique identifier for this source entry (used for logging and deduplication)."""
+
+    description: str
+    """Human-readable explanation of what this source represents."""
+
+    pattern: Optional[str] = None
+    """CodeQL API-graph expression that matches the source call site.
+
+    Must be a valid CodeQL expression that evaluates to a ``DataFlow::Node``,
+    e.g. ``API::builtin("input").getACall()`` or
+    ``API::moduleImport("flask").getMember("request").getMember("args").asSource()``.
+    All string literals inside the pattern must use double quotes (CodeQL
+    does not support single-quoted strings).
+
+    Either ``pattern`` or a non-empty ``locations`` list must be provided.
+    """
+
+    locations: List["TaintNodeRef"] = []
+    """Explicit call-site locations to use as sources instead of (or in
+    addition to) a ``pattern``.
+
+    Each ``TaintNodeRef`` pins the source predicate to a specific
+    ``(file, line)`` — or ``(file, line, column)`` when
+    ``TaintNodeRef.start_column >= 0``.  Useful when call-site data comes
+    from another analysis tool (Joern, symbol-table scan, grep, …) rather
+    than a CodeQL API-graph expression.
+
+    All locations in this list are labelled with ``source_type``.
+    """
+
+    source_type: str
+    """Logical category label attached to every flow that originates here.
+
+    Examples: ``"user_input"``, ``"web_request"``, ``"environment_variable"``,
+    ``"file_read"``, ``"http_request"``.  The label is propagated to
+    ``PyTaintSource.source_type`` in the analysis results.
+    """
+
+    enabled: bool = True
+    """When ``False`` this entry is filtered out before query generation."""
+
+    @model_validator(mode="after")
+    def _require_pattern_or_locations(self) -> "TaintSourceConfig":
+        if not self.pattern and not self.locations:
+            raise ValueError(
+                f"TaintSourceConfig '{self.name}': either 'pattern' or a non-empty "
+                "'locations' list must be provided."
+            )
+        return self
+
+
+@builder
+@msgpk
+class TaintSinkConfig(BaseModel):
+    """Configuration entry that tells the CodeQL query generator where
+    tainted data reaching this call site would be dangerous.
+
+    Each entry is turned into a predicate clause inside the generated
+    ``isConfiguredSink`` CodeQL predicate.
+    """
+
+    name: str
+    """Unique identifier for this sink entry (used for logging and deduplication)."""
+
+    description: str
+    """Human-readable explanation of what this sink represents."""
+
+    pattern: Optional[str] = None
+    """CodeQL API-graph expression that matches the sink call site.
+
+    Must be a valid CodeQL expression that evaluates to a ``DataFlow::Node``,
+    e.g. ``API::moduleImport("sqlite3").getMember("execute").getACall()``.
+    All string literals inside the pattern must use double quotes.
+
+    Either ``pattern`` or a non-empty ``locations`` list must be provided.
+    """
+
+    locations: List["TaintNodeRef"] = []
+    """Explicit call-site locations to use as sinks instead of (or in
+    addition to) a ``pattern``.
+
+    Each ``TaintNodeRef`` pins the sink predicate to a specific
+    ``(file, line)`` — or ``(file, line, column)`` when
+    ``TaintNodeRef.start_column >= 0``.  All locations are labelled with
+    ``sink_type``, ``vulnerability_type``, and ``severity`` from this entry.
+    """
+
+    sink_type: str
+    """Logical category label attached to every flow that terminates here.
+
+    Examples: ``"sql_execution"``, ``"command_execution"``, ``"code_execution"``,
+    ``"file_access"``, ``"template_rendering"``.  The label is propagated to
+    ``PyTaintSink.sink_type`` in the analysis results.
+    """
+
+    vulnerability_type: str
+    """Human-readable vulnerability class reported in the analysis results.
+
+    Examples: ``"SQL Injection"``, ``"Command Injection"``, ``"Path Traversal"``,
+    ``"Cross-Site Scripting (XSS)"``, ``"Code Injection"``.
+    """
+
+    severity: Literal["critical", "high", "medium", "low"]
+    """Risk level of a confirmed taint flow reaching this sink.
+
+    Propagated verbatim to ``PyTaintSink.severity`` and ``PyTaintFlow.severity``.
+    """
+
+    enabled: bool = True
+    """When ``False`` this entry is filtered out before query generation."""
+
+    argument_index: Optional[int] = None
+    """Zero-based index of the argument that must be tainted for the sink to fire.
+
+    Only applicable when ``pattern`` is set.  When set, the generated predicate
+    uses ``pattern.getParameter(argument_index).asSink()`` so that only the
+    specific argument position is tracked (e.g. index ``0`` for the query
+    string in ``cursor.execute(query, params)``).  When ``None`` the call
+    itself is used as the sink node.
+    """
+
+    @model_validator(mode="after")
+    def _require_pattern_or_locations(self) -> "TaintSinkConfig":
+        if not self.pattern and not self.locations:
+            raise ValueError(
+                f"TaintSinkConfig '{self.name}': either 'pattern' or a non-empty "
+                "'locations' list must be provided."
+            )
+        return self
+
+
+@builder
+@msgpk
+class TaintSanitizerConfig(BaseModel):
+    """Configuration entry that tells the CodeQL query generator which
+    call sites act as sanitizers, blocking taint propagation.
+
+    Each entry is turned into a predicate clause inside the generated
+    ``isConfiguredSanitizer`` CodeQL predicate.
+    """
+
+    name: str
+    """Unique identifier for this sanitizer entry."""
+
+    description: str
+    """Human-readable explanation of what this sanitizer does."""
+
+    pattern: Optional[str] = None
+    """CodeQL API-graph expression that matches the sanitizing call site.
+
+    Must be a valid CodeQL expression that evaluates to a ``DataFlow::Node``,
+    e.g. ``API::moduleImport("html").getMember("escape").getACall()``.
+    All string literals inside the pattern must use double quotes.
+
+    Either ``pattern`` or a non-empty ``locations`` list must be provided.
+    """
+
+    locations: List["TaintNodeRef"] = []
+    """Explicit call-site locations to treat as sanitizers.
+
+    Each ``TaintNodeRef`` pins the sanitizer predicate to a specific
+    ``(file, line)`` — or ``(file, line, column)`` when
+    ``TaintNodeRef.start_column >= 0``.
+    """
+
+    sanitizes: List[str] = []
+    """Informational list of vulnerability types this sanitizer mitigates.
+
+    Not used by the CodeQL query generator (all enabled sanitizers block all
+    flows); present for documentation and future fine-grained filtering.
+    Examples: ``["xss", "template_injection"]``, ``["command_injection"]``.
+    """
+
+    enabled: bool = True
+    """When ``False`` this entry is filtered out before query generation."""
+
+    @model_validator(mode="after")
+    def _require_pattern_or_locations(self) -> "TaintSanitizerConfig":
+        if not self.pattern and not self.locations:
+            raise ValueError(
+                f"TaintSanitizerConfig '{self.name}': either 'pattern' or a non-empty "
+                "'locations' list must be provided."
+            )
+        return self
+
+
+@builder
+@msgpk
+class TaintAnalysisConfig(BaseModel):
+    """Complete, self-contained configuration for a taint analysis run.
+
+    Passed to ``TaintQueryGenerator.generate_query()`` which turns it into a
+    single executable CodeQL query.  All three lists are filtered to remove
+    disabled entries before query generation.
+    """
+
+    sources: List[TaintSourceConfig] = []
+    """Ordered list of taint source definitions.  At least one enabled source
+    is required for the analysis to produce results."""
+
+    sinks: List[TaintSinkConfig] = []
+    """Ordered list of taint sink definitions.  At least one enabled sink is
+    required for the analysis to produce results."""
+
+    sanitizers: List[TaintSanitizerConfig] = []
+    """Ordered list of sanitizer definitions.  May be empty; when non-empty
+    the generated query will not report flows that pass through a sanitizer."""
+
+    max_path_length: int = 10
+    """Maximum number of intermediate steps in a reported taint path.
+    Longer paths are still detected but truncated in the output."""
+
+    include_implicit_flows: bool = False
+    """Whether to track implicit (control-flow) taint in addition to explicit
+    (data-flow) taint.  Enabling this increases recall but also false positives."""
+
+    confidence_threshold: Literal["high", "medium", "low"] = "medium"
+    """Minimum confidence level for a flow to be included in the results.
+    Currently informational; all flows are reported regardless of this value."""
+
+    exclude_files: List[str] = []
+    """Glob patterns for source files to exclude from analysis (e.g. test files)."""
+
+    exclude_functions: List[str] = []
+    """Qualified function names to exclude as sources or sinks."""
+
+    include_safe_flows: bool = False
+    """When ``True``, also report flows that pass through a sanitizer.
+    Useful for auditing sanitizer coverage."""
+
+    group_by_vulnerability: bool = True
+    """When ``True``, results are grouped by vulnerability type in log output."""
+
+    disabled_builtin_sinks: List[str] = []
+    """Names of built-in CodeQL sink classes to suppress.
+
+    Each entry must match a ``class::SinkClass`` string from
+    ``TaintQueryGenerator.BUILTIN_SINKS`` (e.g. ``"PolynomialReDoS::Sink"``
+    or ``"CookieInjection::Sink"``).  Matching entries are skipped during
+    query generation so that specific vulnerability types can be excluded
+    without replacing the entire built-in sink set.
+    """
+
+    include_remote_flow_source: bool = True
+    """Whether to include CodeQL's built-in ``RemoteFlowSource`` as a taint source.
+
+    When ``True`` (default), all web-framework request inputs recognised by
+    CodeQL (Flask ``request.args``, Django ``request.GET``, FastAPI, …) are
+    included as sources automatically.
+
+    Set to ``False`` when building a focused query restricted to only the
+    user-configured sources in ``sources`` — for example when calling
+    ``analyze_taint_flows_from_source("env_variable")`` to find only
+    environment-variable flows, not web-request flows.
+    """
+
+
+@builder
+@msgpk
+class PyTaintSource(BaseModel):
+    """Represents a taint source - where untrusted data enters the system.
+
+    Sources are always call sites (e.g. ``input()``, ``request.args.get()``,
+    ``os.getenv()``).  The ``call_site`` field captures the full call-site
+    metadata from the symbol table so that downstream tasks can access
+    receiver type, argument types, callee signature, and precise location
+    without duplicating that information here.
+    """
+
+    source_type: str
+    """Logical category of the source (e.g. ``"user_input"``, ``"web_request"``)."""
+
+    call_site: PyCallsite
+    """The call-site in the symbol table where tainted data originates."""
+
+    description: Optional[str] = None
+
+
+@builder
+@msgpk
+class PyTaintSink(BaseModel):
+    """Represents a taint sink - where tainted data could cause harm.
+
+    Sinks are always call sites (e.g. ``cursor.execute()``, ``os.system()``,
+    ``eval()``).  The ``call_site`` field captures the full call-site metadata
+    from the symbol table so that downstream tasks can access receiver type,
+    argument types, callee signature, and precise location without duplicating
+    that information here.
+    """
+
+    sink_type: str
+    """Logical category of the sink (e.g. ``"sql_execution"``, ``"command_execution"``)."""
+
+    call_site: PyCallsite
+    """The call-site in the symbol table where tainted data is consumed."""
+
+    severity: Literal["critical", "high", "medium", "low"] = "medium"
+    vulnerability_type: Optional[str] = None
+    """The specific vulnerability class this sink instance represents
+    (e.g. ``"SQL Injection"``).  Populated from CodeQL analysis results."""
+    description: Optional[str] = None
+
+
+@builder
+@msgpk
+class PyTaintFlowStep(BaseModel):
+    """Represents a single intermediate step in a taint flow path.
+
+    A path is the ordered sequence of program points through which tainted
+    data travels from a source to a sink.  Each step records the location
+    and role of one such program point.
+
+    Note: the current CodeQL query does not populate intermediate path steps
+    (``path`` is always empty in ``PyTaintFlow``).  This model is reserved
+    for future path-step extraction.
+    """
+
+    location: str
+    """Absolute file path of the source file containing this step."""
+
+    function_name: str
+    """Simple name of the enclosing function or method (``"<module>"`` at
+    module level)."""
+
+    start_line: int = -1
+    """1-based line number where this step begins; ``-1`` if unknown."""
+
+    end_line: int = -1
+    """1-based line number where this step ends; ``-1`` if unknown."""
+
+    start_column: int = -1
+    """0-based column offset where this step begins; ``-1`` if unknown."""
+
+    end_column: int = -1
+    """0-based column offset where this step ends; ``-1`` if unknown."""
+
+    expression: Optional[str] = None
+    """Source-code expression at this step as a string, if available."""
+
+    step_type: Literal["source", "propagation", "sink"] = "propagation"
+    """Role of this step in the flow path.
+
+    * ``"source"`` — the first step; tainted data originates here.
+    * ``"propagation"`` — an intermediate step; tainted data passes through.
+    * ``"sink"`` — the last step; tainted data reaches a dangerous operation.
+    """
+
+    description: Optional[str] = None
+    """Optional human-readable description of what happens at this step."""
+
+
+@builder
+@msgpk
+class PyTaintFlow(BaseModel):
+    """Represents a complete, confirmed taint flow from a source to a sink.
+
+    A taint flow means that data originating at ``source`` (an untrusted
+    input call site) can reach ``sink`` (a dangerous operation call site)
+    without passing through a sanitizer, as determined by CodeQL's
+    inter-procedural dataflow analysis.
+    """
+
+    flow_id: str
+    """Stable identifier for this flow, derived from source and sink locations.
+
+    Format: ``"<source_file>:<source_line>-><sink_file>:<sink_line>"``.
+    Used for deduplication across incremental analysis runs.
+    """
+
+    source: PyTaintSource
+    """The call site where untrusted data enters the application.
+
+    Carries a ``PyCallsite`` that links back to the symbol table entry
+    (when the symbol table was available during analysis).
+    """
+
+    sink: PyTaintSink
+    """The call site where tainted data reaches a dangerous operation.
+
+    Carries a ``PyCallsite`` that links back to the symbol table entry
+    (when the symbol table was available during analysis).
+    """
+
+    path: List[PyTaintFlowStep] = []
+    """Ordered list of intermediate steps between source and sink.
+
+    Currently always empty — reserved for future path-step extraction.
+    """
+
+    vulnerability_type: str
+    """Human-readable vulnerability class, e.g. ``"SQL Injection"``,
+    ``"Command Injection"``, ``"Path Traversal"``.
+
+    Derived from the matching ``TaintSinkConfig.vulnerability_type``.
+    """
+
+    severity: Literal["critical", "high", "medium", "low"] = "medium"
+    """Risk level of this flow, inherited from ``TaintSinkConfig.severity``."""
+
+    confidence: Literal["high", "medium", "low"] = "medium"
+    """Confidence in the reported flow.  Currently always ``"medium"``
+    (CodeQL's dataflow analysis is sound but the sink patterns may
+    over-approximate)."""
+
+    description: Optional[str] = None
+    """Human-readable summary of the flow, e.g.
+    ``"Tainted data from user_input flows to SQL Injection"``."""
+
+
+@builder
+@msgpk
+class PyTaintAnalysisResult(BaseModel):
+    """Container for all taint analysis results for a project.
+
+    Source and sink information is embedded in each ``PyTaintFlow`` via
+    ``flow.source`` and ``flow.sink`` (both of which carry a ``PyCallsite``),
+    so there is no need for separate top-level source/sink lists.
+    """
+
+    project_path: str
+    """Absolute path to the root of the analysed project."""
+
+    flows: List[PyTaintFlow] = []
+    """All confirmed taint flows detected in the project.
+
+    Each flow represents a path from an untrusted source to a dangerous sink
+    that was not blocked by a sanitizer.  An empty list means no
+    vulnerabilities were detected with the current configuration.
+    """
+
+    analysis_timestamp: Optional[str] = None
+    """ISO-8601 UTC timestamp of when the analysis completed, e.g.
+    ``"2025-05-15T14:00:00+00:00"``."""
+
+    codeql_database_path: Optional[str] = None
+    """Absolute path to the CodeQL database used for this analysis run.
+    Useful for reproducing or extending the analysis."""
+
+
+# ============================================================================
+# Application Model (combines all analysis levels)
+# ============================================================================
+
 @builder
 @msgpk
 class PyCallEdge(BaseModel):
@@ -361,7 +880,14 @@ class PyCallEdge(BaseModel):
 @builder
 @msgpk
 class PyApplication(BaseModel):
-    """Represents a Python application."""
+    """Represents a Python application with multi-level analysis results.
+    
+    Analysis Levels:
+    - Level 1: symbol_table (syntactic analysis)
+    - Level 2: call_graph (control flow analysis) - TODO: implement storage
+    - Level 3: taint_analysis (data flow security analysis)
+    """
 
     symbol_table: Dict[str, PyModule]
     call_graph: List[PyCallEdge] = []
+    taint_analysis: Optional[PyTaintAnalysisResult] = None
