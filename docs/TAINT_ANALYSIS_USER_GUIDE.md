@@ -271,9 +271,24 @@ predicate to a specific file and line without requiring a CodeQL API-graph expre
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `file_path` | string | yes | Absolute path to the source file |
+| `file_path` | string | yes | **Absolute** path to the source file (see note below) |
 | `start_line` | int | yes | 1-based line number of the call site |
 | `start_column` | int | no | 0-based column offset. Default `-1` (no column constraint). When set, adds sub-line precision — useful when two calls share the same line. |
+
+> **`file_path` must be an absolute path.** The generated CodeQL predicate matches
+> against `getAbsolutePath()`, which CodeQL constructs as:
+>
+> ```
+> sourceLocationPrefix + "/" + getRelativePath()
+> ```
+>
+> where `sourceLocationPrefix` is the absolute source-root path baked into the
+> CodeQL database at creation time (visible in `codeql-database.yml`).  A relative
+> path will never match and the query will silently return zero results.  Passing
+> a relative path is now caught at construction time with a `ValueError`.
+>
+> `PyTaintSource` / `PyTaintSink` objects from `analyze_taint_flows()` always
+> carry absolute paths in `call_site.file_path` and can be passed directly.
 
 ### `disabled_builtin_sinks`
 

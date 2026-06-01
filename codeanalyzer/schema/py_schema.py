@@ -358,10 +358,26 @@ class TaintNodeRef(BaseModel):
     Only the source-code location is required — no knowledge of CodeQL
     API-graph syntax is needed.  Useful when integrating call-site data
     from other tools (Joern, grep, symbol-table analysis, etc.).
+
+    **``file_path`` must be an absolute path.**  The generated CodeQL predicate
+    matches against ``getAbsolutePath()``, which CodeQL constructs as
+    ``sourceLocationPrefix + "/" + getRelativePath()`` where
+    ``sourceLocationPrefix`` is the absolute source-root baked into the
+    database at creation time.  A relative path will never match and the
+    query will silently return zero results.
+
+    ``PyTaintSource`` / ``PyTaintSink`` objects obtained from
+    ``analyze_taint_flows()`` always carry absolute paths in their
+    ``call_site.file_path`` fields and can be passed directly without
+    constructing a ``TaintNodeRef``.
     """
 
     file_path: str
-    """Absolute path to the source file containing the call site."""
+    """Absolute path to the source file containing the call site.
+
+    Must be absolute — relative paths will not match CodeQL's
+    ``getAbsolutePath()`` and produce zero results without an error.
+    """
 
     start_line: int
     """1-based line number of the call-site expression."""
@@ -372,6 +388,20 @@ class TaintNodeRef(BaseModel):
     query, giving line-level precision.  When set, the query adds a
     ``getStartColumn()`` constraint for sub-line precision — useful when two
     calls share the same line (e.g. ``foo(bar(x))``)."""
+
+    @model_validator(mode="after")
+    def _require_absolute_path(self) -> "TaintNodeRef":
+        from pathlib import PurePosixPath as _Posix, PureWindowsPath as _Win
+        # Accept Unix-absolute (/…) and Windows-absolute (C:\… or \\server\…)
+        # so the validator works correctly on both platforms.
+        if not (_Posix(self.file_path).is_absolute() or _Win(self.file_path).is_absolute()):
+            raise ValueError(
+                f"TaintNodeRef.file_path must be an absolute path; "
+                f"got relative path {self.file_path!r}.  "
+                "The generated CodeQL predicate uses getAbsolutePath() which "
+                "always returns the full absolute path from the database creation root."
+            )
+        return self
 
 
 @builder

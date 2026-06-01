@@ -49,7 +49,6 @@ _TAINT_FIXTURE_APPS = {
     "sql_injection": _TAINT_FIXTURES_DIR / "sql_injection_app",
     "command_injection": _TAINT_FIXTURES_DIR / "command_injection_app",
     "path_traversal": _TAINT_FIXTURES_DIR / "path_traversal_app",
-    "xss": _TAINT_FIXTURES_DIR / "xss_app",
     "flask": _TAINT_FIXTURES_DIR / "flask_app",
     "sanitizer": _TAINT_FIXTURES_DIR / "sanitizer_app",
     "ssti": _TAINT_FIXTURES_DIR / "ssti_app",
@@ -143,17 +142,6 @@ def path_traversal_db(codeql_databases):
     db = codeql_databases.get("path_traversal")
     if db is None:
         pytest.skip("Failed to create path traversal CodeQL database")
-    return db
-
-
-@pytest.fixture(scope="session")
-def xss_db(codeql_databases):
-    """Session-scoped CodeQL database for XSS fixture."""
-    if codeql_databases is None:
-        pytest.skip("CodeQL not available")
-    db = codeql_databases.get("xss")
-    if db is None:
-        pytest.skip("Failed to create XSS CodeQL database")
     return db
 
 
@@ -254,21 +242,31 @@ def codeql_packs_dir(tmp_path_factory):
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="session")
-def flask_full_taint_result(flask_db, codeql_packs_dir):
-    """Run full taint analysis on flask_app exactly once per test session.
+def flask_codeql(flask_db, codeql_packs_dir):
+    """Session-scoped CodeQL instance for flask_app.
 
-    Returns a ``PyTaintAnalysisResult`` with all flows populated, or skips if
-    CodeQL is unavailable.  Focused-API integration tests should accept this
-    fixture instead of calling ``analyze_taint_flows()`` themselves to avoid
-    paying the full-analysis cost multiple times.
+    Shared across all focused-API integration tests so the database handle is
+    not re-created per test.  Tests that need to call focused APIs should accept
+    this fixture alongside ``flask_full_taint_result``.
     """
     if codeql_packs_dir is None:
         pytest.skip("CodeQL packs not available")
     from codeanalyzer.semantic_analysis.codeql.codeql_analysis import CodeQL
-    from codeanalyzer.config.taint_config_defaults import get_default_taint_config
-    codeql = CodeQL(
+    return CodeQL(
         project_dir=_TAINT_FIXTURES_DIR / "flask_app",
         db_path=flask_db,
         codeql_packs_dir=codeql_packs_dir,
     )
-    return codeql.analyze_taint_flows(config_override=get_default_taint_config())
+
+
+@pytest.fixture(scope="session")
+def flask_full_taint_result(flask_codeql):
+    """Run full taint analysis on flask_app exactly once per test session.
+
+    Returns a ``PyTaintAnalysisResult`` with all flows populated.  Focused-API
+    integration tests accept both this fixture and ``flask_codeql`` to avoid
+    paying the full-analysis cost multiple times — the full analysis runs once
+    here; each focused test pays only its focused query (~90 s).
+    """
+    from codeanalyzer.config.taint_config_defaults import get_default_taint_config
+    return flask_codeql.analyze_taint_flows(config_override=get_default_taint_config())

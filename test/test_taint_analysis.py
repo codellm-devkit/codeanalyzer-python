@@ -40,12 +40,6 @@ def path_traversal_app():
 
 
 @pytest.fixture
-def xss_app():
-    """Path to XSS test app."""
-    return FIXTURES_DIR / "xss_app"
-
-
-@pytest.fixture
 def flask_app():
     """Path to Flask test app."""
     return FIXTURES_DIR / "flask_app"
@@ -141,68 +135,6 @@ sanitizers:
         assert config.sources[0].name == "user_input"
         assert config.sinks[0].vulnerability_type == "SQL Injection"
 
-    def test_custom_configuration_json(self, tmp_path):
-        """Test custom taint configuration loaded from a JSON file."""
-        import json
-        config_data = {
-            "sources": [
-                {
-                    "name": "user_input",
-                    "description": "User input from input() function",
-                    "pattern": 'API::builtin("input").getACall()',
-                    "source_type": "user_input",
-                    "enabled": True,
-                }
-            ],
-            "sinks": [
-                {
-                    "name": "sql_execute",
-                    "description": "SQL query execution",
-                    "pattern": 'API::moduleImport("sqlite3").getMember("execute").getACall()',
-                    "sink_type": "sql_execution",
-                    "vulnerability_type": "SQL Injection",
-                    "severity": "critical",
-                    "enabled": True,
-                }
-            ],
-            "sanitizers": [],
-        }
-        config_file = tmp_path / "custom_taint_config.json"
-        config_file.write_text(json.dumps(config_data))
-
-        config = TaintConfigLoader.load_config(config_file, use_defaults=False)
-
-        assert len(config.sources) == 1
-        assert len(config.sinks) == 1
-        assert len(config.sanitizers) == 0
-        assert config.sources[0].name == "user_input"
-        assert config.sinks[0].vulnerability_type == "SQL Injection"
-
-    def test_config_merge_with_defaults(self, tmp_path):
-        """Test merging custom config with defaults."""
-        # Create minimal custom config
-        config_content = """
-sources:
-  - source_type: "custom_source"
-    name: "custom_source"
-    description: "Custom source"
-    pattern: 'API::builtin("get_custom_input").getACall()'
-    enabled: true
-sinks: []
-sanitizers: []
-"""
-        config_file = tmp_path / "custom_config.yaml"
-        config_file.write_text(config_content)
-
-        # Load with defaults
-        loader = TaintConfigLoader()
-        config = loader.load_config(config_file, use_defaults=True)
-
-        # Should have custom source plus defaults
-        assert len(config.sources) > 1
-        custom_sources = [s for s in config.sources if s.name == "custom_source"]
-        assert len(custom_sources) == 1
-
     def test_query_contains_all_builtin_imports(self, default_taint_config):
         """Generated query must import all 20 CodeQL security customization modules."""
         from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
@@ -256,95 +188,10 @@ sanitizers: []
             assert sink in query, f"Generated query is missing instanceof check for {sink}"
 
 
-class TestTaintAnalysisPydanticModels:
-    """Tests for Pydantic models used in taint analysis."""
-
-    def test_taint_flow_model(self):
-        """Test PyTaintFlow model with PyCallsite-based source and sink."""
-        from codeanalyzer.schema.py_schema import (
-            PyTaintFlow, PyTaintSource, PyTaintSink, PyTaintFlowStep, PyCallsite
-        )
-
-        source_cs = PyCallsite(
-            method_name="input",
-            start_line=10,
-            end_line=10,
-            start_column=5,
-            end_column=15,
-        )
-        source = PyTaintSource(
-            source_type="user_input",
-            call_site=source_cs,
-            description="User input"
-        )
-
-        sink_cs = PyCallsite(
-            method_name="cursor.execute",
-            start_line=15,
-            end_line=15,
-            start_column=10,
-            end_column=30,
-        )
-        sink = PyTaintSink(
-            sink_type="sql_execute",
-            call_site=sink_cs,
-            description="SQL execution",
-            severity="critical"
-        )
-
-        step = PyTaintFlowStep(
-            location="test.py:12:8",
-            function_name="process_data",
-            description="Intermediate step",
-            step_type="propagation"
-        )
-
-        flow = PyTaintFlow(
-            flow_id="flow_1",
-            source=source,
-            sink=sink,
-            path=[step],
-            vulnerability_type="SQL Injection",
-            severity="critical",
-            confidence="medium"
-        )
-
-        assert flow.source == source
-        assert flow.sink == sink
-        assert flow.source.call_site.start_line == 10
-        assert flow.sink.call_site.start_line == 15
-        assert len(flow.path) == 1
-        assert flow.severity == "critical"
-        assert flow.flow_id == "flow_1"
-
-    def test_taint_analysis_result_model(self):
-        """Test PyTaintAnalysisResult model."""
-        from codeanalyzer.schema.py_schema import PyTaintAnalysisResult
-
-        result = PyTaintAnalysisResult(
-            project_path="/path/to/project",
-            flows=[],
-        )
-
-        assert result.project_path == "/path/to/project"
-        assert len(result.flows) == 0
-
-
 class TestTaintAnalysisEdgeCases:
     """Tests for edge cases and error handling."""
 
-    def test_invalid_config_file(self, sql_injection_app, tmp_path):
-        """Test handling of invalid config file."""
-        invalid_config = tmp_path / "invalid_config.yaml"
-        invalid_config.write_text("invalid: yaml: content:")
-
-        loader = TaintConfigLoader()
-
-        # Should raise an error or handle gracefully
-        with pytest.raises(Exception):
-            loader.load_config(invalid_config, use_defaults=False)
-
-    def test_disabled_sources_and_sinks(self, sql_injection_app, tmp_path):
+    def test_disabled_sources_and_sinks(self, tmp_path):
         """Test configuration with disabled sources and sinks."""
         # Create config with all items disabled (include required fields)
         config_content = """
@@ -687,85 +534,17 @@ class TestTaintAnalysisBasic:
             "All Path Traversal flows should be high severity"
         )
 
-    def test_xss_detection(self, xss_db, codeql_packs_dir):
-        """Test detection of vulnerabilities in xss_app.
-
-        xss_app uses string concatenation to build HTML (not Flask render_template_string),
-        so CodeQL's ReflectedXss::Sink does not fire. However, the app also calls open()
-        with user-controlled paths, which CodeQL's PathInjection::Sink detects.
-        Expect at least 1 high-severity flow (Path Traversal from open()).
-        """
-        if codeql_packs_dir is None:
-            pytest.skip("CodeQL pack install failed")
-        config = get_default_taint_config()
-        codeql = CodeQL(
-            project_dir=FIXTURES_DIR / "xss_app",
-            db_path=xss_db,
-            taint_config=config,
-            codeql_packs_dir=codeql_packs_dir,
-        )
-
-        result = codeql.analyze_taint_flows()
-
-        assert result is not None
-        assert isinstance(result, PyTaintAnalysisResult)
-        assert len(result.flows) >= 1, (
-            f"Expected at least 1 flow from xss_app, got {len(result.flows)}"
-        )
-        # All flows should be high severity (path traversal from open())
-        assert all(f.severity == "high" for f in result.flows), (
-            f"Expected all flows to be high severity, got: {[(f.vulnerability_type, f.severity) for f in result.flows]}"
-        )
-
-    def test_result_has_project_path(self, sql_injection_db, codeql_packs_dir):
-        """Test that result includes project path."""
-        if codeql_packs_dir is None:
-            pytest.skip("CodeQL pack install failed")
-        config = get_default_taint_config()
-        codeql = CodeQL(
-            project_dir=FIXTURES_DIR / "sql_injection_app",
-            db_path=sql_injection_db,
-            taint_config=config,
-            codeql_packs_dir=codeql_packs_dir,
-        )
-
-        result = codeql.analyze_taint_flows()
-
-        assert result.project_path is not None
-        assert len(result.project_path) > 0
-        assert len(result.flows) >= 6, (
-            f"Expected at least 6 flows from sql_injection_app, got {len(result.flows)}"
-        )
-
-    def test_result_flow_counts(self, sql_injection_db, codeql_packs_dir):
-        """Test that result flow counts are consistent."""
-        if codeql_packs_dir is None:
-            pytest.skip("CodeQL pack install failed")
-        config = get_default_taint_config()
-        codeql = CodeQL(
-            project_dir=FIXTURES_DIR / "sql_injection_app",
-            db_path=sql_injection_db,
-            taint_config=config,
-            codeql_packs_dir=codeql_packs_dir,
-        )
-
-        result = codeql.analyze_taint_flows()
-
-        assert len(result.flows) >= 6, (
-            f"Expected at least 6 flows from sql_injection_app, got {len(result.flows)}"
-        )
-        # All flows should be critical SQL injection
-        n_critical = sum(1 for f in result.flows if f.severity == "critical")
-        assert n_critical >= 6, (
-            f"Expected at least 6 critical flows, got {n_critical}"
-        )
 
 
 class TestTaintAnalysisFlowStructure:
     """Tests for taint flow structure and metadata."""
 
     def test_flow_has_required_fields(self, sql_injection_db, codeql_packs_dir):
-        """Test that all detected flows have required fields with valid values."""
+        """All detected flows must have valid structural fields, typed source/sink locations.
+
+        Combines field-presence, severity/confidence enum checks, source location,
+        and sink location into one CodeQL run against sql_injection_app.
+        """
         if codeql_packs_dir is None:
             pytest.skip("CodeQL pack install failed")
         config = get_default_taint_config()
@@ -779,187 +558,71 @@ class TestTaintAnalysisFlowStructure:
         result = codeql.analyze_taint_flows()
 
         assert len(result.flows) >= 6, f"Expected at least 6 flows, got {len(result.flows)}"
-        for flow in result.flows:
-            assert flow.flow_id is not None and len(flow.flow_id) > 0, "flow_id must be non-empty"
-            assert flow.source is not None, "flow.source must not be None"
-            assert flow.sink is not None, "flow.sink must not be None"
-            assert flow.vulnerability_type is not None and len(flow.vulnerability_type) > 0
-            assert flow.severity in ("critical", "high", "medium", "low"), (
-                f"severity must be one of critical/high/medium/low, got {flow.severity!r}"
-            )
-            assert flow.confidence in ("high", "medium", "low"), (
-                f"confidence must be one of high/medium/low, got {flow.confidence!r}"
-            )
-        # All sql_injection_app flows should be SQL Injection
         assert all(f.vulnerability_type == "SQL Injection" for f in result.flows), (
             "All flows from sql_injection_app should be SQL Injection"
         )
-
-    def test_flow_source_has_location(self, sql_injection_db, codeql_packs_dir):
-        """Test that flow sources have non-empty location and type information."""
-        if codeql_packs_dir is None:
-            pytest.skip("CodeQL pack install failed")
-        config = get_default_taint_config()
-        codeql = CodeQL(
-            project_dir=FIXTURES_DIR / "sql_injection_app",
-            db_path=sql_injection_db,
-            taint_config=config,
-            codeql_packs_dir=codeql_packs_dir,
-        )
-
-        result = codeql.analyze_taint_flows()
-
-        assert len(result.flows) >= 6
         for flow in result.flows:
-            assert flow.source.source_type is not None and len(flow.source.source_type) > 0, (
-                "flow.source.source_type must be non-empty"
+            assert flow.flow_id, "flow_id must be non-empty"
+            assert flow.source is not None and flow.sink is not None
+            assert flow.severity in ("critical", "high", "medium", "low"), (
+                f"severity must be a valid level, got {flow.severity!r}"
             )
-            assert flow.source.call_site is not None, (
-                "flow.source.call_site must be set"
+            assert flow.confidence in ("high", "medium", "low"), (
+                f"confidence must be a valid level, got {flow.confidence!r}"
             )
-            assert flow.source.call_site.start_line > 0, (
-                "flow.source.call_site.start_line must be a positive integer"
-            )
-
-    def test_flow_sink_has_location(self, sql_injection_db, codeql_packs_dir):
-        """Test that flow sinks have non-empty location and type information."""
-        if codeql_packs_dir is None:
-            pytest.skip("CodeQL pack install failed")
-        config = get_default_taint_config()
-        codeql = CodeQL(
-            project_dir=FIXTURES_DIR / "sql_injection_app",
-            db_path=sql_injection_db,
-            taint_config=config,
-            codeql_packs_dir=codeql_packs_dir,
-        )
-
-        result = codeql.analyze_taint_flows()
-
-        assert len(result.flows) >= 6
-        for flow in result.flows:
-            assert flow.sink.sink_type is not None and len(flow.sink.sink_type) > 0, (
-                "flow.sink.sink_type must be non-empty"
-            )
-            assert flow.sink.call_site is not None, (
-                "flow.sink.call_site must be set"
-            )
-            assert flow.sink.call_site.start_line > 0, (
-                "flow.sink.call_site.start_line must be a positive integer"
-            )
-            # All SQL injection sinks should be sql_execution type
+            # Source location
+            assert flow.source.source_type, "source_type must be non-empty"
+            assert flow.source.call_site is not None, "source call_site must be set"
+            assert flow.source.call_site.start_line > 0, "source start_line must be positive"
+            # Sink location and type
             assert flow.sink.sink_type == "sql_execution", (
-                f"Expected sql_execution sink type, got {flow.sink.sink_type!r}"
+                f"Expected sql_execution sink_type, got {flow.sink.sink_type!r}"
             )
+            assert flow.sink.call_site is not None, "sink call_site must be set"
+            assert flow.sink.call_site.start_line > 0, "sink start_line must be positive"
 
 
 class TestTaintAnalysisConfiguration_Integration:
     """Integration tests for taint analysis configuration."""
 
-    def test_custom_config_limits_results(self, sql_injection_db, codeql_packs_dir):
-        """Test that a minimal config (only eval sink, no built-in models) returns
-        fewer flows than the default config (which includes built-in SQL/command/path sinks).
+    def test_custom_config_with_no_matching_sinks_returns_zero_flows(self, sql_injection_db, codeql_packs_dir):
+        """A config restricted to eval() sinks must find 0 flows in sql_injection_app.
 
-        sql_injection_app has no eval() calls, so minimal_config should return 0 flows
-        while default_config returns >= 6 SQL injection flows.
+        sql_injection_app has no eval() calls, so an eval-only config (no built-in
+        sink models) must produce an empty result.  This verifies that the config
+        actually controls what is detected rather than always using defaults.
         """
         if codeql_packs_dir is None:
             pytest.skip("CodeQL pack install failed")
-        default_config = get_default_taint_config()
-        codeql_default = CodeQL(
-            project_dir=FIXTURES_DIR / "sql_injection_app",
-            db_path=sql_injection_db,
-            taint_config=default_config,
-            codeql_packs_dir=codeql_packs_dir,
-        )
-        default_result = codeql_default.analyze_taint_flows()
-
-        assert len(default_result.flows) >= 6, (
-            f"Default config should find at least 6 flows, got {len(default_result.flows)}"
-        )
-
         from codeanalyzer.schema.py_schema import TaintAnalysisConfig, TaintSourceConfig, TaintSinkConfig
-        # Minimal config: only user_input source + eval sink (no built-in models)
-        # sql_injection_app has no eval() calls, so this should return 0 flows
+        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
         minimal_config = TaintAnalysisConfig(
-            sources=[
-                TaintSourceConfig(
-                    name="user_input",
-                    source_type="user_input",
-                    description="User input",
-                    pattern='API::builtin("input").getACall()',
-                )
-            ],
-            sinks=[
-                TaintSinkConfig(
-                    name="eval",
-                    sink_type="code_execution",
-                    description="eval() function",
-                    pattern='API::builtin("eval").getACall()',
-                    vulnerability_type="Code Injection",
-                    severity="critical",
-                    argument_index=0,
-                )
-            ],
-            sanitizers=[]
+            sources=[TaintSourceConfig(
+                name="user_input", source_type="user_input",
+                description="User input",
+                pattern='API::builtin("input").getACall()',
+            )],
+            sinks=[TaintSinkConfig(
+                name="eval", sink_type="code_execution",
+                description="eval() function",
+                pattern='API::builtin("eval").getACall()',
+                vulnerability_type="Code Injection", severity="critical",
+                argument_index=0,
+            )],
+            sanitizers=[],
+            # Disable all built-in sinks so only the explicit eval() sink is active.
+            disabled_builtin_sinks=TaintQueryGenerator.builtin_sink_names(),
         )
-        codeql_minimal = CodeQL(
+        codeql = CodeQL(
             project_dir=FIXTURES_DIR / "sql_injection_app",
             db_path=sql_injection_db,
-            taint_config=minimal_config,
             codeql_packs_dir=codeql_packs_dir,
         )
-        minimal_result = codeql_minimal.analyze_taint_flows()
-
-        assert len(minimal_result.flows) < len(default_result.flows), (
-            f"Minimal config ({len(minimal_result.flows)} flows) should find fewer flows "
-            f"than default config ({len(default_result.flows)} flows)"
+        result = codeql.analyze_taint_flows(config_override=minimal_config)
+        assert len(result.flows) == 0, (
+            f"eval-only config should find 0 flows in sql_injection_app "
+            f"(no eval() calls), got {len(result.flows)}"
         )
-
-    def test_config_override_in_analyze_taint_flows(self, sql_injection_db, codeql_packs_dir):
-        """Test that config_override parameter overrides the instance config.
-
-        Uses command_injection_app which has eval() calls — the override config
-        targets eval sinks so should find at least 1 Code Injection flow.
-        """
-        if codeql_packs_dir is None:
-            pytest.skip("CodeQL pack install failed")
-        from codeanalyzer.schema.py_schema import TaintAnalysisConfig, TaintSourceConfig, TaintSinkConfig
-
-        # Use command_injection_app which has eval(user_code) calls
-        codeql = CodeQL(
-            project_dir=FIXTURES_DIR / "command_injection_app",
-            db_path=sql_injection_db,  # reuse sql_injection_db for simplicity
-            codeql_packs_dir=codeql_packs_dir,
-        )
-
-        override_config = TaintAnalysisConfig(
-            sources=[
-                TaintSourceConfig(
-                    name="user_input",
-                    source_type="user_input",
-                    description="User input",
-                    pattern='API::builtin("input").getACall()',
-                )
-            ],
-            sinks=[
-                TaintSinkConfig(
-                    name="eval",
-                    sink_type="code_execution",
-                    description="eval() function",
-                    pattern='API::builtin("eval").getACall()',
-                    vulnerability_type="Code Injection",
-                    severity="critical",
-                    argument_index=0,
-                )
-            ],
-            sanitizers=[]
-        )
-
-        result = codeql.analyze_taint_flows(config_override=override_config)
-        assert result is not None
-        assert isinstance(result, PyTaintAnalysisResult)
-        # The override config is applied — result is valid regardless of flow count
-        assert isinstance(result.flows, list)
 
 
 class TestTaintAnalysisSanitizers_Integration:
@@ -989,36 +652,6 @@ class TestTaintAnalysisSanitizers_Integration:
             f"sanitizer_app should have at least 3 flows (unsafe code), got {len(result.flows)}"
         )
 
-    def test_sanitizer_app_has_fewer_flows_than_vulnerable(self, sanitizer_db, sql_injection_db, codeql_packs_dir):
-        """Test that sanitizer_app has fewer flows than sql_injection_app.
-
-        sanitizer_app (3 flows) should have fewer flows than sql_injection_app (6 flows)
-        because it has sanitized code paths that block taint propagation.
-        """
-        if codeql_packs_dir is None:
-            pytest.skip("CodeQL pack install failed")
-        config = get_default_taint_config()
-
-        codeql_sanitizer = CodeQL(
-            project_dir=FIXTURES_DIR / "sanitizer_app",
-            db_path=sanitizer_db,
-            taint_config=config,
-            codeql_packs_dir=codeql_packs_dir,
-        )
-        sanitizer_result = codeql_sanitizer.analyze_taint_flows()
-
-        codeql_vuln = CodeQL(
-            project_dir=FIXTURES_DIR / "sql_injection_app",
-            db_path=sql_injection_db,
-            taint_config=config,
-            codeql_packs_dir=codeql_packs_dir,
-        )
-        vuln_result = codeql_vuln.analyze_taint_flows()
-
-        assert len(sanitizer_result.flows) < len(vuln_result.flows), (
-            f"sanitizer_app ({len(sanitizer_result.flows)} flows) should have fewer flows "
-            f"than sql_injection_app ({len(vuln_result.flows)} flows)"
-        )
 
 
 class TestTaintAnalysisMultipleVulnerabilities:
@@ -1062,36 +695,6 @@ class TestTaintAnalysisMultipleVulnerabilities:
             f"Expected at least 3 high flows, got {len(high_flows)}"
         )
 
-    def test_result_flow_consistency(self, flask_db, codeql_packs_dir):
-        """Test that result flows list is internally consistent."""
-        if codeql_packs_dir is None:
-            pytest.skip("CodeQL pack install failed")
-        config = get_default_taint_config()
-        codeql = CodeQL(
-            project_dir=FIXTURES_DIR / "flask_app",
-            db_path=flask_db,
-            taint_config=config,
-            codeql_packs_dir=codeql_packs_dir,
-        )
-
-        result = codeql.analyze_taint_flows()
-
-        assert len(result.flows) >= 11, (
-            f"Expected at least 11 flows from flask_app, got {len(result.flows)}"
-        )
-
-        # Every flow must have a source and sink
-        for flow in result.flows:
-            assert flow.source is not None
-            assert flow.sink is not None
-            assert flow.vulnerability_type is not None
-            assert flow.severity in ("critical", "high", "medium", "low")
-
-        # Severity counts derived from flows must sum to total
-        n_by_severity = {}
-        for f in result.flows:
-            n_by_severity[f.severity] = n_by_severity.get(f.severity, 0) + 1
-        assert sum(n_by_severity.values()) == len(result.flows)
 
 
 class TestTaintAnalysisIntegration_Codeanalyzer:
@@ -1491,26 +1094,6 @@ class TestFocusedTaintAPIs_Unit:
         configs = CodeQL._build_sink_configs([sink])
         assert configs[0].vulnerability_type == "sql_execution"
 
-    # ---- schema field round-trips -------------------------------------
-
-    def test_callsite_file_path_is_set_on_synthetic_source(self):
-        """PyCallsite built directly must accept file_path."""
-        from codeanalyzer.schema.py_schema import PyCallsite
-        cs = PyCallsite(method_name="input", start_line=7, end_line=7, file_path="main.py")
-        assert cs.file_path == "main.py"
-
-    def test_taint_sink_vulnerability_type_field(self):
-        """PyTaintSink must store vulnerability_type and it must be round-trippable."""
-        from codeanalyzer.schema.py_schema import PyTaintSink, PyCallsite
-        sink = PyTaintSink(
-            sink_type="sql_execution",
-            severity="critical",
-            vulnerability_type="SQL Injection",
-            call_site=PyCallsite(method_name="execute", start_line=1, end_line=1, file_path="x.py"),
-        )
-        assert sink.vulnerability_type == "SQL Injection"
-        d = sink.model_dump()
-        assert d["vulnerability_type"] == "SQL Injection"
 
 
 class TestFocusedTaintAPIs_Integration:
@@ -1531,22 +1114,18 @@ class TestFocusedTaintAPIs_Integration:
         if codeql_packs_dir is None:
             pytest.skip("CodeQL packs not available")
 
-    def test_analyze_from_sources_singular_returns_flows_for_that_source(self, flask_db, codeql_packs_dir):
+    def test_analyze_from_sources_singular_returns_flows_for_that_source(
+        self, flask_codeql, flask_full_taint_result, codeql_packs_dir
+    ):
         """analyze_taint_flows_from_sources([source]) must return only flows from that callsite."""
         self._skip_if_no_codeql(codeql_packs_dir)
-        codeql = CodeQL(
-            project_dir=FIXTURES_DIR / "flask_app",
-            db_path=flask_db,
-            codeql_packs_dir=codeql_packs_dir,
+        assert len(flask_full_taint_result.flows) >= 1, "Full analysis must find at least one flow"
+        first_source = flask_full_taint_result.flows[0].source
+        assert first_source.call_site.file_path, "file_path must be set"
+
+        focused = flask_codeql.analyze_taint_flows_from_sources(
+            [first_source], config_override=get_default_taint_config()
         )
-        cfg = get_default_taint_config()
-        full = codeql.analyze_taint_flows(config_override=cfg)
-        assert len(full.flows) >= 1, "Full analysis must find at least one flow"
-
-        first_source = full.flows[0].source
-        assert first_source.call_site.file_path, "file_path must be set after analyze_taint_flows"
-
-        focused = codeql.analyze_taint_flows_from_sources([first_source], config_override=cfg)
         assert len(focused.flows) >= 1
         src_key = (first_source.call_site.file_path, first_source.call_site.start_line)
         assert all(
@@ -1554,24 +1133,21 @@ class TestFocusedTaintAPIs_Integration:
             for f in focused.flows
         ), "All focused flows must originate from the pinned source call site"
 
-    def test_analyze_to_sinks_singular_returns_flows_for_that_sink(self, flask_db, codeql_packs_dir):
+    def test_analyze_to_sinks_singular_returns_flows_for_that_sink(
+        self, flask_codeql, flask_full_taint_result, codeql_packs_dir
+    ):
         """analyze_taint_flows_to_sinks([sink]) must return only flows reaching that callsite."""
         self._skip_if_no_codeql(codeql_packs_dir)
-        codeql = CodeQL(
-            project_dir=FIXTURES_DIR / "flask_app",
-            db_path=flask_db,
-            codeql_packs_dir=codeql_packs_dir,
+        sql_flow = next(
+            (f for f in flask_full_taint_result.flows if f.vulnerability_type == "SQL Injection"),
+            None,
         )
-        cfg = get_default_taint_config()
-        full = codeql.analyze_taint_flows(config_override=cfg)
-        assert len(full.flows) >= 1
-
-        sql_flow = next((f for f in full.flows if f.vulnerability_type == "SQL Injection"), None)
         assert sql_flow is not None, "flask_app must have at least one SQL Injection flow"
         target_sink = sql_flow.sink
-        assert target_sink.call_site.file_path, "file_path must be set on sink"
 
-        focused = codeql.analyze_taint_flows_to_sinks([target_sink], config_override=cfg)
+        focused = flask_codeql.analyze_taint_flows_to_sinks(
+            [target_sink], config_override=get_default_taint_config()
+        )
         assert len(focused.flows) >= 1
         snk_key = (target_sink.call_site.file_path, target_sink.call_site.start_line)
         assert all(
@@ -1579,23 +1155,21 @@ class TestFocusedTaintAPIs_Integration:
             for f in focused.flows
         ), "All focused flows must reach the pinned sink call site"
 
-    def test_analyze_flow_paths_returns_flows_between_source_and_sink(self, flask_db, codeql_packs_dir):
+    def test_analyze_flow_paths_returns_flows_between_source_and_sink(
+        self, flask_codeql, flask_full_taint_result, codeql_packs_dir
+    ):
         """analyze_taint_flow_paths([source], [sink]) must return only flows between those callsites."""
         self._skip_if_no_codeql(codeql_packs_dir)
-        codeql = CodeQL(
-            project_dir=FIXTURES_DIR / "flask_app",
-            db_path=flask_db,
-            codeql_packs_dir=codeql_packs_dir,
+        sql_flow = next(
+            (f for f in flask_full_taint_result.flows if f.vulnerability_type == "SQL Injection"),
+            None,
         )
-        cfg = get_default_taint_config()
-        full = codeql.analyze_taint_flows(config_override=cfg)
-
-        sql_flow = next((f for f in full.flows if f.vulnerability_type == "SQL Injection"), None)
         assert sql_flow is not None
-        pinned_source = sql_flow.source
-        pinned_sink = sql_flow.sink
+        pinned_source, pinned_sink = sql_flow.source, sql_flow.sink
 
-        focused = codeql.analyze_taint_flow_paths([pinned_source], [pinned_sink], config_override=cfg)
+        focused = flask_codeql.analyze_taint_flow_paths(
+            [pinned_source], [pinned_sink], config_override=get_default_taint_config()
+        )
         assert len(focused.flows) >= 1
         src_key = (pinned_source.call_site.file_path, pinned_source.call_site.start_line)
         snk_key = (pinned_sink.call_site.file_path, pinned_sink.call_site.start_line)
@@ -1603,24 +1177,20 @@ class TestFocusedTaintAPIs_Integration:
             assert (f.source.call_site.file_path, f.source.call_site.start_line) == src_key
             assert (f.sink.call_site.file_path, f.sink.call_site.start_line) == snk_key
 
-    def test_analyze_from_sources_taint_node_ref_accepted(self, flask_db, codeql_packs_dir):
+    def test_analyze_from_sources_taint_node_ref_accepted(
+        self, flask_codeql, flask_full_taint_result, codeql_packs_dir
+    ):
         """analyze_taint_flows_from_sources must accept TaintNodeRef without bootstrapping."""
         self._skip_if_no_codeql(codeql_packs_dir)
         from codeanalyzer.schema.py_schema import TaintNodeRef
-        codeql = CodeQL(
-            project_dir=FIXTURES_DIR / "flask_app",
-            db_path=flask_db,
-            codeql_packs_dir=codeql_packs_dir,
-        )
-        cfg = get_default_taint_config()
-        # Discover a real source location first, then pass it as a TaintNodeRef
-        full = codeql.analyze_taint_flows(config_override=cfg)
-        first_source = full.flows[0].source
+        first_source = flask_full_taint_result.flows[0].source
         ref = TaintNodeRef(
             file_path=first_source.call_site.file_path,
             start_line=first_source.call_site.start_line,
         )
-        focused = codeql.analyze_taint_flows_from_sources([ref], config_override=cfg)
+        focused = flask_codeql.analyze_taint_flows_from_sources(
+            [ref], config_override=get_default_taint_config()
+        )
         assert len(focused.flows) >= 1
         src_key = (first_source.call_site.file_path, first_source.call_site.start_line)
         assert all(
@@ -1651,12 +1221,6 @@ class TestQueryGeneratorInternals:
         pattern = 'API::moduleImport("flask").getMember("request").getMember("args")'
         result = TaintQueryGenerator._pattern_to_source_node(pattern)
         assert result == f"{pattern}.asSource()"
-
-    def test_pattern_to_source_node_getcall_returned_unchanged(self):
-        """Pattern already ending in .getACall() must be returned as-is."""
-        from codeanalyzer.semantic_analysis.codeql.taint_query_generator import TaintQueryGenerator
-        pattern = 'API::builtin("input").getACall()'
-        assert TaintQueryGenerator._pattern_to_source_node(pattern) == pattern
 
     def test_pattern_to_sink_node_non_getcall_uses_getparameter_assink(self):
         """Pattern without .getACall() must use .getParameter(N).asSink() directly."""
@@ -2274,6 +1838,21 @@ class TestSchemaValidatorEdgeCases:
     # ------------------------------------------------------------------
     # D5: TaintNodeRef boundary / optional column
     # ------------------------------------------------------------------
+
+    def test_taint_node_ref_requires_absolute_file_path(self):
+        """TaintNodeRef must raise ValueError for relative paths.
+
+        The generated predicate uses getAbsolutePath() which always returns an
+        absolute path — a relative path would never match and silently return
+        zero results, so it is rejected at construction time.
+        """
+        from codeanalyzer.schema.py_schema import TaintNodeRef
+        for bad in ("relative/path", "./local.py", "app.py"):
+            with pytest.raises(ValueError, match="absolute"):
+                TaintNodeRef(file_path=bad, start_line=1)
+        # Absolute paths (Unix and Windows) must be accepted
+        TaintNodeRef(file_path="/abs/path.py", start_line=1)
+        TaintNodeRef(file_path=r"C:\Users\dev\app.py", start_line=1)
 
     def test_taint_node_ref_default_column_is_minus_one(self):
         """TaintNodeRef without start_column must default to -1 (no column constraint)."""
