@@ -1,0 +1,75 @@
+---
+title: CLI options
+description: The complete option reference for the codeanalyzer command — every flag, its default, and what it controls.
+---
+
+import { Aside, LinkCard, CardGrid } from "@astrojs/starlight/components";
+
+```
+codeanalyzer [OPTIONS]
+```
+
+Static analysis on Python source code using Jedi, CodeQL, and Tree-sitter. The only required option is `--input`. With no `--output`, the artifact is printed to stdout as compact JSON.
+
+## Options
+
+| Option | Alias | Type | Default | Description |
+| --- | --- | --- | --- | --- |
+| `--input` | `-i` | `PATH` | *required* | Path to the project root directory. |
+| `--output` | `-o` | `PATH` | `None` | Output **directory** for artifacts. If unset, JSON is printed to stdout. |
+| `--format` | `-f` | `json` \| `msgpack` | `json` | Output serialization format. |
+| `--codeql` / `--no-codeql` | | flag | `--no-codeql` | Enable CodeQL-based resolution in addition to Jedi. |
+| `--ray` / `--no-ray` | | flag | `--no-ray` | Use Ray to build the symbol table in parallel. |
+| `--eager` / `--lazy` | | flag | `--lazy` | Rebuild the analysis (and venv) from scratch vs. reuse cache. |
+| `--skip-tests` / `--include-tests` | | flag | `--skip-tests` | Exclude or include test files in the analysis. |
+| `--file-name` | | `PATH` | `None` | Analyze only this file (relative to `--input`; must be `.py`). |
+| `--cache-dir` | `-c` | `PATH` | `None` | Where to store the cache. Defaults to `.codeanalyzer` in the input dir. |
+| `--clear-cache` / `--keep-cache` | | flag | `--keep-cache` | Delete the cache on exit vs. retain it. |
+| `-v` | | count | `0` | Increase verbosity: `-v` (info), `-vv` (debug), `-vvv` (trace). |
+| `--help` | | | | Show the help message and exit. |
+
+<Aside type="note" title="Output is a directory">
+`--output` names a directory, not a file. codeanalyzer writes `analysis.json` (or `analysis.msgpack`) inside it, creating the directory if needed.
+</Aside>
+
+## Notes on defaults
+
+- **Lazy by default.** Analysis reuses cached results for unchanged files. Use `--eager` to force a full rebuild.
+- **Cache is kept by default.** The cache survives between runs. Use `--clear-cache` to discard it on exit.
+- **Tests excluded by default.** Files under `test`/`tests` directories, or named `test_*.py` / `*_test.py`, are skipped unless you pass `--include-tests`.
+- **CodeQL off by default.** Jedi resolves the call graph alone unless `--codeql` is set.
+
+## Output files
+
+| Format | File | Notes |
+| --- | --- | --- |
+| `json` | `analysis.json` | Compact JSON. Also the stdout format when `--output` is omitted. |
+| `msgpack` | `analysis.msgpack` | gzip-compressed MessagePack; the CLI logs the compression ratio vs. JSON. |
+
+Both encode the same `PyApplication` schema — see [Output schema](/codeanalyzer-python/reference/schema/).
+
+## Examples
+
+```shell
+# Symbol table + call graph to stdout
+codeanalyzer --input ./proj
+
+# Write JSON to a directory
+codeanalyzer --input ./proj --output ./out
+
+# msgpack + CodeQL, eager rebuild, cache discarded
+codeanalyzer --input ./proj --output ./out --format msgpack --codeql --eager --clear-cache
+
+# One file only
+codeanalyzer --input ./proj --file-name src/app/routes.py
+
+# Custom cache location, debug logging
+codeanalyzer --input ./proj --cache-dir /tmp/ca -vv
+```
+
+## Where to go next
+
+<CardGrid>
+  <LinkCard title="CLI usage" description="Worked examples and the reasoning behind each flag." href="/codeanalyzer-python/guides/cli-usage/" />
+  <LinkCard title="Output schema" description="The PyApplication artifact, field by field." href="/codeanalyzer-python/reference/schema/" />
+</CardGrid>

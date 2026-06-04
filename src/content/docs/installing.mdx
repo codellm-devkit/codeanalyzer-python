@@ -1,0 +1,109 @@
+---
+title: Installation
+description: Install codeanalyzer-python from PyPI, and set up the system packages it needs to create isolated analysis environments.
+---
+
+import { Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+`codeanalyzer-python` is [published on PyPI](https://pypi.org/project/codeanalyzer-python/) and installs with any Python package manager.
+
+## Install
+
+<Tabs>
+  <TabItem label="pip">
+    ```shell
+    pip install codeanalyzer-python
+    ```
+  </TabItem>
+  <TabItem label="pipx">
+    ```shell
+    pipx install codeanalyzer-python
+    ```
+  </TabItem>
+  <TabItem label="uv">
+    ```shell
+    uv tool install codeanalyzer-python
+    ```
+  </TabItem>
+</Tabs>
+
+This installs the `codeanalyzer` command. Verify it:
+
+```shell
+codeanalyzer --help
+```
+
+## Prerequisites
+
+- **Python 3.12 or higher.**
+
+### Why system packages are needed
+
+To analyze a project the way it actually runs, codeanalyzer builds an **isolated virtual environment** for it (under `.codeanalyzer/`) using Python's built-in `venv` module, installs the project's dependencies into it, and resolves symbols against that environment. That means the host needs `venv` support and a compiler toolchain for any dependencies with native extensions.
+
+<Tabs>
+  <TabItem label="Ubuntu/Debian">
+    ```shell
+    sudo apt update
+    sudo apt install python3.12-venv python3-dev build-essential
+    ```
+  </TabItem>
+  <TabItem label="Fedora/RHEL/CentOS">
+    ```shell
+    sudo dnf group install "Development Tools"
+    sudo dnf install python3-pip python3-venv python3-devel
+    ```
+
+    On older releases:
+
+    ```shell
+    sudo yum groupinstall "Development Tools"
+    sudo yum install python3-pip python3-venv python3-devel
+    ```
+  </TabItem>
+  <TabItem label="macOS">
+    ```shell
+    # Compiler toolchain
+    xcode-select --install
+
+    # Homebrew Python (recommended)
+    brew install python@3.12
+    ```
+
+    Using pyenv instead:
+
+    ```shell
+    pyenv install 3.12.0   # or the latest 3.12.x
+    pyenv global 3.12.0    # or `pyenv local 3.12.0` per project
+    ```
+  </TabItem>
+</Tabs>
+
+<Aside type="tip" title="Running inside a virtual environment">
+If you run `codeanalyzer` from within a virtual environment, it still needs a **base** interpreter to build the per-project venv. It auto-detects one (via `sys.base_executable`, then `pyenv` / `conda` / `asdf` / `PATH`). If detection fails, set `SYSTEM_PYTHON` to point at a working interpreter:
+
+```shell
+export SYSTEM_PYTHON=/usr/bin/python3.12
+```
+</Aside>
+
+## Optional: CodeQL
+
+CodeQL-based resolution is opt-in via `--codeql`. You do **not** need to install CodeQL yourself — on first use codeanalyzer downloads the CLI into the project cache (`<cache-dir>/codeql/`) and reuses it. If a `codeql` binary is already on your `PATH`, the project-local copy still takes precedence for deterministic behavior. See [CodeQL analysis](/codeanalyzer-python/guides/codeql/).
+
+## From source (development)
+
+The project uses [uv](https://docs.astral.sh/uv/) for development.
+
+```shell
+git clone https://github.com/codellm-devkit/codeanalyzer-python
+cd codeanalyzer-python
+uv sync --all-groups          # installs runtime + test + dev dependencies
+uv run codeanalyzer --input /path/to/python/project
+```
+
+Run the test suite with:
+
+```shell
+uv run pytest --pspec -s
+```

@@ -1,0 +1,210 @@
+/* ============================================================================
+   CLDK docs theme — "MCP restraint on IBM Carbon".
+   Near-monochrome neutral surfaces; one IBM-blue accent; code + diagrams carry
+   the color. Typography is IBM Plex; layout tuned for reference density.
+   ========================================================================== */
+
+:root {
+  --sl-font: "Space Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --sl-font-mono: "Space Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Slightly wider content for reference tables / signatures. */
+  --sl-content-width: 50rem;
+
+  /* Brand accent (IBM Carbon blue family). */
+  --cldk-blue: #0f62fe;
+}
+
+/* ---- Dark theme: Carbon gray-100 surfaces ------------------------------- */
+:root,
+:root[data-theme="dark"] {
+  --sl-color-accent-low: #0a2d6e;
+  --sl-color-accent: var(--cldk-blue);
+  --sl-color-accent-high: #a6c8ff;
+
+  --sl-color-bg: #161616; /* Carbon gray-100 */
+  --sl-color-bg-nav: #161616;
+  --sl-color-bg-sidebar: #1a1a1a;
+  --sl-color-bg-inline-code: #262626;
+  --sl-color-bg-accent: var(--cldk-blue);
+
+  --sl-color-hairline: #2a2a2a;
+  --sl-color-hairline-light: #333333;
+  --sl-color-hairline-shade: #202020;
+
+  --cldk-surface: #1f1f1f; /* card / panel surface */
+  --cldk-surface-2: #262626;
+  --cldk-border: #393939; /* Carbon gray-80 */
+}
+
+/* ---- Light theme: white / gray-10 --------------------------------------- */
+:root[data-theme="light"] {
+  --sl-color-accent-low: #d0e2ff;
+  --sl-color-accent: var(--cldk-blue);
+  --sl-color-accent-high: #002d6e;
+
+  --sl-color-bg: #ffffff;
+  --sl-color-bg-nav: #ffffff;
+  --sl-color-bg-sidebar: #f4f4f4; /* Carbon gray-10 */
+  --sl-color-bg-inline-code: #f4f4f4;
+
+  --sl-color-hairline: #e0e0e0;
+  --sl-color-hairline-light: #d0d0d0;
+  --sl-color-hairline-shade: #ececec;
+
+  --cldk-surface: #ffffff;
+  --cldk-surface-2: #f4f4f4;
+  --cldk-border: #d0d0d0; /* Carbon gray-30 */
+}
+
+html {
+  font-family: var(--sl-font);
+}
+
+/* Tighten heading weight for a reference-grade feel. */
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3 {
+  letter-spacing: -0.01em;
+}
+
+/* ============================================================================
+   Landing-page building blocks (splash template)
+   ========================================================================== */
+
+/* Badge row (arXiv / PyPI / license / Discord). */
+.cldk-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 1.75rem;
+}
+.cldk-badges img {
+  height: 26px;
+}
+
+/* "First analysis" / inline install one-liner emphasis. */
+.cldk-oneliner {
+  font-size: var(--sl-text-lg);
+}
+
+/* scikit-learn-style capability grid: definition + thumbnail + examples. */
+.cldk-capabilities {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0 2rem;
+  padding: 0;
+  list-style: none;
+}
+.cldk-capability {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1.1rem 1.2rem;
+  border: 1px solid var(--cldk-border);
+  border-radius: 0.6rem;
+  background: var(--cldk-surface);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 0.18s ease, transform 0.18s ease;
+}
+.cldk-capability:hover {
+  border-color: var(--sl-color-accent);
+  transform: translateY(-2px);
+}
+.cldk-capability__title {
+  font-weight: 600;
+  font-size: var(--sl-text-lg);
+  margin: 0;
+}
+.cldk-capability__def {
+  margin: 0;
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-sm);
+}
+.cldk-capability__thumb {
+  margin: 0.25rem 0;
+  padding: 0.6rem 0.7rem;
+  border-radius: 0.4rem;
+  background: var(--cldk-surface-2);
+  border: 1px solid var(--sl-color-hairline);
+  font-family: var(--sl-font-mono);
+  font-size: 0.74rem;
+  line-height: 1.45;
+  overflow-x: auto;
+  white-space: pre;
+  color: var(--sl-color-text);
+}
+.cldk-capability__examples {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: var(--sl-text-xs);
+  color: var(--sl-color-gray-3);
+}
+
+/* "Agents prefer CLDK" call-out band. */
+.cldk-agent-band {
+  margin: 2rem 0;
+  padding: 1.5rem 1.6rem;
+  border: 1px solid var(--cldk-border);
+  border-left: 3px solid var(--sl-color-accent);
+  border-radius: 0.6rem;
+  background: var(--cldk-surface);
+}
+.cldk-agent-band h2 {
+  margin-top: 0 !important;
+}
+
+/* At-a-glance stat strip. */
+.cldk-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 1.5rem 0;
+  padding: 0;
+  list-style: none;
+}
+.cldk-stat {
+  flex: 1 1 8rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--cldk-border);
+  border-radius: 0.6rem;
+  background: var(--cldk-surface);
+  text-align: center;
+}
+.cldk-stat__num {
+  display: block;
+  font-size: 1.7rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.cldk-stat__label {
+  font-size: var(--sl-text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--sl-color-gray-3);
+}
+
+/* Hero wordmark fallbacks (kept for non-splash uses). */
+.cldk-hero {
+  margin: 0.5rem 0 1.5rem;
+  text-align: center;
+}
+.cldk-hero img {
+  display: block;
+  width: min(100%, 620px);
+  height: auto;
+  margin: 0 auto;
+}
+:root[data-theme="dark"] .cldk-hero-light {
+  display: none;
+}
+:root[data-theme="light"] .cldk-hero-dark {
+  display: none;
+}
+
+/* Auto-generated API signatures wrap rather than overflow. */
+.sl-markdown-content pre.cldk-signature {
+  white-space: pre-wrap;
+}

@@ -1,0 +1,139 @@
+---
+title: CLI usage
+description: Worked examples for the codeanalyzer command — output formats, caching, eager vs lazy analysis, single-file mode, CodeQL, and verbosity.
+---
+
+import { Aside, LinkCard, CardGrid, Tabs, TabItem } from "@astrojs/starlight/components";
+
+The `codeanalyzer` command runs static analysis on a Python project and emits a `PyApplication` artifact. This guide walks through the common invocations; for the full flag table see the [CLI reference](/codeanalyzer-python/reference/cli/).
+
+## Basic analysis
+
+The only required flag is `--input` (`-i`), the project root:
+
+```shell
+codeanalyzer --input ./my-python-project
+```
+
+With no `--output`, the analysis is printed to stdout as compact JSON. Add `--output` (`-o`) to write it to a file instead:
+
+```shell
+codeanalyzer --input ./my-python-project --output ./out
+# -> ./out/analysis.json
+```
+
+<Aside type="note">
+`--output` takes a **directory**. The file is named `analysis.json` (or `analysis.msgpack`) inside it; the directory is created if it doesn't exist.
+</Aside>
+
+## Output formats
+
+The default format is JSON. Pass `--format msgpack` (`-f`) for a gzip-compressed MessagePack artifact — smaller and faster to load for large projects:
+
+```shell
+codeanalyzer --input ./my-python-project --output ./out --format msgpack
+# -> ./out/analysis.msgpack
+```
+
+The CLI logs the compression ratio relative to JSON when it writes msgpack. The schema is identical across formats; only the serialization differs.
+
+## Enabling CodeQL
+
+By default the call graph comes from Jedi's lexical analysis. Add `--codeql` to resolve additional edges — including RPC, third-party, and dynamically-dispatched targets — and merge them with the Jedi edges. CodeQL also backfills resolved callees on Jedi call sites it couldn't resolve.
+
+```shell
+codeanalyzer --input ./my-python-project --codeql
+```
+
+<Aside type="caution">
+CodeQL integration is experimental. The CLI is downloaded into `<cache-dir>/codeql/` on first use and reused thereafter, so the first run is slower. Details in [CodeQL analysis](/codeanalyzer-python/guides/codeql/).
+</Aside>
+
+## Caching: eager vs lazy
+
+Analysis is **lazy** by default: codeanalyzer caches results under `.codeanalyzer/` and reuses the entries for files that haven't changed (detected by mtime, size, and content hash). Pass `--eager` to rebuild everything from scratch:
+
+```shell
+# Lazy (default) — reuse unchanged files from cache
+codeanalyzer --input ./my-python-project
+
+# Eager — rebuild the analysis and the virtual environment
+codeanalyzer --input ./my-python-project --eager
+```
+
+Control where the cache lives with `--cache-dir` (`-c`). If unset, it defaults to `.codeanalyzer` in the input project directory:
+
+```shell
+codeanalyzer --input ./my-python-project --cache-dir /tmp/ca-cache
+# -> /tmp/ca-cache/.codeanalyzer
+```
+
+By default the cache is **kept** after a run. Pass `--clear-cache` to delete it on exit (useful in CI):
+
+```shell
+codeanalyzer --input ./my-python-project --clear-cache
+```
+
+<Aside type="note" title="What gets cached">
+Only the symbol table and base call graph are cached. The pass-pipeline output — entrypoints and synthetic edges — is deliberately re-computed on every run, so it can never go stale when an extension is added, changed, or removed.
+</Aside>
+
+## Single-file mode
+
+To analyze one file rather than the whole project, pass `--file-name` relative to `--input`:
+
+```shell
+codeanalyzer --input ./my-python-project --file-name src/app/routes.py
+```
+
+The path must exist under `--input` and end in `.py`.
+
+## Including test files
+
+Test files are skipped by default — any file under a `test`/`tests` directory, or named `test_*.py` / `*_test.py`. Include them with `--include-tests`:
+
+```shell
+codeanalyzer --input ./my-python-project --include-tests
+```
+
+## Parallelism with Ray
+
+For large projects, `--ray` distributes symbol-table construction across workers:
+
+```shell
+codeanalyzer --input ./large-project --ray
+```
+
+## Verbosity
+
+The tool is quiet by default. Stack `-v` for progressively more logging:
+
+```shell
+codeanalyzer --input ./my-python-project -v     # info
+codeanalyzer --input ./my-python-project -vv    # debug
+codeanalyzer --input ./my-python-project -vvv   # trace
+```
+
+## Putting it together
+
+A typical CI invocation — eager rebuild, CodeQL on, msgpack out, cache discarded:
+
+```shell
+codeanalyzer \
+  --input ./my-python-project \
+  --output ./artifacts \
+  --format msgpack \
+  --codeql \
+  --eager \
+  --clear-cache \
+  -v
+```
+
+## Where to go next
+
+<CardGrid>
+  <LinkCard title="CLI reference" description="The complete flag table with defaults." href="/codeanalyzer-python/reference/cli/" />
+  <LinkCard title="Core concepts" description="What the artifact actually contains." href="/codeanalyzer-python/guides/concepts/" />
+  <LinkCard title="CodeQL analysis" description="How --codeql resolves and caches." href="/codeanalyzer-python/guides/codeql/" />
+  <LinkCard title="Output schema" description="The PyApplication data model." href="/codeanalyzer-python/reference/schema/" />
+</CardGrid>

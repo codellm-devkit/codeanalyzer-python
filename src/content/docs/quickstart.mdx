@@ -1,0 +1,96 @@
+---
+title: Quickstart
+description: Install codeanalyzer-python, run it against a Python project, and read your first analysis.json — symbol table, call graph, and entrypoints — in three steps.
+---
+
+import { Steps, Aside, LinkCard, CardGrid, Tabs, TabItem } from "@astrojs/starlight/components";
+
+codeanalyzer-python points at a Python project and produces one typed artifact — its symbol table, call graph, and framework entrypoints. Three steps below: install, run it against a project, and read the result.
+
+<Aside type="note" title="Prerequisite">
+You need **Python 3.12 or higher**. The tool builds an isolated virtual environment per project using the standard-library `venv` module, so a few system packages may be required on Linux — see [Installation](/codeanalyzer-python/installing/).
+</Aside>
+
+<Steps>
+
+1. **Install the CLI.**
+
+   ```shell
+   pip install codeanalyzer-python
+   ```
+
+   That installs the `codeanalyzer` command. Jedi and Tree-sitter ship with the package; CodeQL is downloaded on demand only if you opt in with `--codeql`.
+
+2. **Run it against a project.**
+
+   Point `--input` at any Python project root and `--output` at a directory for the result.
+
+   ```shell
+   codeanalyzer --input ./my-python-project --output ./out
+   ```
+
+   On the first run codeanalyzer creates a virtual environment under `.codeanalyzer/`, installs the project's dependencies into it, walks every `.py` file, and writes `./out/analysis.json`.
+
+   <Aside type="tip">
+   Omit `--output` to stream the JSON to stdout instead — handy for piping into `jq`:
+
+   ```shell
+   codeanalyzer --input ./my-python-project | jq '.entrypoints'
+   ```
+   </Aside>
+
+3. **Read the result.**
+
+   `analysis.json` is a single `PyApplication` object with three top-level keys.
+
+   ```shell
+   jq 'keys' ./out/analysis.json
+   # [ "call_graph", "entrypoints", "symbol_table" ]
+
+   jq '.symbol_table | length' ./out/analysis.json   # modules analyzed
+   jq '.call_graph | length' ./out/analysis.json      # call edges
+   ```
+
+   That's it — a directory of source files is now a typed, queryable model of the program.
+
+</Steps>
+
+## Load it into a graph
+
+The call graph is a flat list of `source -> target` edges keyed by callable signature, so it drops straight into `networkx`:
+
+```python title="reachable.py"
+import json
+import networkx as nx
+
+app = json.load(open("./out/analysis.json"))
+
+g = nx.DiGraph()
+for edge in app["call_graph"]:
+    g.add_edge(edge["source"], edge["target"])
+
+print(g.number_of_nodes(), "nodes,", g.number_of_edges(), "edges")
+# Is a sink reachable from an entrypoint? A graph query, not a guess.
+# print(nx.has_path(g, entry_sig, sink_sig))
+```
+
+## Go deeper with CodeQL
+
+The default run uses Jedi for resolution — fast, no external tooling. Add `--codeql` to resolve the edges lexical analysis misses (dynamic dispatch, RPC, third-party targets). The CodeQL CLI is downloaded into the project cache on first use and reused thereafter.
+
+```shell
+codeanalyzer --input ./my-python-project --output ./out --codeql
+```
+
+<Aside type="caution">
+The first `--codeql` run downloads the CodeQL CLI and builds a database, so it takes noticeably longer. Subsequent runs reuse both. See [CodeQL analysis](/codeanalyzer-python/guides/codeql/).
+</Aside>
+
+## Where this goes next
+
+<CardGrid>
+  <LinkCard title="CLI usage" description="Output formats, caching, single-file mode, verbosity — every flag with examples." href="/codeanalyzer-python/guides/cli-usage/" />
+  <LinkCard title="Core concepts" description="What the symbol table, call graph, and entrypoints actually contain." href="/codeanalyzer-python/guides/concepts/" />
+  <LinkCard title="Entrypoint detection" description="Surface Flask, FastAPI, Celery, Click, and gRPC roots automatically." href="/codeanalyzer-python/guides/entrypoints/" />
+  <LinkCard title="Output schema" description="The PyApplication data model, field by field." href="/codeanalyzer-python/reference/schema/" />
+</CardGrid>

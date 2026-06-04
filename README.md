@@ -1,359 +1,60 @@
-![logo](https://github.com/codellm-devkit/codeanalyzer-python/blob/main/docs/assets/logo.png?raw=true)
+# codeanalyzer-python — documentation site
 
-# A Python Static Analysis Toolkit (and Library)
+This branch holds the documentation site for [**codeanalyzer-python**](https://github.com/codellm-devkit/codeanalyzer-python), the Python static-analysis backend behind [CLDK](https://github.com/codellm-devkit/python-sdk). The tool's source code lives on `main`; this `docs` branch is the [Astro](https://astro.build/) + [Starlight](https://starlight.astro.build/) site that documents it.
 
-A comprehensive static analysis tool for Python source code that provides symbol table generation, call graph analysis, and semantic analysis using Jedi, CodeQL, and Tree-sitter.
+## Develop
 
-## Installation
-
-```bash
-pip install codeanalyzer-python
+```shell
+npm install        # install dependencies
+npm run dev        # local dev server at http://localhost:4321
+npm run build      # production build into ./dist
+npm run preview    # preview the production build
 ```
 
-### Prerequisites
+## Structure
 
-- Python 3.12 or higher
-
-#### System Package Requirements
-
-The tool creates virtual environments internally using Python's built-in `venv` module.
-
-**Ubuntu/Debian systems:**
-```bash
-sudo apt update
-sudo apt install python3.12-venv python3-dev build-essential
+```
+src/
+  content/
+    docs/
+      index.mdx                     # landing page (splash)
+      what-is-codeanalyzer.mdx
+      quickstart.mdx
+      installing.mdx
+      guides/
+        cli-usage.mdx
+        concepts.mdx
+        codeql.mdx
+        entrypoints.mdx
+      reference/
+        cli.mdx                     # CLI option reference
+        schema.mdx                  # PyApplication output schema
+      extending/
+        analysis-passes.mdx         # writing passes / entrypoint finders
+  styles/docs.css                   # theme
+  assets/                           # logo
+astro.config.mjs                    # site + sidebar config
 ```
 
-**Fedora/RHEL/CentOS systems:**
-```bash
-sudo dnf group install "Development Tools"
-sudo dnf install python3-pip python3-venv python3-devel
-```
-or on older versions:
-```bash
-sudo yum groupinstall "Development Tools"
-sudo yum install python3-pip python3-venv python3-devel
-```
+## Internal links (important)
 
-**macOS systems:**
-```bash
-# Install Xcode Command Line Tools (for compilation)
-xcode-select --install
+The site is served from a **base path** — `https://codellm-devkit.github.io/codeanalyzer-python/` (set via `site` + `base` in `astro.config.mjs`). Astro does **not** rewrite links in page content, so every internal link must include the base prefix:
 
-# If using Homebrew Python (recommended)
-brew install python@3.12
+```md
+<!-- correct -->
+[Quickstart](/codeanalyzer-python/quickstart/)
+<LinkCard href="/codeanalyzer-python/guides/concepts/" ... />
 
-# If using pyenv (popular Python version manager)
-# First ensure pyenv is properly installed and configured
-pyenv install 3.12.0  # or latest 3.12.x version
-pyenv global 3.12.0   # or pyenv local 3.12.0 for project-specific
-
-# If using system Python, you may need to install certificates
-/Applications/Python\ 3.12/Install\ Certificates.command
+<!-- WRONG — 404s at the base path -->
+[Quickstart](/quickstart/)
 ```
 
-> **Note:** These packages are required as the tool uses Python's built-in `venv` module to create isolated environments for analysis.
+Sidebar `slug` entries in `astro.config.mjs` and assets are based automatically — only authored links in `.mdx` need the prefix. To verify after editing, build and grep `dist/` for any `href="/…"` that doesn't start with `/codeanalyzer-python/`.
 
-## Usage
+## Deploy
 
-The codeanalyzer provides a command-line interface for performing static analysis on Python projects.
+Pushing to `docs` triggers `.github/workflows/deploy.yml`, which builds the site and publishes `dist/` to the `gh-pages` branch. GitHub Pages then serves it at `https://codellm-devkit.github.io/codeanalyzer-python/`.
 
-### Basic Usage
+## License
 
-```bash
-codeanalyzer --input /path/to/python/project
-```
-
-### Command Line Options
-
-To view the available options and commands, run `codeanalyzer --help`. You should see output similar to the following:
-
-```bash
-❯ codeanalyzer --help
-
- Usage: codeanalyzer [OPTIONS] COMMAND [ARGS]...
-
- Static Analysis on Python source code using Jedi, CodeQL and Tree sitter.
-
-
-╭─ Options ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ *  --input           -i                  PATH            Path to the project root directory. [default: None] [required]     │
-│    --output          -o                  PATH            Output directory for artifacts. [default: None]                    │
-│    --format          -f                  [json|msgpack]  Output format: json or msgpack. [default: json]                    │
-│    --codeql              --no-codeql                     Enable CodeQL-based analysis. [default: no-codeql]                 │
-│    --eager               --lazy                          Enable eager or lazy analysis. Defaults to lazy. [default: lazy]   │
-│    --cache-dir       -c                  PATH            Directory to store analysis cache. [default: None]                 │
-│    --clear-cache         --keep-cache                    Clear cache after analysis. [default: clear-cache]                 │
-│                      -v                  INTEGER         Increase verbosity: -v, -vv, -vvv [default: 0]                     │
-│    --help                                                Show this message and exit.                                        │
-╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-```
-
-### Examples
-
-1. **Basic analysis with symbol table:**
-   ```bash
-   codeanalyzer --input ./my-python-project
-   ```
-
-   This will print the symbol table to stdout in JSON format to the standard output. If you want to save the output, you can use the `--output` option.
-
-   ```bash
-   codeanalyzer --input ./my-python-project --output /path/to/analysis-results
-   ```
-
-   Now, you can find the analysis results in `analysis.json` in the specified directory.
-
-2. **Change output format to msgpack:**
-   ```bash
-   codeanalyzer --input ./my-python-project --output /path/to/analysis-results --format msgpack
-   ```
-
-   This will save the analysis results in `analysis.msgpack` in the specified directory.
-
-3. **Analysis with CodeQL enabled:**
-   ```bash
-   codeanalyzer --input ./my-python-project --codeql
-   ```
-   Every run produces a symbol table **and** a call graph. By default, edges come from Jedi's lexical analysis. Adding `--codeql` resolves additional edges (including RPC / third-party / dynamically-dispatched targets) and merges them with the Jedi-derived edges. CodeQL also backfills resolved callees on Jedi-emitted call sites where Jedi couldn't resolve them.
-
-    ***Note: CodeQL integration is experimental. The CLI is downloaded into `<cache_dir>/codeql/` on first use and reused thereafter.***
-
-4. **Eager analysis with custom cache directory:**
-   ```bash
-   codeanalyzer --input ./my-python-project --eager --cache-dir /path/to/custom-cache
-   ```
-    This will rebuild the analysis cache at every run and store it in `/path/to/custom-cache/.codeanalyzer`. The cache will be cleared by default after analysis unless you specify `--keep-cache`.
-
-    If you provide --cache-dir, the cache will be stored in that directory. If not specified, it defaults to `.codeanalyzer` in the current working directory (`$PWD`).
-
-5. **Quiet mode (minimal output):**
-   ```bash
-   codeanalyzer --input /path/to/my-python-project --quiet
-   ```
-
-## Output
-
-By default, analysis results are printed to stdout in JSON format. When using the `--output` option, results are saved to `analysis.json` in the specified directory. If you use the `--format=msgpack` option, the results will be saved in `analysis.msgpack`, which is a binary format that can be more efficient for storage and transmission.
-
-## Development
-
-This project uses [uv](https://docs.astral.sh/uv/) for dependency management during development.
-
-### Development Setup
-
-1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/)
-![logo](https://github.com/codellm-devkit/codeanalyzer-python/blob/main/docs/assets/logo.png?raw=true)
-
-# A Python Static Analysis Toolkit (and Library)
-
-A comprehensive static analysis tool for Python source code that provides symbol table generation, call graph analysis, and semantic analysis using Jedi, CodeQL, and Tree-sitter.
-
-## Installation
-
-```bash
-pip install codeanalyzer-python
-```
-
-### Prerequisites
-
-- Python 3.12 or higher
-
-#### System Package Requirements
-
-The tool creates virtual environments internally using Python's built-in `venv` module.
-
-**Ubuntu/Debian systems:**
-```bash
-sudo apt update
-sudo apt install python3.12-venv python3-dev build-essential
-```
-
-**Fedora/RHEL/CentOS systems:**
-```bash
-sudo dnf group install "Development Tools"
-sudo dnf install python3-pip python3-venv python3-devel
-```
-or on older versions:
-```bash
-sudo yum groupinstall "Development Tools"
-sudo yum install python3-pip python3-venv python3-devel
-```
-
-**macOS systems:**
-```bash
-# Install Xcode Command Line Tools (for compilation)
-xcode-select --install
-
-# If using Homebrew Python (recommended)
-brew install python@3.12
-
-# If using pyenv (popular Python version manager)
-# First ensure pyenv is properly installed and configured
-pyenv install 3.12.0  # or latest 3.12.x version
-pyenv global 3.12.0   # or pyenv local 3.12.0 for project-specific
-
-# If using system Python, you may need to install certificates
-/Applications/Python\ 3.12/Install\ Certificates.command
-```
-
-> **Note:** These packages are required as the tool uses Python's built-in `venv` module to create isolated environments for analysis.
-
-## Usage
-
-The codeanalyzer provides a command-line interface for performing static analysis on Python projects.
-
-### Basic Usage
-
-```bash
-codeanalyzer --input /path/to/python/project
-```
-
-### Command Line Options
-
-To view the available options and commands, run `codeanalyzer --help`. You should see output similar to the following:
-
-```bash
-❯ codeanalyzer --help
-
- Usage: codeanalyzer [OPTIONS] COMMAND [ARGS]...
-
- Static Analysis on Python source code using Jedi, CodeQL and Tree sitter.
-
-
-╭─ Options ──────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ *  --input           -i                  PATH     Path to the project root directory. [default: None] [required]   │
-│    --output          -o                  PATH     Output directory for artifacts. [default: None]                  │
-│    --format          -f           [json|msgpack]  Output format: json or msgpack. [default: json].                 │
-│    --codeql              --no-codeql              Enable CodeQL-based analysis. [default: no-codeql]               │
-│    --eager               --lazy                   Enable eager or lazy analysis. Defaults to lazy. [default: lazy] │
-│    --cache-dir       -c                  PATH     Directory to store analysis cache. [default: None]               │
-│    --clear-cache         --keep-cache             Clear cache after analysis. [default: clear-cache]               │
-│                      -v                  INTEGER  Increase verbosity: -v, -vv, -vvv [default: 0]                   │
-│    --help                                         Show this message and exit.                                      │
-╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-```
-
-### Examples
-
-1. **Basic analysis with symbol table:**
-   ```bash
-   codeanalyzer --input ./my-python-project
-   ```
-
-   This will print the symbol table to stdout in JSON format to the standard output. If you want to save the output, you can use the `--output` option.
-
-   ```bash
-   codeanalyzer --input ./my-python-project --output /path/to/analysis-results
-   ```
-
-   Now, you can find the analysis results in `analysis.json` in the specified directory.
-
-2. **Analysis with CodeQL enabled:**
-   ```bash
-   codeanalyzer --input ./my-python-project --codeql
-   ```
-   Every run produces a symbol table **and** a call graph. By default, edges come from Jedi's lexical analysis. Adding `--codeql` resolves additional edges (including RPC / third-party / dynamically-dispatched targets) and merges them with the Jedi-derived edges. CodeQL also backfills resolved callees on Jedi-emitted call sites where Jedi couldn't resolve them.
-
-   ***Note: CodeQL integration is experimental. The CLI is downloaded into `<cache_dir>/codeql/` on first use and reused thereafter.***
-
-3. **Eager analysis with custom cache directory:**
-   ```bash
-   codeanalyzer --input ./my-python-project --eager --cache-dir /path/to/custom-cache
-   ```
-    This will rebuild the analysis cache at every run and store it in `/path/to/custom-cache/.codeanalyzer`. The cache will be cleared by default after analysis unless you specify `--keep-cache`.
-
-    If you provide --cache-dir, the cache will be stored in that directory. If not specified, it defaults to `.codeanalyzer` in the current working directory (`$PWD`).
-
-4. **Save output in msgpack format:**
-   ```bash
-   codeanalyzer --input ./my-python-project --output /path/to/analysis-results --format msgpack
-   ```
-
-### Output
-
-By default, analysis results are printed to stdout in JSON format. When using the `--output` option, results are saved to `analysis.json` in the specified directory.
-
-## Development
-
-This project uses [uv](https://docs.astral.sh/uv/) for dependency management during development.
-
-### Development Setup
-
-1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/)
-
-2. Clone the repository:
-   ```bash
-   git clone https://github.com/codellm-devkit/codeanalyzer-python
-   cd codeanalyzer-python
-   ```
-
-3. Install dependencies using uv:
-   ```bash
-   uv sync --all-groups
-   ```
-   This will install all dependencies including development and test dependencies.
-
-### Running from Source
-
-When developing, you can run the tool directly from source:
-
-```bash
-uv run codeanalyzer --input /path/to/python/project
-```
-
-### Running Tests
-
-```bash
-uv run pytest --pspec -s
-```
-
-### Development Dependencies
-
-The project includes additional dependency groups for development:
-
-- **test**: pytest and related testing tools
-- **dev**: development tools like ipdb
-
-Install all groups with:
-```bash
-uv sync --all-groups
-```
-
-2. Clone the repository:
-   ```bash
-   git clone https://github.com/codellm-devkit/codeanalyzer-python
-   cd codeanalyzer-python
-   ```
-
-3. Install dependencies using uv:
-   ```bash
-   uv sync --all-groups
-   ```
-   This will install all dependencies including development and test dependencies.
-
-### Running from Source
-
-When developing, you can run the tool directly from source:
-
-```bash
-uv run codeanalyzer --input /path/to/python/project
-```
-
-### Running Tests
-
-```bash
-uv run pytest --pspec -s
-```
-
-### Development Dependencies
-
-The project includes additional dependency groups for development:
-
-- **test**: pytest and related testing tools
-- **dev**: development tools like ipdb
-
-Install all groups with:
-```bash
-uv sync --all-groups
-```
+Apache 2.0 — see [LICENSE](./LICENSE).
