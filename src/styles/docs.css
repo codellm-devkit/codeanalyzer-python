@@ -208,3 +208,22 @@ html {
 .sl-markdown-content pre.cldk-signature {
   white-space: pre-wrap;
 }
+/* ---- In-content status/tier badges: subtle pastel pills, not loud blocks -- */
+.sl-markdown-content .sl-badge {
+  font-family: var(--sl-font);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  border-radius: 999px;
+  padding: 0.05rem 0.55rem;
+  border-width: 1px;
+  white-space: nowrap;
+  background: transparent;
+}
+
+.sl-markdown-content .sl-badge.success { color: #57b87e; border-color: rgba(36, 161, 72, 0.28); background: rgba(36, 161, 72, 0.08); }
+.sl-markdown-content .sl-badge.tip     { color: #44b3b0; border-color: rgba(0, 157, 154, 0.28); background: rgba(0, 157, 154, 0.08); }
+.sl-markdown-content .sl-badge.caution { color: #cba43a; border-color: rgba(178, 134, 0, 0.28); background: rgba(178, 134, 0, 0.09); }
+.sl-markdown-content .sl-badge.note    { color: #5b8def; border-color: rgba(15, 98, 254, 0.28); background: rgba(15, 98, 254, 0.08); }
+.sl-markdown-content .sl-badge.default { color: #9a9a9a; border-color: rgba(111, 111, 111, 0.28); background: rgba(111, 111, 111, 0.08); }
+.sl-markdown-content .sl-badge.danger  { color: #e8737a; border-color: rgba(218, 30, 40, 0.28); background: rgba(218, 30, 40, 0.08); }

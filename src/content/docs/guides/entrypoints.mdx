@@ -3,11 +3,20 @@ title: Entrypoint detection
 description: How codeanalyzer-python surfaces framework-dispatched roots — Flask routes, FastAPI routers, Celery tasks, Click commands, gRPC servicers — as PyEntrypoint records, JackEE-style.
 ---
 
-import { Aside, LinkCard, CardGrid } from "@astrojs/starlight/components";
+import { Aside, Badge, LinkCard, CardGrid } from "@astrojs/starlight/components";
+
+<p>
+  <Badge text="Work in progress" variant="caution" />{" "}
+  <Badge text="Help wanted" variant="note" />
+</p>
+
+<Aside type="caution" title="Design, not shipped behavior">
+The `PyEntrypoint` schema and the `AbstractEntrypointFinder` contract described here are implemented, but **no concrete finder ships yet** — `BUILTIN_PASS_FACTORIES` is empty. Until a finder is written, `PyApplication.entrypoints` comes back empty for every framework. Read this page as the shape finders target and the API you'd write one against, not as detection that runs out of the box. See [Extending → Overview](/codeanalyzer-python/extending/overview/).
+</Aside>
 
 An **entrypoint** is a function the framework calls that your own code never calls directly: a Flask route handler, a FastAPI endpoint, a Celery task, a Click command, a gRPC servicer method. Static call-graph analysis can't see these edges — the framework wires them up at runtime — so without help, those handlers look like dead code, and reachability from "where execution actually enters" is unanswerable.
 
-codeanalyzer-python detects entrypoints with a layer modeled on **JackEE** (Antoniadis et al., PLDI 2020) — the same framework-independent entrypoint architecture the Java analyzer uses. Each detected root becomes a `PyEntrypoint` in `PyApplication.entrypoints`, keyed by framework name.
+codeanalyzer-python is designed to surface entrypoints with a layer modeled on **JackEE** (Antoniadis et al., PLDI 2020) — the same framework-independent entrypoint architecture the Java analyzer uses. Each detected root becomes a `PyEntrypoint` in `PyApplication.entrypoints`, keyed by framework name. The detection sources and framework-specific fields below define what a finder *can* record; which of them are populated depends entirely on which finders are installed.
 
 ```mermaid
 flowchart LR

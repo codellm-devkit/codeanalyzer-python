@@ -1,0 +1,42 @@
+---
+title: Extending codeanalyzer-python
+description: codeanalyzer-python is built to be taught new frameworks and dispatch mechanisms without forking it. Entrypoint finders and analysis passes are the two extension points — both areas where contributions are welcome.
+---
+
+import { Badge, CardGrid, LinkCard, Aside } from "@astrojs/starlight/components";
+
+<p>
+  <Badge text="Work in progress" variant="caution" />{" "}
+  <Badge text="Help wanted" variant="note" />
+</p>
+
+After the symbol table and base call graph are built, codeanalyzer runs a pipeline of **analysis passes** — whole-application steps that contribute framework-dispatched **entrypoints** and **synthetic call edges** the static graph can't observe. Out-of-tree packages register their own through the `codeanalyzer.analysis_passes` entry-point group, so you can teach codeanalyzer a new framework or a new dispatch mechanism **without forking it**.
+
+This is the youngest part of codeanalyzer-python: the **mechanism** exists, but **no concrete framework finder ships yet**. `BUILTIN_PASS_FACTORIES` is empty, so until a finder is written, `PyApplication.entrypoints` comes back empty. The frameworks named on this page (Flask, FastAPI, Celery, Click, gRPC, …) are the **roadmap** — the shapes finders will target — not detection that runs today. Writing the first finder for a framework is itself the contribution.
+
+## The two extension points
+
+<CardGrid>
+  <LinkCard
+    title="Entrypoint detection"
+    description="Surface framework-dispatched roots — Flask, FastAPI, Celery, Click, gRPC — as PyEntrypoint records, JackEE-style. Write an AbstractEntrypointFinder to cover a new framework."
+    href="/codeanalyzer-python/guides/entrypoints/"
+  />
+  <LinkCard
+    title="Analysis passes"
+    description="The AnalysisPass contract: emit entrypoints and synthetic call edges, registered via entry points. The general extension mechanism behind entrypoint finding."
+    href="/codeanalyzer-python/extending/analysis-passes/"
+  />
+</CardGrid>
+
+## What's WIP, and where help is needed
+
+<Aside type="caution" title="What exists vs. what's planned">
+**Built today:** the analysis-pass pipeline, the `AbstractEntrypointFinder` base class (a JackEE-style port of the Java analyzer's entrypoint architecture), pass discovery and topological ordering, and out-of-tree registration via the `codeanalyzer.analysis_passes` entry-point group. The extension API is the part you can rely on.
+
+**Not built yet:** any concrete finder. No framework — Flask, FastAPI, Celery, Click, gRPC, Django, or otherwise — is detected out of the box. Synthetic-edge passes are likewise scaffolding-only. Everything framework-specific is roadmap.
+</Aside>
+
+<Aside type="tip" title="Help wanted">
+The first concrete finder is the contribution. Good starting points: an `AbstractEntrypointFinder` for a framework you use, a synthetic-edge pass for an ORM or dispatch pattern the static graph misses, or test fixtures to pin a finder's behavior. Open an issue or PR on [GitHub](https://github.com/codellm-devkit/codeanalyzer-python), or come talk it through on [Discord](https://discord.gg/zEjz9YrmqN).
+</Aside>

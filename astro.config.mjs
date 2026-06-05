@@ -24,7 +24,7 @@ export default defineConfig({
         "codeanalyzer-python turns a Python project into one typed artifact — symbol table, call graph, and framework entrypoints — using Jedi, CodeQL, and Tree-sitter. The Python backend behind CLDK.",
       logo: {
         src: "./src/assets/logo.png",
-        replacesTitle: false,
+        replacesTitle: true,
       },
       favicon: "/favicon.png",
       customCss: ["./src/styles/docs.css"],
@@ -97,11 +97,6 @@ export default defineConfig({
             { label: "CLI usage", slug: "guides/cli-usage" },
             { label: "Core concepts", slug: "guides/concepts" },
             { label: "CodeQL analysis", slug: "guides/codeql" },
-            {
-              label: "Entrypoint detection",
-              slug: "guides/entrypoints",
-              badge: { text: "new", variant: "tip" },
-            },
           ],
         },
         {
@@ -114,11 +109,9 @@ export default defineConfig({
         {
           label: "Extending",
           items: [
-            {
-              label: "Analysis passes",
-              slug: "extending/analysis-passes",
-              badge: { text: "★", variant: "tip" },
-            },
+            { label: "Overview", slug: "extending/overview" },
+            { label: "Entrypoint detection", slug: "guides/entrypoints" },
+            { label: "Analysis passes", slug: "extending/analysis-passes" },
           ],
         },
       ],
