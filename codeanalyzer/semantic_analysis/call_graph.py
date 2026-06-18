@@ -173,7 +173,7 @@ def jedi_call_graph_edges(
 
     Edges are coalesced on ``(source, target)``: ``weight`` is the count of
     matching sites. Provenance is always ``["jedi"]``; combine with
-    CodeQL-derived edges via ``merge_edges``.
+    PyCG-derived edges via ``merge_edges``.
     """
     counts: Counter = Counter()
     for caller in iter_callables_in_symbol_table(symbol_table):
@@ -191,7 +191,7 @@ def jedi_call_graph_edges(
 def resolve_unresolved_constructors(symbol_table: Dict[str, PyModule]) -> int:
     """Fill in ``PyCallsite.callee_signature`` for unresolved constructor sites.
 
-    When both Jedi and CodeQL fail to resolve a constructor call (commonly
+    When Jedi fails to resolve a constructor call (commonly
     for classes nested inside functions or methods, where static-analysis
     points-to is weakest), Jedi still flags the site as
     ``is_constructor_call=True`` with ``method_name`` set to the class's
@@ -251,7 +251,7 @@ def merge_edges(*edge_lists: list) -> list:
 
     Edges with the same ``(source, target)`` are coalesced: weights sum,
     provenance is the sorted union. Useful for combining edges produced
-    by different backends (e.g. Jedi + CodeQL).
+    by different backends (e.g. Jedi + PyCG).
     """
     by_key: Dict[Tuple[str, str], PyCallEdge] = {}
     for edges in edge_lists:

@@ -21,7 +21,7 @@ def test_cli_call_symbol_table_with_json(cli_runner, whole_applications__xarray)
             "--output",
             str(output_dir),
             "--ray",
-            "--no-codeql",
+            "--analysis-level", "1",
             "--cache-dir",
             str(whole_applications__xarray.joinpath("test", ".cache")),
             "--clear-cache",

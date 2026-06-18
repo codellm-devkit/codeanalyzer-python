@@ -27,9 +27,16 @@ def main(
             case_sensitive=False,
         ),
     ] = OutputFormat.JSON,
-    using_codeql: Annotated[
-        bool, typer.Option("--codeql/--no-codeql", help="Enable CodeQL-based analysis.")
-    ] = False,
+    analysis_level: Annotated[
+        int,
+        typer.Option(
+            "-a",
+            "--analysis-level",
+            help="Analysis depth: 1=symbol table only, 2=+call graph (PyCG+Jedi).",
+            min=1,
+            max=2,
+        ),
+    ] = 1,
     using_ray: Annotated[
         bool,
         typer.Option("--ray/--no-ray", help="Enable Ray for distributed analysis."),
@@ -78,7 +85,7 @@ def main(
         input=input,
         output=output,
         format=format,
-        using_codeql=using_codeql,
+        analysis_level=analysis_level,
         using_ray=using_ray,
         rebuild_analysis=rebuild_analysis,
         skip_tests=skip_tests,
@@ -143,7 +150,7 @@ def _write_output(artifacts, output_dir: Path, format: OutputFormat):
 app = typer.Typer(
     callback=main,
     name="codeanalyzer",
-    help="Static Analysis on Python source code using Jedi, CodeQL and Tree sitter.",
+    help="Static Analysis on Python source code using Jedi, PyCG and Tree sitter.",
     invoke_without_command=True,
     no_args_is_help=True,
     add_completion=False,
