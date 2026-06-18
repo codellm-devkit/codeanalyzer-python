@@ -43,6 +43,9 @@ dependencies = [
     "ray==2.0.0; python_version < '3.11'",
     "ray>=2.10.0,<3.0.0; python_version >= '3.11'",
     "packaging>=25.0",
+    # pycg: call graph construction for analysis level 2 (Apache-2.0, ICSE 2021).
+    # Archived Nov 2023; Python 3.13 compatibility is patched in pycg_analysis.py.
+    "pycg>=0.0.6",
 ]
 
 [dependency-groups]
