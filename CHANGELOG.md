@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`schema-uml.drawio`** — a clean UML of the `analysis.json` schema (the `PyApplication` containment tree).
 
 ### Changed
-- **The CLI command is now `canpy`** (was `codeanalyzer`), matching the `cants` (TypeScript) sibling. The PyPI package name is unchanged (`codeanalyzer-python`), as is the importable `codeanalyzer` module.
+- **The CLI command is now `canpy`** (was `codeanalyzer`), matching the `cants` (TypeScript) sibling. The PyPI package name is unchanged (`codeanalyzer-python`), as is the importable `codeanalyzer` module. The old `codeanalyzer` command is retained as a **deprecated alias** that prints a notice (to stderr) and then runs unchanged; it will be removed in a future release.
 - The README `canpy --help` block is now generated from the live CLI (`scripts/update_readme.py`, between `<!-- BEGIN/END canpy-help -->` markers) so it can't drift from the code.
 - The release workflow now installs the `[neo4j]` extra, syncs both the README `--help` block and `schema.neo4j.json` from source before publishing, and uploads the schema contract (`schema.json`) and installer script as GitHub Release assets.
 

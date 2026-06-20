@@ -69,6 +69,8 @@ dev = [
 
 [project.scripts]
 canpy = "codeanalyzer.__main__:app"
+# Deprecated alias kept for backwards compatibility — warns, then delegates to canpy.
+codeanalyzer = "codeanalyzer.__main__:deprecated_main"
 
 [build-system]
 requires = ["hatchling"]

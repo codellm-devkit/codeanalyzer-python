@@ -229,5 +229,20 @@ app = typer.Typer(
     pretty_exceptions_show_locals=False,
 )
 
+def deprecated_main() -> None:
+    """Entry point for the legacy ``codeanalyzer`` command. Prints a one-line
+    deprecation notice to stderr (so piped stdout — e.g. ``--emit schema`` — stays
+    clean) and then runs the CLI unchanged. Kept for backwards compatibility; will
+    be removed in a future release."""
+    import sys
+
+    print(
+        "codeanalyzer: this command has been renamed to `canpy`. The `codeanalyzer` "
+        "alias is deprecated and will be removed in a future release — please use `canpy`.",
+        file=sys.stderr,
+    )
+    app()
+
+
 if __name__ == "__main__":
     app()
