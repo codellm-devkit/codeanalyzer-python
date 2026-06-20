@@ -7,13 +7,18 @@ from codeanalyzer.core import Codeanalyzer
 from codeanalyzer.utils import _set_log_level, logger
 from codeanalyzer.config import OutputFormat
 from codeanalyzer.schema import model_dump_json
-from codeanalyzer.options import AnalysisOptions
+from codeanalyzer.options import AnalysisOptions, EmitTarget
 
 
 def main(
     input: Annotated[
-        Path, typer.Option("-i", "--input", help="Path to the project root directory.")
-    ],
+        Optional[Path],
+        typer.Option(
+            "-i",
+            "--input",
+            help="Path to the project root directory (not required for --emit schema).",
+        ),
+    ] = None,
     output: Annotated[
         Optional[Path],
         typer.Option("-o", "--output", help="Output directory for artifacts."),
@@ -23,10 +28,45 @@ def main(
         typer.Option(
             "-f",
             "--format",
-            help="Output format: json or msgpack.",
+            help="Output format for --emit json: json or msgpack.",
             case_sensitive=False,
         ),
     ] = OutputFormat.JSON,
+    emit: Annotated[
+        EmitTarget,
+        typer.Option(
+            "--emit",
+            help="Output target: json (analysis.json, default) | neo4j (graph.cypher or live "
+            "Bolt push) | schema (the Neo4j schema.json contract).",
+            case_sensitive=False,
+        ),
+    ] = EmitTarget.JSON,
+    app_name: Annotated[
+        Optional[str],
+        typer.Option(
+            "--app-name",
+            help="Logical application name for the graph :Application anchor "
+            "(default: input dir name).",
+        ),
+    ] = None,
+    neo4j_uri: Annotated[
+        Optional[str],
+        typer.Option(
+            "--neo4j-uri",
+            help="Push the graph to a live Neo4j over Bolt (incremental); omit to write "
+            "graph.cypher.",
+        ),
+    ] = None,
+    neo4j_user: Annotated[
+        str, typer.Option("--neo4j-user", help="Neo4j username.")
+    ] = "neo4j",
+    neo4j_password: Annotated[
+        str, typer.Option("--neo4j-password", help="Neo4j password.")
+    ] = "neo4j",
+    neo4j_database: Annotated[
+        Optional[str],
+        typer.Option("--neo4j-database", help="Neo4j database name (default: server default)."),
+    ] = None,
     using_codeql: Annotated[
         bool, typer.Option("--codeql/--no-codeql", help="Enable CodeQL-based analysis.")
     ] = False,
@@ -78,6 +118,12 @@ def main(
         input=input,
         output=output,
         format=format,
+        emit=emit,
+        app_name=app_name,
+        neo4j_uri=neo4j_uri,
+        neo4j_user=neo4j_user,
+        neo4j_password=neo4j_password,
+        neo4j_database=neo4j_database,
         using_codeql=using_codeql,
         using_ray=using_ray,
         rebuild_analysis=rebuild_analysis,
@@ -89,6 +135,18 @@ def main(
     )
 
     _set_log_level(options.verbosity)
+
+    # The schema contract is a static artifact — no project analysis required.
+    if options.emit == EmitTarget.SCHEMA:
+        from codeanalyzer.neo4j.emit import emit_schema
+
+        emit_schema(options.output)
+        return
+
+    # Every other target requires an input project.
+    if options.input is None:
+        logger.error("Missing option '-i' / '--input' (required for --emit json | neo4j).")
+        raise typer.Exit(code=1)
     if not options.input.exists():
         logger.error(f"Input path '{options.input}' does not exist.")
         raise typer.Exit(code=1)
@@ -112,7 +170,11 @@ def main(
     with Codeanalyzer(options) as analyzer:
         artifacts = analyzer.analyze()
 
-        if options.output is None:
+        if options.emit == EmitTarget.NEO4J:
+            from codeanalyzer.neo4j.emit import emit_neo4j
+
+            emit_neo4j(artifacts, options)
+        elif options.output is None:
             print(model_dump_json(artifacts, separators=(",", ":")))
         else:
             options.output.mkdir(parents=True, exist_ok=True)

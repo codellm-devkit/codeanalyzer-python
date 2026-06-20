@@ -1,0 +1,92 @@
+<mxfile host="Electron">
+  <diagram id="cP3nQLXQUzaVoHXPkzMq" name="Page-1">
+    <mxGraphModel dx="2435" dy="1912" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="1100" pageHeight="850" math="0" shadow="0" adaptiveColors="auto">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;align=left;verticalAlign=middle;fontSize=20;fontFamily=IBM Plex Sans;fontColor=light-dark(#161616,#f4f4f4);" value="&lt;b&gt;CLDK Python — analysis.json schema (primary containment tree)&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#6f6f6f&quot;&gt;source: codeanalyzer/schema/py_schema.py · root = PyApplication · ◆──▷ owns / contains · ↺ recursive&lt;/font&gt;" vertex="1">
+          <mxGeometry height="50" width="1400" x="40" y="-120" as="geometry" />
+        </mxCell>
+        <mxCell id="legend" parent="1" style="rounded=8;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=12;spacingRight=10;spacingTop=8;spacingBottom=8;fontFamily=IBM Plex Sans;fontSize=12;fontColor=light-dark(#161616,#f4f4f4);fillColor=light-dark(#ffffff,#1a1a1a);strokeColor=light-dark(#8d8d8d,#6f6f6f);" value="&lt;b&gt;Legend&lt;/b&gt;&lt;hr&gt;◆──▷  composition (owns / contains)&lt;br&gt;↺  self-loop = recursive nesting&lt;br&gt;&lt;br&gt;This is the PRIMARY containment tree (one parent&lt;br&gt;per type → no crossing edges). Cross-links such as&lt;br&gt;PyClass.methods → PyCallable and&lt;br&gt;PyCallable.local_variables → PyVariableDeclaration&lt;br&gt;are listed as fields, not drawn, to keep the tree readable.&lt;br&gt;&lt;br&gt;&lt;b&gt;Notation&lt;/b&gt;&lt;br&gt;X[] = list · {str → X} = Dict · X? = Optional&lt;br&gt;span: = source position (start/end line/col)&lt;br&gt;&lt;br&gt;&lt;b&gt;Tiers&lt;/b&gt;&lt;br&gt;red = root · blue = file&lt;br&gt;teal = declarations · gray = leaf records&lt;br&gt;purple = call graph" vertex="1">
+          <mxGeometry height="380" width="380" x="40" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="app" parent="1" style="rounded=8;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=12;spacingRight=10;spacingTop=8;spacingBottom=8;fontFamily=IBM Plex Sans;fontSize=12;fontColor=light-dark(#161616,#f4f4f4);shadow=0;fillColor=light-dark(#fff1f1,#4b1a1f);strokeColor=light-dark(#da1e28,#fa4d56);" value="&lt;b&gt;PyApplication&lt;/b&gt;  «root»&lt;hr&gt;symbol_table: {str → PyModule}&lt;br&gt;call_graph: PyCallEdge[]" vertex="1">
+          <mxGeometry height="90" width="300" x="480" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="mod" parent="1" style="rounded=8;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=12;spacingRight=10;spacingTop=8;spacingBottom=8;fontFamily=IBM Plex Sans;fontSize=12;fontColor=light-dark(#161616,#f4f4f4);shadow=0;fillColor=light-dark(#edf5ff,#1c2a3f);strokeColor=light-dark(#0f62fe,#4589ff);" value="&lt;b&gt;PyModule&lt;/b&gt;  «file»&lt;hr&gt;file_path: str&lt;br&gt;module_name: str&lt;br&gt;imports: PyImport[]&lt;br&gt;comments: PyComment[]&lt;br&gt;classes: {str → PyClass}&lt;br&gt;functions: {str → PyCallable}&lt;br&gt;variables: PyVariableDeclaration[]&lt;br&gt;cache: content_hash?, last_modified?, file_size?" vertex="1">
+          <mxGeometry height="220" width="320" x="480" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="edge" parent="1" style="rounded=8;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=12;spacingRight=10;spacingTop=8;spacingBottom=8;fontFamily=IBM Plex Sans;fontSize=12;fontColor=light-dark(#161616,#f4f4f4);shadow=0;fillColor=light-dark(#f6f2ff,#2a1a3a);strokeColor=light-dark(#8a3ffc,#be95ff);" value="&lt;b&gt;PyCallEdge&lt;/b&gt;  «call graph»&lt;hr&gt;source: str (caller signature)&lt;br&gt;target: str (callee signature)&lt;br&gt;type: &quot;CALL_DEP&quot;&lt;br&gt;weight: int&lt;br&gt;provenance: (jedi | codeql | joern)[]&lt;br&gt;&lt;font color=&quot;#6f6f6f&quot;&gt;endpoints absent from symbol_table&lt;br&gt;become :External ghost nodes&lt;/font&gt;" vertex="1">
+          <mxGeometry height="170" width="320" x="480" y="510" as="geometry" />
+        </mxCell>
+        <mxCell id="cls" parent="1" style="rounded=8;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=12;spacingRight=10;spacingTop=8;spacingBottom=8;fontFamily=IBM Plex Sans;fontSize=12;fontColor=light-dark(#161616,#f4f4f4);shadow=0;fillColor=light-dark(#d9fbfb,#0c2b2b);strokeColor=light-dark(#007d79,#08bdba);" value="&lt;b&gt;PyClass&lt;/b&gt;  «recursive»&lt;hr&gt;name: str&lt;br&gt;signature: str&lt;br&gt;comments: PyComment[]&lt;br&gt;code: str?&lt;br&gt;base_classes: str[]&lt;br&gt;methods: {str → PyCallable}&lt;br&gt;attributes: {str → PyClassAttribute}&lt;br&gt;inner_classes: {str → PyClass}&lt;br&gt;span: start/end line" vertex="1">
+          <mxGeometry height="230" width="350" x="920" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="call" parent="1" style="rounded=8;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=12;spacingRight=10;spacingTop=8;spacingBottom=8;fontFamily=IBM Plex Sans;fontSize=12;fontColor=light-dark(#161616,#f4f4f4);shadow=0;fillColor=light-dark(#d9fbfb,#0c2b2b);strokeColor=light-dark(#007d79,#08bdba);" value="&lt;b&gt;PyCallable&lt;/b&gt;  «recursive»&lt;hr&gt;name: str&lt;br&gt;path: str&lt;br&gt;signature: str (call-graph node id)&lt;br&gt;comments: PyComment[]&lt;br&gt;decorators: str[]&lt;br&gt;parameters: PyCallableParameter[]&lt;br&gt;return_type: str?&lt;br&gt;code: str?&lt;br&gt;code_start_line: int&lt;br&gt;accessed_symbols: PySymbol[]&lt;br&gt;call_sites: PyCallsite[]&lt;br&gt;inner_callables: {str → PyCallable}&lt;br&gt;inner_classes: {str → PyClass}&lt;br&gt;local_variables: PyVariableDeclaration[]&lt;br&gt;cyclomatic_complexity: int&lt;br&gt;span: start/end line" vertex="1">
+          <mxGeometry height="400" width="360" x="920" y="320" as="geometry" />
+        </mxCell>
+        <mxCell id="imp" parent="1" style="rounded=8;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=12;spacingRight=10;spacingTop=8;spacingBottom=8;fontFamily=IBM Plex Sans;fontSize=12;fontColor=light-dark(#161616,#f4f4f4);shadow=0;fillColor=light-dark(#f2f4f8,#2a2a2a);strokeColor=light-dark(#8d8d8d,#6f6f6f);" value="&lt;b&gt;PyImport&lt;/b&gt;&lt;hr&gt;module: str&lt;br&gt;name: str&lt;br&gt;alias: str?&lt;br&gt;span: line/col" vertex="1">
+          <mxGeometry height="120" width="320" x="1360" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="comment" parent="1" style="rounded=8;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=12;spacingRight=10;spacingTop=8;spacingBottom=8;fontFamily=IBM Plex Sans;fontSize=12;fontColor=light-dark(#161616,#f4f4f4);shadow=0;fillColor=light-dark(#f2f4f8,#2a2a2a);strokeColor=light-dark(#8d8d8d,#6f6f6f);" value="&lt;b&gt;PyComment&lt;/b&gt;&lt;hr&gt;content: str&lt;br&gt;is_docstring: bool&lt;br&gt;span: line/col" vertex="1">
+          <mxGeometry height="110" width="320" x="1360" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="attr" parent="1" style="rounded=8;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=12;spacingRight=10;spacingTop=8;spacingBottom=8;fontFamily=IBM Plex Sans;fontSize=12;fontColor=light-dark(#161616,#f4f4f4);shadow=0;fillColor=light-dark(#f2f4f8,#2a2a2a);strokeColor=light-dark(#8d8d8d,#6f6f6f);" value="&lt;b&gt;PyClassAttribute&lt;/b&gt;&lt;hr&gt;name: str&lt;br&gt;type: str?&lt;br&gt;comments: PyComment[]&lt;br&gt;span: start/end line" vertex="1">
+          <mxGeometry height="120" width="320" x="1360" y="350" as="geometry" />
+        </mxCell>
+        <mxCell id="vard" parent="1" style="rounded=8;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=12;spacingRight=10;spacingTop=8;spacingBottom=8;fontFamily=IBM Plex Sans;fontSize=12;fontColor=light-dark(#161616,#f4f4f4);shadow=0;fillColor=light-dark(#f2f4f8,#2a2a2a);strokeColor=light-dark(#8d8d8d,#6f6f6f);" value="&lt;b&gt;PyVariableDeclaration&lt;/b&gt;&lt;hr&gt;name: str&lt;br&gt;type: str?&lt;br&gt;initializer: str?&lt;br&gt;value: Any?&lt;br&gt;scope: module | class | function&lt;br&gt;span: start/end line/col" vertex="1">
+          <mxGeometry height="160" width="320" x="1360" y="510" as="geometry" />
+        </mxCell>
+        <mxCell id="param" parent="1" style="rounded=8;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=12;spacingRight=10;spacingTop=8;spacingBottom=8;fontFamily=IBM Plex Sans;fontSize=12;fontColor=light-dark(#161616,#f4f4f4);shadow=0;fillColor=light-dark(#f2f4f8,#2a2a2a);strokeColor=light-dark(#8d8d8d,#6f6f6f);" value="&lt;b&gt;PyCallableParameter&lt;/b&gt;&lt;hr&gt;name: str&lt;br&gt;type: str?&lt;br&gt;default_value: str?&lt;br&gt;span: start/end line/col" vertex="1">
+          <mxGeometry height="130" width="320" x="1360" y="710" as="geometry" />
+        </mxCell>
+        <mxCell id="callsite" parent="1" style="rounded=8;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=12;spacingRight=10;spacingTop=8;spacingBottom=8;fontFamily=IBM Plex Sans;fontSize=12;fontColor=light-dark(#161616,#f4f4f4);shadow=0;fillColor=light-dark(#f2f4f8,#2a2a2a);strokeColor=light-dark(#8d8d8d,#6f6f6f);" value="&lt;b&gt;PyCallsite&lt;/b&gt;&lt;hr&gt;method_name: str&lt;br&gt;receiver_expr: str?&lt;br&gt;receiver_type: str?&lt;br&gt;argument_types: str[]&lt;br&gt;return_type: str?&lt;br&gt;callee_signature: str?&lt;br&gt;is_constructor_call: bool&lt;br&gt;span: start/end line/col" vertex="1">
+          <mxGeometry height="200" width="320" x="1360" y="880" as="geometry" />
+        </mxCell>
+        <mxCell id="symbol" parent="1" style="rounded=8;whiteSpace=wrap;html=1;align=left;verticalAlign=top;spacingLeft=12;spacingRight=10;spacingTop=8;spacingBottom=8;fontFamily=IBM Plex Sans;fontSize=12;fontColor=light-dark(#161616,#f4f4f4);shadow=0;fillColor=light-dark(#f2f4f8,#2a2a2a);strokeColor=light-dark(#8d8d8d,#6f6f6f);" value="&lt;b&gt;PySymbol&lt;/b&gt;&lt;hr&gt;name: str&lt;br&gt;scope: local | nonlocal | global | class | module&lt;br&gt;kind: variable | parameter | attribute | function | class | module&lt;br&gt;type: str?&lt;br&gt;qualified_name: str?&lt;br&gt;is_builtin: bool&lt;br&gt;span: lineno/col_offset" vertex="1">
+          <mxGeometry height="180" width="320" x="1360" y="1120" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_app_mod" parent="1" source="app" target="mod" edge="1" style="endArrow=blockThin;endFill=1;startArrow=diamondThin;startFill=1;html=1;rounded=0;fontFamily=IBM Plex Sans;fontSize=11;strokeColor=light-dark(#525252,#a8a8a8);fontColor=light-dark(#525252,#a8a8a8);" value="symbol_table {str → ·}">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_app_edge" parent="1" source="app" target="edge" edge="1" style="endArrow=blockThin;endFill=1;startArrow=diamondThin;startFill=1;html=1;rounded=0;exitX=0.25;exitY=1;exitDx=0;exitDy=0;fontFamily=IBM Plex Sans;fontSize=11;strokeColor=light-dark(#8a3ffc,#be95ff);fontColor=light-dark(#525252,#a8a8a8);" value="call_graph[]">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_mod_cls" parent="1" source="mod" target="cls" edge="1" style="endArrow=blockThin;endFill=1;startArrow=diamondThin;startFill=1;html=1;rounded=0;fontFamily=IBM Plex Sans;fontSize=11;strokeColor=light-dark(#525252,#a8a8a8);fontColor=light-dark(#525252,#a8a8a8);" value="classes {str → ·}">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_mod_call" parent="1" source="mod" target="call" edge="1" style="endArrow=blockThin;endFill=1;startArrow=diamondThin;startFill=1;html=1;rounded=0;fontFamily=IBM Plex Sans;fontSize=11;strokeColor=light-dark(#525252,#a8a8a8);fontColor=light-dark(#525252,#a8a8a8);" value="functions {str → ·}">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_mod_imp" parent="1" source="mod" target="imp" edge="1" style="endArrow=blockThin;endFill=1;startArrow=diamondThin;startFill=1;html=1;rounded=0;fontFamily=IBM Plex Sans;fontSize=11;strokeColor=light-dark(#525252,#a8a8a8);fontColor=light-dark(#525252,#a8a8a8);" value="imports[]">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_mod_comment" parent="1" source="mod" target="comment" edge="1" style="endArrow=blockThin;endFill=1;startArrow=diamondThin;startFill=1;html=1;rounded=0;fontFamily=IBM Plex Sans;fontSize=11;strokeColor=light-dark(#525252,#a8a8a8);fontColor=light-dark(#525252,#a8a8a8);" value="comments[]">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_mod_vard" parent="1" source="mod" target="vard" edge="1" style="endArrow=blockThin;endFill=1;startArrow=diamondThin;startFill=1;html=1;rounded=0;fontFamily=IBM Plex Sans;fontSize=11;strokeColor=light-dark(#525252,#a8a8a8);fontColor=light-dark(#525252,#a8a8a8);" value="variables[]">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_cls_attr" parent="1" source="cls" target="attr" edge="1" style="endArrow=blockThin;endFill=1;startArrow=diamondThin;startFill=1;html=1;rounded=0;fontFamily=IBM Plex Sans;fontSize=11;strokeColor=light-dark(#007d79,#08bdba);fontColor=light-dark(#525252,#a8a8a8);" value="attributes {str → ·}">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_call_param" parent="1" source="call" target="param" edge="1" style="endArrow=blockThin;endFill=1;startArrow=diamondThin;startFill=1;html=1;rounded=0;fontFamily=IBM Plex Sans;fontSize=11;strokeColor=light-dark(#007d79,#08bdba);fontColor=light-dark(#525252,#a8a8a8);" value="parameters[]">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_call_callsite" parent="1" source="call" target="callsite" edge="1" style="endArrow=blockThin;endFill=1;startArrow=diamondThin;startFill=1;html=1;rounded=0;fontFamily=IBM Plex Sans;fontSize=11;strokeColor=light-dark(#007d79,#08bdba);fontColor=light-dark(#525252,#a8a8a8);" value="call_sites[]">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_call_symbol" parent="1" source="call" target="symbol" edge="1" style="endArrow=blockThin;endFill=1;startArrow=diamondThin;startFill=1;html=1;rounded=0;fontFamily=IBM Plex Sans;fontSize=11;strokeColor=light-dark(#007d79,#08bdba);fontColor=light-dark(#525252,#a8a8a8);" value="accessed_symbols[]">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_cls_self" parent="1" source="cls" target="cls" edge="1" style="endArrow=blockThin;endFill=1;startArrow=diamondThin;startFill=1;html=1;rounded=1;curved=1;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=1;entryY=0.75;entryDx=0;entryDy=0;fontFamily=IBM Plex Sans;fontSize=11;strokeColor=light-dark(#007d79,#08bdba);fontColor=light-dark(#525252,#a8a8a8);" value="↺ inner_classes">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_call_self" parent="1" source="call" target="call" edge="1" style="endArrow=blockThin;endFill=1;startArrow=diamondThin;startFill=1;html=1;rounded=1;curved=1;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=1;entryY=0.75;entryDx=0;entryDy=0;fontFamily=IBM Plex Sans;fontSize=11;strokeColor=light-dark(#007d79,#08bdba);fontColor=light-dark(#525252,#a8a8a8);" value="↺ inner_callables">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

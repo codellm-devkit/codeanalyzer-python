@@ -32,7 +32,24 @@ jobs:
         run: uv sync --all-groups
       
       - name: Install dependencies
-        run: uv pip install -e .
+        run: uv pip install -e ".[neo4j]"
+
+      # Keep the checked-in Neo4j schema contract in lockstep with the code being
+      # released: regenerate schema.neo4j.json from source and commit it back to main.
+      # Releases are cut from main HEAD, so this fast-forwards; best-effort if main moved.
+      - name: Sync Neo4j schema contract (schema.neo4j.json)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          uv run codeanalyzer --emit schema > schema.neo4j.json
+          if git diff --quiet schema.neo4j.json; then
+            echo "Neo4j schema already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add schema.neo4j.json
+            git commit -m "docs: sync Neo4j schema contract for ${GITHUB_REF#refs/tags/}"
+            git push origin HEAD:main || echo "::warning::could not push schema sync to main (diverged?)"
+          fi
 
       - name: Run tests
         id: test
@@ -50,6 +67,17 @@ jobs:
 
       - name: Build package
         run: uv build
+
+      # Platform-independent, version-locked release assets published alongside the
+      # wheels/sdist: the Neo4j schema contract (so a consumer can validate
+      # producer/consumer compatibility without installing the package) and the
+      # cargo-dist-style install script.
+      - name: Stage release assets (Neo4j schema + installer script)
+        run: |
+          mkdir -p release-assets
+          uv run codeanalyzer --emit schema > release-assets/schema.json
+          cp packaging/install/codeanalyzer-installer.sh release-assets/codeanalyzer-installer.sh
+          ls -lh release-assets
 
       - name: Get version from tag
         id: tag_name
@@ -77,7 +105,9 @@ jobs:
       - name: Publish release on GitHub
         uses: softprops/action-gh-release@v1
         with:
-          files: dist/*
+          files: |
+            dist/*
+            release-assets/*
           body: |
             ## Release Notes (from CHANGELOG.md)
             
