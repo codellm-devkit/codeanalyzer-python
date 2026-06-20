@@ -21,10 +21,10 @@ writers (cypher snapshot / bolt incremental) consume the returned
 :class:`GraphRows`.
 
 Modelling decisions (mirror of the TypeScript backend):
-  - signature-keyed declarations (Class, Callable) carry a shared ``:Symbol``
+  - signature-keyed declarations (PyClass, PyCallable) carry a shared ``:PySymbol``
     label (the global-identity / MERGE key).
   - call sites, decorators, class attributes and variables are first-class nodes.
-  - call-graph endpoints absent from the symbol table become ``:External`` ghost
+  - call-graph endpoints absent from the symbol table become ``:PyExternal`` ghost
     nodes, so RPC / third-party / framework edges are preserved (matching the
     analyzer's own ghost-node behaviour).
   - every project-owned node carries an internal ``_module`` provenance prop, so
@@ -53,34 +53,34 @@ from codeanalyzer.schema.py_schema import PyCallsite
 def project(app: PyApplication, app_name: str) -> GraphRows:
     b = RowBuilder()
 
-    app_ref = b.node(["Application"], "name", app_name, {"schema_version": SCHEMA_VERSION})
+    app_ref = b.node(["PyApplication"], "name", app_name, {"schema_version": SCHEMA_VERSION})
 
     for file_key, mod in app.symbol_table.items():
-        mod_ref = b.node(["Module"], "file_key", file_key, _module_props(mod, file_key))
-        b.edge("HAS_MODULE", app_ref, mod_ref)
+        mod_ref = b.node(["PyModule"], "file_key", file_key, _module_props(mod, file_key))
+        b.edge("PY_HAS_MODULE", app_ref, mod_ref)
         _project_module_body(b, file_key, mod_ref, mod)
 
-    # The aggregated :CALLS twin. Endpoints not present in the symbol table become
-    # :External ghost nodes (the analyzer already preserves them as ghost nodes).
+    # The aggregated :PY_CALLS twin. Endpoints not present in the symbol table become
+    # :PyExternal ghost nodes (the analyzer already preserves them as ghost nodes).
     for e in app.call_graph:
         src = _call_endpoint(b, e.source)
         tgt = _call_endpoint(b, e.target)
-        b.edge("CALLS", src, tgt, _call_edge_props(e.weight, list(e.provenance or [])))
+        b.edge("PY_CALLS", src, tgt, _call_edge_props(e.weight, list(e.provenance or [])))
 
     return b.finish()
 
 
 def _sym(signature: str) -> NodeRef:
-    return NodeRef("Symbol", "signature", signature)
+    return NodeRef("PySymbol", "signature", signature)
 
 
 def _call_endpoint(b: RowBuilder, signature: str) -> NodeRef:
     """A call-graph endpoint: a known callable already emitted, or a phantom
-    :External symbol materialized on demand for a ghost target."""
+    :PyExternal symbol materialized on demand for a ghost target."""
     if b.has_key(signature):
         return _sym(signature)
     name = signature.rsplit(".", 1)[-1] if "." in signature else signature
-    return b.node(["Symbol", "External"], "signature", signature, {"name": name})
+    return b.node(["PySymbol", "PyExternal"], "signature", signature, {"name": name})
 
 
 # ----------------------------------------------------------------------------------------------
@@ -90,9 +90,9 @@ def _call_endpoint(b: RowBuilder, signature: str) -> NodeRef:
 
 def _project_module_body(b: RowBuilder, file_key: str, mod_ref: NodeRef, mod: PyModule) -> None:
     for fn in (mod.functions or {}).values():
-        _project_callable(b, file_key, mod_ref, "DECLARES", fn)
+        _project_callable(b, file_key, mod_ref, "PY_DECLARES", fn)
     for cl in (mod.classes or {}).values():
-        _project_class(b, file_key, mod_ref, "DECLARES", cl)
+        _project_class(b, file_key, mod_ref, "PY_DECLARES", cl)
     for v in mod.variables or []:
         _project_variable(b, file_key, mod_ref, file_key, v)
     _project_imports(b, mod_ref, mod)
@@ -100,7 +100,7 @@ def _project_module_body(b: RowBuilder, file_key: str, mod_ref: NodeRef, mod: Py
 
 def _project_imports(b: RowBuilder, mod_ref: NodeRef, mod: PyModule) -> None:
     # Per-target-module aggregation: collapse all bindings for a given imported
-    # module into one IMPORTS edge to a shared :Package node.
+    # module into one PY_IMPORTS edge to a shared :PyPackage node.
     agg: dict = {}
     for im in mod.imports or []:
         if not im.module:
@@ -111,9 +111,9 @@ def _project_imports(b: RowBuilder, mod_ref: NodeRef, mod: PyModule) -> None:
         if im.alias:
             a["aliases"].add(im.alias)
     for module_name, a in agg.items():
-        pkg = b.node(["Package"], "name", module_name, {})
+        pkg = b.node(["PyPackage"], "name", module_name, {})
         b.edge(
-            "IMPORTS",
+            "PY_IMPORTS",
             mod_ref,
             pkg,
             prune(
@@ -133,24 +133,24 @@ def _project_imports(b: RowBuilder, mod_ref: NodeRef, mod: PyModule) -> None:
 def _project_class(
     b: RowBuilder, file_key: str, parent: NodeRef, parent_rel: str, cl: PyClass
 ) -> None:
-    ref = b.node(["Symbol", "Class"], "signature", cl.signature, _class_props(cl, file_key))
+    ref = b.node(["PySymbol", "PyClass"], "signature", cl.signature, _class_props(cl, file_key))
     b.edge(parent_rel, parent, ref)
 
     for base in cl.base_classes or []:
-        b.edge_to_symbol("EXTENDS", ref, base)
+        b.edge_to_symbol("PY_EXTENDS", ref, base)
 
     for m in (cl.methods or {}).values():
-        _project_callable(b, file_key, ref, "HAS_METHOD", m)
+        _project_callable(b, file_key, ref, "PY_HAS_METHOD", m)
     for a in (cl.attributes or {}).values():
         _project_attribute(b, file_key, ref, cl.signature, a)
     for ic in (cl.inner_classes or {}).values():
-        _project_class(b, file_key, ref, "DECLARES", ic)
+        _project_class(b, file_key, ref, "PY_DECLARES", ic)
 
 
 def _project_callable(
     b: RowBuilder, file_key: str, owner: NodeRef, owner_rel: str, c: PyCallable
 ) -> None:
-    ref = b.node(["Symbol", "Callable"], "signature", c.signature, _callable_props(c, file_key))
+    ref = b.node(["PySymbol", "PyCallable"], "signature", c.signature, _callable_props(c, file_key))
     b.edge(owner_rel, owner, ref)
 
     for d in c.decorators or []:
@@ -159,38 +159,38 @@ def _project_callable(
     for s in c.call_sites or []:
         # Key off the relative file (a call site lives in its callable's file) so ids stay portable.
         cs_id = f"{file_key}#{s.start_line}:{s.start_column}-{s.end_line}:{s.end_column}"
-        cs = b.node(["CallSite"], "id", cs_id, _call_site_props(s, file_key))
-        b.edge("HAS_CALLSITE", ref, cs)
+        cs = b.node(["PyCallSite"], "id", cs_id, _call_site_props(s, file_key))
+        b.edge("PY_HAS_CALLSITE", ref, cs)
         if s.callee_signature:
-            b.edge_to_symbol("RESOLVES_TO", cs, s.callee_signature)
+            b.edge_to_symbol("PY_RESOLVES_TO", cs, s.callee_signature)
 
     for v in c.local_variables or []:
         _project_variable(b, file_key, ref, c.signature, v)
     for ic in (c.inner_callables or {}).values():
-        _project_callable(b, file_key, ref, "DECLARES", ic)
+        _project_callable(b, file_key, ref, "PY_DECLARES", ic)
     for cl in (c.inner_classes or {}).values():
-        _project_class(b, file_key, ref, "DECLARES", cl)
+        _project_class(b, file_key, ref, "PY_DECLARES", cl)
 
 
 def _project_attribute(
     b: RowBuilder, file_key: str, owner: NodeRef, owner_sig: str, a: PyClassAttribute
 ) -> None:
     attr_id = f"{owner_sig}.{a.name}"
-    ref = b.node(["Attribute"], "id", attr_id, _attribute_props(a, attr_id, file_key))
-    b.edge("HAS_ATTRIBUTE", owner, ref)
+    ref = b.node(["PyAttribute"], "id", attr_id, _attribute_props(a, attr_id, file_key))
+    b.edge("PY_HAS_ATTRIBUTE", owner, ref)
 
 
 def _project_variable(
     b: RowBuilder, file_key: str, owner: NodeRef, owner_id: str, v: PyVariableDeclaration
 ) -> None:
     var_id = f"{owner_id}#{v.name}@{v.start_line}"
-    ref = b.node(["Variable"], "id", var_id, _variable_props(v, var_id, file_key))
-    b.edge("DECLARES_VAR", owner, ref)
+    ref = b.node(["PyVariable"], "id", var_id, _variable_props(v, var_id, file_key))
+    b.edge("PY_DECLARES_VAR", owner, ref)
 
 
 def _project_decorator(b: RowBuilder, on: NodeRef, decorator: str) -> None:
-    dec = b.node(["Decorator"], "name", decorator, {"name": decorator})
-    b.edge("DECORATED_BY", on, dec)
+    dec = b.node(["PyDecorator"], "name", decorator, {"name": decorator})
+    b.edge("PY_DECORATED_BY", on, dec)
 
 
 # ----------------------------------------------------------------------------------------------

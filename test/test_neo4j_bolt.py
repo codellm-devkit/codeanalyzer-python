@@ -78,11 +78,11 @@ def test_full_push_materializes_the_whole_graph_and_schema(driver, cfg):
     assert _num(driver, "MATCH (n) RETURN count(n)") == len(rows.nodes)
     assert _num(driver, "MATCH ()-[r]->() RETURN count(r)") == len(rows.edges)
 
-    # Shared :Symbol label spans the signature-keyed declaration kinds.
-    symbol = _num(driver, "MATCH (s:Symbol) RETURN count(s)")
+    # Shared :PySymbol label spans the signature-keyed declaration kinds.
+    symbol = _num(driver, "MATCH (s:PySymbol) RETURN count(s)")
     kinds = _num(
         driver,
-        "MATCH (s:Symbol) WHERE s:Callable OR s:Class OR s:External RETURN count(s)",
+        "MATCH (s:PySymbol) WHERE s:PyCallable OR s:PyClass OR s:PyExternal RETURN count(s)",
     )
     assert symbol > 0
     assert kinds == symbol
@@ -95,14 +95,14 @@ def test_full_push_materializes_the_whole_graph_and_schema(driver, cfg):
     assert (
         _num(
             driver,
-            "MATCH (:Callable {name:$c})-[:CALLS]->(t:Callable {name:$n}) RETURN count(*)",
+            "MATCH (:PyCallable {name:$c})-[:PY_CALLS]->(t:PyCallable {name:$n}) RETURN count(*)",
             c="helper",
             n="announce",
         )
         > 0
     )
-    # The ghost edge resolved to an :External node.
-    assert _num(driver, "MATCH (e:External) RETURN count(e)") >= 1
+    # The ghost edge resolved to an :PyExternal node.
+    assert _num(driver, "MATCH (e:PyExternal) RETURN count(e)") >= 1
 
 
 def test_re_pushing_identical_analysis_is_idempotent(driver, cfg):
@@ -127,7 +127,7 @@ def test_a_full_run_prunes_a_module_whose_source_vanished(driver, cfg):
     assert _num(driver, "MATCH (n {_module:$m}) RETURN count(n)", m=victim) == 0
 
     # The surviving module-scoped graph matches the reduced projection. (Shared
-    # :External/:Package/:Decorator nodes are MERGE-only and never pruned, so we
+    # :PyExternal/:PyPackage/:PyDecorator nodes are MERGE-only and never pruned, so we
     # compare only _module-tagged nodes.)
     module_scoped = sum(1 for n in rows.nodes if "_module" in n.props)
     assert _num(driver, "MATCH (n) WHERE n._module IS NOT NULL RETURN count(n)") == module_scoped

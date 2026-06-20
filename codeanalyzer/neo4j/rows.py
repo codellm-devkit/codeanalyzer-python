@@ -39,7 +39,7 @@ class NodeRef:
     """How an edge addresses one of its endpoints: the label + key property to
     MATCH on, and the value."""
 
-    label: str  # the label carrying the uniqueness constraint (e.g. "Symbol", "Module")
+    label: str  # the label carrying the uniqueness constraint (e.g. "PySymbol", "PyModule")
     key_prop: str  # "signature" | "file_key" | "name" | "id"
     value: str
 
@@ -108,15 +108,15 @@ class RowBuilder:
     def edge_to_symbol(
         self, type_: str, from_ref: NodeRef, target_signature: str, props: Optional[Props] = None
     ) -> None:
-        """An edge to a ``:Symbol`` target that may be external/library code not
+        """An edge to a ``:PySymbol`` target that may be external/library code not
         present in the graph. Deferred and kept only if the target signature was
-        actually emitted as a node — so EXTENDS / RESOLVES_TO never dangle (the
+        actually emitted as a node — so PY_EXTENDS / PY_RESOLVES_TO never dangle (the
         string fallback lives on the source node's props)."""
         self._deferred.append(
             EdgeRow(
                 type_,
                 from_ref,
-                NodeRef("Symbol", "signature", target_signature),
+                NodeRef("PySymbol", "signature", target_signature),
                 dict(props or {}),
             )
         )

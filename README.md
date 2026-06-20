@@ -94,7 +94,7 @@ To view the available options and commands, run `codeanalyzer --help`. You shoul
 │    --format          -f                  [json|msgpack]  Output format for --emit json: json or msgpack. [default: json]      │
 │    --emit                                [json|neo4j|    Output target: json (analysis.json) | neo4j (graph.cypher or live    │
 │                                           schema]         Bolt push) | schema (the Neo4j schema.json contract). [default: json]│
-│    --app-name                            TEXT            Logical application name for the graph :Application anchor.          │
+│    --app-name                            TEXT            Logical application name for the graph :PyApplication anchor.          │
 │    --neo4j-uri                           TEXT            Push the graph to a live Neo4j over Bolt. [env: NEO4J_URI]            │
 │    --neo4j-user                          TEXT            Neo4j username. [env: NEO4J_USERNAME] [default: neo4j]               │
 │    --neo4j-password                      TEXT            Neo4j password. [env: NEO4J_PASSWORD] [default: neo4j]               │
@@ -176,12 +176,12 @@ By default this is printed to stdout in JSON; with `--output` it is written to `
 
 ### Neo4j graph
 
-`--emit neo4j` projects the same analysis into a labeled property graph (declarations keyed by their signature under a shared `:Symbol` label; calls, imports, inheritance, decorators, and call sites as relationships):
+`--emit neo4j` projects the same analysis into a labeled property graph. Every node label is `Py`-prefixed and every relationship type is `PY_`-prefixed (e.g. `:PyClass`, `PY_CALLS`) so multiple language analyzers can share one database without label or relationship-type collisions. Declarations are keyed by their signature under a shared `:PySymbol` label; calls, imports, inheritance, decorators, and call sites are relationships:
 
 - **Without `--neo4j-uri`** — writes a self-contained `graph.cypher` (constraints + indexes, a scoped wipe, then batched `MERGE`s). Load it with `cypher-shell < graph.cypher`. Needs no extra dependencies.
-- **With `--neo4j-uri`** — pushes to a live Neo4j over Bolt **incrementally**: only modules whose content hash changed are rewritten, and on a full run modules whose source file vanished are pruned. Requires the `neo4j` extra. Every graph carries a `schema_version` on its `:Application` node.
+- **With `--neo4j-uri`** — pushes to a live Neo4j over Bolt **incrementally**: only modules whose content hash changed are rewritten, and on a full run modules whose source file vanished are pruned. Requires the `neo4j` extra. Every graph carries a `schema_version` on its `:PyApplication` node.
 
-Call-graph endpoints that aren't present in the symbol table (third-party / framework / RPC targets) are materialized as `:External` ghost nodes, mirroring the analyzer's own ghost-node behaviour.
+Call-graph endpoints that aren't present in the symbol table (third-party / framework / RPC targets) are materialized as `:PyExternal` ghost nodes, mirroring the analyzer's own ghost-node behaviour.
 
 The connection options also read from the standard Neo4j environment variables — `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`, `NEO4J_DATABASE` — when the corresponding flag is omitted (an explicit flag wins). Prefer the env var for the password so it doesn't land in shell history or the process list:
 

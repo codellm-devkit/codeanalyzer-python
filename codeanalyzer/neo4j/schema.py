@@ -22,18 +22,18 @@ identity invariant is enforced by the database. Every statement is idempotent
 from typing import List
 
 CONSTRAINTS: List[str] = [
-    "CREATE CONSTRAINT symbol_sig IF NOT EXISTS FOR (s:Symbol) REQUIRE s.signature IS UNIQUE",
-    "CREATE CONSTRAINT app_name IF NOT EXISTS FOR (a:Application) REQUIRE a.name IS UNIQUE",
-    "CREATE CONSTRAINT module_key IF NOT EXISTS FOR (m:Module) REQUIRE m.file_key IS UNIQUE",
-    "CREATE CONSTRAINT package_name IF NOT EXISTS FOR (p:Package) REQUIRE p.name IS UNIQUE",
-    "CREATE CONSTRAINT decorator_name IF NOT EXISTS FOR (d:Decorator) REQUIRE d.name IS UNIQUE",
-    "CREATE CONSTRAINT callsite_id IF NOT EXISTS FOR (c:CallSite) REQUIRE c.id IS UNIQUE",
-    "CREATE CONSTRAINT attribute_id IF NOT EXISTS FOR (a:Attribute) REQUIRE a.id IS UNIQUE",
-    "CREATE CONSTRAINT variable_id IF NOT EXISTS FOR (v:Variable) REQUIRE v.id IS UNIQUE",
+    "CREATE CONSTRAINT py_symbol_sig IF NOT EXISTS FOR (s:PySymbol) REQUIRE s.signature IS UNIQUE",
+    "CREATE CONSTRAINT py_app_name IF NOT EXISTS FOR (a:PyApplication) REQUIRE a.name IS UNIQUE",
+    "CREATE CONSTRAINT py_module_key IF NOT EXISTS FOR (m:PyModule) REQUIRE m.file_key IS UNIQUE",
+    "CREATE CONSTRAINT py_package_name IF NOT EXISTS FOR (p:PyPackage) REQUIRE p.name IS UNIQUE",
+    "CREATE CONSTRAINT py_decorator_name IF NOT EXISTS FOR (d:PyDecorator) REQUIRE d.name IS UNIQUE",
+    "CREATE CONSTRAINT py_callsite_id IF NOT EXISTS FOR (c:PyCallSite) REQUIRE c.id IS UNIQUE",
+    "CREATE CONSTRAINT py_attribute_id IF NOT EXISTS FOR (a:PyAttribute) REQUIRE a.id IS UNIQUE",
+    "CREATE CONSTRAINT py_variable_id IF NOT EXISTS FOR (v:PyVariable) REQUIRE v.id IS UNIQUE",
 ]
 
 INDEXES: List[str] = [
-    "CREATE INDEX callable_name IF NOT EXISTS FOR (c:Callable) ON (c.name)",
-    "CREATE INDEX class_name IF NOT EXISTS FOR (c:Class) ON (c.name)",
-    "CREATE FULLTEXT INDEX code_fts IF NOT EXISTS FOR (c:Callable) ON EACH [c.code, c.docstring]",
+    "CREATE INDEX py_callable_name IF NOT EXISTS FOR (c:PyCallable) ON (c.name)",
+    "CREATE INDEX py_class_name IF NOT EXISTS FOR (c:PyClass) ON (c.name)",
+    "CREATE FULLTEXT INDEX py_code_fts IF NOT EXISTS FOR (c:PyCallable) ON EACH [c.code, c.docstring]",
 ]

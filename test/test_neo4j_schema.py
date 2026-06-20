@@ -24,12 +24,12 @@ _MARKERS = set(MARKER_LABELS)
 def _specific_label(labels):
     """The specific (catalog) label for a node row: the non-merge, non-marker label."""
     merge = labels[0]
-    if merge != "Symbol":
+    if merge != "PySymbol":
         return merge
     for label in labels:
-        if label != "Symbol" and label not in _MARKERS:
+        if label != "PySymbol" and label not in _MARKERS:
             return label
-    return "Symbol"
+    return "PySymbol"
 
 
 def _merge_labels_for(specifics):
@@ -84,7 +84,7 @@ def test_render_cypher_is_deterministic_and_self_contained():
     assert a == b, "cypher rendering must be deterministic"
     assert "CREATE CONSTRAINT" in a
     assert "DETACH DELETE" in a
-    assert "MERGE (n:Symbol {signature: row.k})" in a
+    assert "MERGE (n:PySymbol {signature: row.k})" in a
 
 
 def test_checked_in_schema_matches_catalog():

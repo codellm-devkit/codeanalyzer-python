@@ -137,7 +137,7 @@ def make_sample_app() -> PyApplication:
             weight=1,
             provenance=["jedi"],
         ),
-        # ghost edge — target is third-party, materialized as an :External node
+        # ghost edge — target is third-party, materialized as an :PyExternal node
         PyCallEdge(
             source="src.service.helper",
             target="requests.get",

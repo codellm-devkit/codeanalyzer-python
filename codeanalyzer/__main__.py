@@ -45,7 +45,7 @@ def main(
         Optional[str],
         typer.Option(
             "--app-name",
-            help="Logical application name for the graph :Application anchor "
+            help="Logical application name for the graph :PyApplication anchor "
             "(default: input dir name).",
         ),
     ] = None,

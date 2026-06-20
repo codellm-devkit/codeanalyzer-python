@@ -24,7 +24,7 @@ file cannot silently drift from :mod:`codeanalyzer.neo4j.project`.
 
 SCHEMA_VERSION is the contract version: bump MAJOR on a breaking change
 (renamed/removed label, relationship or key), MINOR on an additive change (new
-label/rel/property). It is stamped onto the ``:Application`` node of every
+label/rel/property). It is stamped onto the ``:PyApplication`` node of every
 emitted graph so any consumer can detect a producer/consumer mismatch at runtime.
 """
 from __future__ import annotations
@@ -63,14 +63,14 @@ _SPAN = {"start_line": "integer", "end_line": "integer"}
 
 NODE_LABELS: List[NodeLabel] = [
     NodeLabel(
-        "Application",
-        "Application",
+        "PyApplication",
+        "PyApplication",
         "name",
         {"name": "string", "schema_version": "string"},
     ),
     NodeLabel(
-        "Module",
-        "Module",
+        "PyModule",
+        "PyModule",
         "file_key",
         {
             "file_key": "string",
@@ -82,8 +82,8 @@ NODE_LABELS: List[NodeLabel] = [
         },
     ),
     NodeLabel(
-        "Class",
-        "Symbol",
+        "PyClass",
+        "PySymbol",
         "signature",
         {
             "signature": "string",
@@ -96,8 +96,8 @@ NODE_LABELS: List[NodeLabel] = [
         },
     ),
     NodeLabel(
-        "Callable",
-        "Symbol",
+        "PyCallable",
+        "PySymbol",
         "signature",
         {
             "signature": "string",
@@ -116,21 +116,21 @@ NODE_LABELS: List[NodeLabel] = [
         },
     ),
     NodeLabel(
-        "External",
-        "Symbol",
+        "PyExternal",
+        "PySymbol",
         "signature",
         {"signature": "string", "name": "string"},
     ),
-    NodeLabel("Package", "Package", "name", {"name": "string"}),
+    NodeLabel("PyPackage", "PyPackage", "name", {"name": "string"}),
     NodeLabel(
-        "Decorator",
-        "Decorator",
+        "PyDecorator",
+        "PyDecorator",
         "name",
         {"name": "string"},
     ),
     NodeLabel(
-        "CallSite",
-        "CallSite",
+        "PyCallSite",
+        "PyCallSite",
         "id",
         {
             "id": "string",
@@ -149,8 +149,8 @@ NODE_LABELS: List[NodeLabel] = [
         },
     ),
     NodeLabel(
-        "Attribute",
-        "Attribute",
+        "PyAttribute",
+        "PyAttribute",
         "id",
         {
             "id": "string",
@@ -162,8 +162,8 @@ NODE_LABELS: List[NodeLabel] = [
         },
     ),
     NodeLabel(
-        "Variable",
-        "Variable",
+        "PyVariable",
+        "PyVariable",
         "id",
         {
             "id": "string",
@@ -177,31 +177,31 @@ NODE_LABELS: List[NodeLabel] = [
     ),
 ]
 
-_DECL_TARGETS = ["Class", "Callable"]
+_DECL_TARGETS = ["PyClass", "PyCallable"]
 
 
 REL_TYPES: List[RelType] = [
-    RelType("HAS_MODULE", ["Application"], ["Module"]),
-    RelType("DECLARES", ["Module", "Class", "Callable"], _DECL_TARGETS),
-    RelType("HAS_METHOD", ["Class"], ["Callable"]),
-    RelType("HAS_ATTRIBUTE", ["Class"], ["Attribute"]),
-    RelType("DECLARES_VAR", ["Module", "Callable"], ["Variable"]),
-    RelType("HAS_CALLSITE", ["Callable"], ["CallSite"]),
-    RelType("RESOLVES_TO", ["CallSite"], ["Callable", "External"]),
+    RelType("PY_HAS_MODULE", ["PyApplication"], ["PyModule"]),
+    RelType("PY_DECLARES", ["PyModule", "PyClass", "PyCallable"], _DECL_TARGETS),
+    RelType("PY_HAS_METHOD", ["PyClass"], ["PyCallable"]),
+    RelType("PY_HAS_ATTRIBUTE", ["PyClass"], ["PyAttribute"]),
+    RelType("PY_DECLARES_VAR", ["PyModule", "PyCallable"], ["PyVariable"]),
+    RelType("PY_HAS_CALLSITE", ["PyCallable"], ["PyCallSite"]),
+    RelType("PY_RESOLVES_TO", ["PyCallSite"], ["PyCallable", "PyExternal"]),
     RelType(
-        "CALLS",
-        ["Callable", "External"],
-        ["Callable", "External"],
+        "PY_CALLS",
+        ["PyCallable", "PyExternal"],
+        ["PyCallable", "PyExternal"],
         {"weight": "integer", "provenance": "string[]"},
     ),
-    RelType("EXTENDS", ["Class"], ["Class"]),
+    RelType("PY_EXTENDS", ["PyClass"], ["PyClass"]),
     RelType(
-        "IMPORTS",
-        ["Module"],
-        ["Package"],
+        "PY_IMPORTS",
+        ["PyModule"],
+        ["PyPackage"],
         {"imported_names": "string[]", "aliases": "string[]"},
     ),
-    RelType("DECORATED_BY", ["Callable"], ["Decorator"]),
+    RelType("PY_DECORATED_BY", ["PyCallable"], ["PyDecorator"]),
 ]
 
 

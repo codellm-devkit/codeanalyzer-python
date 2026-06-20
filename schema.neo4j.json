@@ -4,8 +4,8 @@
   "marker_labels": [],
   "node_labels": [
     {
-      "label": "Application",
-      "merge_label": "Application",
+      "label": "PyApplication",
+      "merge_label": "PyApplication",
       "key": "name",
       "properties": {
         "name": "string",
@@ -13,8 +13,8 @@
       }
     },
     {
-      "label": "Module",
-      "merge_label": "Module",
+      "label": "PyModule",
+      "merge_label": "PyModule",
       "key": "file_key",
       "properties": {
         "file_key": "string",
@@ -26,8 +26,8 @@
       }
     },
     {
-      "label": "Class",
-      "merge_label": "Symbol",
+      "label": "PyClass",
+      "merge_label": "PySymbol",
       "key": "signature",
       "properties": {
         "signature": "string",
@@ -41,8 +41,8 @@
       }
     },
     {
-      "label": "Callable",
-      "merge_label": "Symbol",
+      "label": "PyCallable",
+      "merge_label": "PySymbol",
       "key": "signature",
       "properties": {
         "signature": "string",
@@ -62,8 +62,8 @@
       }
     },
     {
-      "label": "External",
-      "merge_label": "Symbol",
+      "label": "PyExternal",
+      "merge_label": "PySymbol",
       "key": "signature",
       "properties": {
         "signature": "string",
@@ -71,24 +71,24 @@
       }
     },
     {
-      "label": "Package",
-      "merge_label": "Package",
+      "label": "PyPackage",
+      "merge_label": "PyPackage",
       "key": "name",
       "properties": {
         "name": "string"
       }
     },
     {
-      "label": "Decorator",
-      "merge_label": "Decorator",
+      "label": "PyDecorator",
+      "merge_label": "PyDecorator",
       "key": "name",
       "properties": {
         "name": "string"
       }
     },
     {
-      "label": "CallSite",
-      "merge_label": "CallSite",
+      "label": "PyCallSite",
+      "merge_label": "PyCallSite",
       "key": "id",
       "properties": {
         "id": "string",
@@ -107,8 +107,8 @@
       }
     },
     {
-      "label": "Attribute",
-      "merge_label": "Attribute",
+      "label": "PyAttribute",
+      "merge_label": "PyAttribute",
       "key": "id",
       "properties": {
         "id": "string",
@@ -121,8 +121,8 @@
       }
     },
     {
-      "label": "Variable",
-      "merge_label": "Variable",
+      "label": "PyVariable",
+      "merge_label": "PyVariable",
       "key": "id",
       "properties": {
         "id": "string",
@@ -138,89 +138,89 @@
   ],
   "relationship_types": [
     {
-      "type": "HAS_MODULE",
+      "type": "PY_HAS_MODULE",
       "from": [
-        "Application"
+        "PyApplication"
       ],
       "to": [
-        "Module"
+        "PyModule"
       ],
       "properties": {}
     },
     {
-      "type": "DECLARES",
+      "type": "PY_DECLARES",
       "from": [
-        "Module",
-        "Class",
-        "Callable"
+        "PyModule",
+        "PyClass",
+        "PyCallable"
       ],
       "to": [
-        "Class",
-        "Callable"
+        "PyClass",
+        "PyCallable"
       ],
       "properties": {}
     },
     {
-      "type": "HAS_METHOD",
+      "type": "PY_HAS_METHOD",
       "from": [
-        "Class"
+        "PyClass"
       ],
       "to": [
-        "Callable"
+        "PyCallable"
       ],
       "properties": {}
     },
     {
-      "type": "HAS_ATTRIBUTE",
+      "type": "PY_HAS_ATTRIBUTE",
       "from": [
-        "Class"
+        "PyClass"
       ],
       "to": [
-        "Attribute"
+        "PyAttribute"
       ],
       "properties": {}
     },
     {
-      "type": "DECLARES_VAR",
+      "type": "PY_DECLARES_VAR",
       "from": [
-        "Module",
-        "Callable"
+        "PyModule",
+        "PyCallable"
       ],
       "to": [
-        "Variable"
+        "PyVariable"
       ],
       "properties": {}
     },
     {
-      "type": "HAS_CALLSITE",
+      "type": "PY_HAS_CALLSITE",
       "from": [
-        "Callable"
+        "PyCallable"
       ],
       "to": [
-        "CallSite"
+        "PyCallSite"
       ],
       "properties": {}
     },
     {
-      "type": "RESOLVES_TO",
+      "type": "PY_RESOLVES_TO",
       "from": [
-        "CallSite"
+        "PyCallSite"
       ],
       "to": [
-        "Callable",
-        "External"
+        "PyCallable",
+        "PyExternal"
       ],
       "properties": {}
     },
     {
-      "type": "CALLS",
+      "type": "PY_CALLS",
       "from": [
-        "Callable",
-        "External"
+        "PyCallable",
+        "PyExternal"
       ],
       "to": [
-        "Callable",
-        "External"
+        "PyCallable",
+        "PyExternal"
       ],
       "properties": {
         "weight": "integer",
@@ -228,22 +228,22 @@
       }
     },
     {
-      "type": "EXTENDS",
+      "type": "PY_EXTENDS",
       "from": [
-        "Class"
+        "PyClass"
       ],
       "to": [
-        "Class"
+        "PyClass"
       ],
       "properties": {}
     },
     {
-      "type": "IMPORTS",
+      "type": "PY_IMPORTS",
       "from": [
-        "Module"
+        "PyModule"
       ],
       "to": [
-        "Package"
+        "PyPackage"
       ],
       "properties": {
         "imported_names": "string[]",
@@ -251,29 +251,29 @@
       }
     },
     {
-      "type": "DECORATED_BY",
+      "type": "PY_DECORATED_BY",
       "from": [
-        "Callable"
+        "PyCallable"
       ],
       "to": [
-        "Decorator"
+        "PyDecorator"
       ],
       "properties": {}
     }
   ],
   "constraints": [
-    "CREATE CONSTRAINT symbol_sig IF NOT EXISTS FOR (s:Symbol) REQUIRE s.signature IS UNIQUE",
-    "CREATE CONSTRAINT app_name IF NOT EXISTS FOR (a:Application) REQUIRE a.name IS UNIQUE",
-    "CREATE CONSTRAINT module_key IF NOT EXISTS FOR (m:Module) REQUIRE m.file_key IS UNIQUE",
-    "CREATE CONSTRAINT package_name IF NOT EXISTS FOR (p:Package) REQUIRE p.name IS UNIQUE",
-    "CREATE CONSTRAINT decorator_name IF NOT EXISTS FOR (d:Decorator) REQUIRE d.name IS UNIQUE",
-    "CREATE CONSTRAINT callsite_id IF NOT EXISTS FOR (c:CallSite) REQUIRE c.id IS UNIQUE",
-    "CREATE CONSTRAINT attribute_id IF NOT EXISTS FOR (a:Attribute) REQUIRE a.id IS UNIQUE",
-    "CREATE CONSTRAINT variable_id IF NOT EXISTS FOR (v:Variable) REQUIRE v.id IS UNIQUE"
+    "CREATE CONSTRAINT py_symbol_sig IF NOT EXISTS FOR (s:PySymbol) REQUIRE s.signature IS UNIQUE",
+    "CREATE CONSTRAINT py_app_name IF NOT EXISTS FOR (a:PyApplication) REQUIRE a.name IS UNIQUE",
+    "CREATE CONSTRAINT py_module_key IF NOT EXISTS FOR (m:PyModule) REQUIRE m.file_key IS UNIQUE",
+    "CREATE CONSTRAINT py_package_name IF NOT EXISTS FOR (p:PyPackage) REQUIRE p.name IS UNIQUE",
+    "CREATE CONSTRAINT py_decorator_name IF NOT EXISTS FOR (d:PyDecorator) REQUIRE d.name IS UNIQUE",
+    "CREATE CONSTRAINT py_callsite_id IF NOT EXISTS FOR (c:PyCallSite) REQUIRE c.id IS UNIQUE",
+    "CREATE CONSTRAINT py_attribute_id IF NOT EXISTS FOR (a:PyAttribute) REQUIRE a.id IS UNIQUE",
+    "CREATE CONSTRAINT py_variable_id IF NOT EXISTS FOR (v:PyVariable) REQUIRE v.id IS UNIQUE"
   ],
   "indexes": [
-    "CREATE INDEX callable_name IF NOT EXISTS FOR (c:Callable) ON (c.name)",
-    "CREATE INDEX class_name IF NOT EXISTS FOR (c:Class) ON (c.name)",
-    "CREATE FULLTEXT INDEX code_fts IF NOT EXISTS FOR (c:Callable) ON EACH [c.code, c.docstring]"
+    "CREATE INDEX py_callable_name IF NOT EXISTS FOR (c:PyCallable) ON (c.name)",
+    "CREATE INDEX py_class_name IF NOT EXISTS FOR (c:PyClass) ON (c.name)",
+    "CREATE FULLTEXT INDEX py_code_fts IF NOT EXISTS FOR (c:PyCallable) ON EACH [c.code, c.docstring]"
   ]
 }

@@ -69,9 +69,9 @@ def _wipe(app_name: str) -> str:
     name = cypher_value(app_name)
     return "\n".join(
         [
-            f"MATCH (a:Application {{name: {name}}})",
-            "OPTIONAL MATCH (a)-[:HAS_MODULE]->(m:Module)",
-            "OPTIONAL MATCH (m)-[:DECLARES|HAS_METHOD|HAS_ATTRIBUTE|DECLARES_VAR|HAS_CALLSITE*1..]->(x)",
+            f"MATCH (a:PyApplication {{name: {name}}})",
+            "OPTIONAL MATCH (a)-[:PY_HAS_MODULE]->(m:PyModule)",
+            "OPTIONAL MATCH (m)-[:PY_DECLARES|PY_HAS_METHOD|PY_HAS_ATTRIBUTE|PY_DECLARES_VAR|PY_HAS_CALLSITE*1..]->(x)",
             "DETACH DELETE x, m, a;",
         ]
     )

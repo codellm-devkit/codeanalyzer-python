@@ -29,7 +29,7 @@ Algorithm (the module subgraph is the unit of idempotent replacement):
 
 Nodes are MERGE-upserted, never blindly deleted, so a declaration another
 (unchanged) module still references survives and its incoming edges stay valid.
-``:External`` / ``:Package`` / ``:Decorator`` are shared (no ``_module``) and are
+``:PyExternal`` / ``:PyPackage`` / ``:PyDecorator`` are shared (no ``_module``) and are
 MERGE-only.
 
 The ``neo4j`` driver is imported lazily so it stays an optional dependency and
@@ -44,7 +44,7 @@ from codeanalyzer.neo4j.rows import EdgeRow, GraphRows, NodeRow, chunk
 from codeanalyzer.neo4j.schema import CONSTRAINTS, INDEXES
 from codeanalyzer.utils import logger
 
-DESCENDANTS = "[:DECLARES|HAS_METHOD|HAS_ATTRIBUTE|DECLARES_VAR|HAS_CALLSITE*1..]"
+DESCENDANTS = "[:PY_DECLARES|PY_HAS_METHOD|PY_HAS_ATTRIBUTE|PY_DECLARES_VAR|PY_HAS_CALLSITE*1..]"
 BATCH = 1000
 
 
@@ -92,7 +92,7 @@ def bolt_writer(rows: GraphRows, cfg: BoltConfig, full_run: bool) -> None:
         # 2. diff content_hash.
         db_hash: Dict[str, Optional[str]] = {}
         with session() as s:
-            res = s.run("MATCH (m:Module) RETURN m.file_key AS k, m.content_hash AS h")
+            res = s.run("MATCH (m:PyModule) RETURN m.file_key AS k, m.content_hash AS h")
             for rec in res:
                 db_hash[rec["k"]] = rec["h"]
         changed = set()
@@ -139,7 +139,7 @@ def bolt_writer(rows: GraphRows, cfg: BoltConfig, full_run: bool) -> None:
             present = list(by_module.keys())
             with session() as s:
                 res = s.run(
-                    "MATCH (m:Module) WHERE NOT m.file_key IN $present "
+                    "MATCH (m:PyModule) WHERE NOT m.file_key IN $present "
                     f"OPTIONAL MATCH (m)-{DESCENDANTS}->(x) DETACH DELETE x, m "
                     "RETURN count(m) AS pruned",
                     present=present,
@@ -210,7 +210,7 @@ def _upsert_edges(session, neo4j, edges: List[EdgeRow]) -> None:
 
 def _hash_of(nodes: List[NodeRow], file_key: str) -> Optional[str]:
     for n in nodes:
-        if n.labels[0] == "Module" and n.value == file_key:
+        if n.labels[0] == "PyModule" and n.value == file_key:
             h = n.props.get("content_hash")
             return h if isinstance(h, str) else None
     return None
