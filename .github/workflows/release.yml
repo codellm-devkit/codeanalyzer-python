@@ -159,7 +159,12 @@ jobs:
           VERSION: ${{ steps.ver.outputs.version }}
         run: |
           chmod +x packaging/homebrew/generate_formula.sh
-          ./packaging/homebrew/generate_formula.sh > codeanalyzer-python.rb
+          # The release job just published the sdist as a Release asset; hash the
+          # exact bytes users will download so the formula checksum always matches.
+          sdist="https://github.com/${REPO}/releases/download/v${VERSION}/codeanalyzer_python-${VERSION}.tar.gz"
+          SHA256="$(curl -fLsS "$sdist" | shasum -a 256 | cut -d' ' -f1)"
+          REPO="$REPO" VERSION="$VERSION" SHA256="$SHA256" \
+            ./packaging/homebrew/generate_formula.sh > codeanalyzer-python.rb
           cat codeanalyzer-python.rb
 
       - name: Push formula to codellm-devkit/homebrew-tap
