@@ -31,6 +31,16 @@ def render_help() -> str:
     os.environ["TERM"] = "dumb"
     os.environ["NO_COLOR"] = "1"
 
+    # Typer caps help width at rich_utils.MAX_WIDTH (default 80) regardless of
+    # COLUMNS, so CI renders the box narrower than a dev machine. Pin it to WIDTH
+    # so the rendered help is wide and byte-identical everywhere.
+    try:
+        import typer.rich_utils as _ru
+
+        _ru.MAX_WIDTH = WIDTH
+    except Exception:  # pragma: no cover - defensive across Typer versions
+        pass
+
     from click.testing import CliRunner
     from typer.main import get_command
 
