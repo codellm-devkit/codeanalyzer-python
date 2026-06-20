@@ -19,7 +19,7 @@ pip install 'codeanalyzer-python[neo4j]'
 Or install the CLI as an isolated tool with the one-line installer (provisions via uv / pipx / pip):
 
 ```bash
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/codellm-devkit/codeanalyzer-python/releases/latest/download/codeanalyzer-installer.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/codellm-devkit/codeanalyzer-python/releases/latest/download/canpy-installer.sh | sh
 ```
 
 ### Prerequisites
@@ -68,71 +68,109 @@ pyenv global 3.12.0   # or pyenv local 3.12.0 for project-specific
 
 ## Usage
 
-The codeanalyzer provides a command-line interface for performing static analysis on Python projects.
+`canpy` provides a command-line interface for performing static analysis on Python projects.
 
 ### Basic Usage
 
 ```bash
-codeanalyzer --input /path/to/python/project
+canpy --input /path/to/python/project
 ```
 
 ### Command Line Options
 
-To view the available options and commands, run `codeanalyzer --help`. You should see output similar to the following:
+To view the available options and commands, run `canpy --help`. You should see output similar to the following:
 
-```bash
-❯ codeanalyzer --help
+<!-- BEGIN canpy-help -->
 
- Usage: codeanalyzer [OPTIONS] COMMAND [ARGS]...
+```text
+$ canpy --help
+
+ Usage: canpy [OPTIONS] COMMAND [ARGS]...
 
  Static Analysis on Python source code using Jedi, CodeQL and Tree sitter.
 
-
-╭─ Options ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│    --input           -i                  PATH            Path to the project root directory (not required for --emit schema). │
-│    --output          -o                  PATH            Output directory for artifacts. [default: None]                      │
-│    --format          -f                  [json|msgpack]  Output format for --emit json: json or msgpack. [default: json]      │
-│    --emit                                [json|neo4j|    Output target: json (analysis.json) | neo4j (graph.cypher or live    │
-│                                           schema]         Bolt push) | schema (the Neo4j schema.json contract). [default: json]│
-│    --app-name                            TEXT            Logical application name for the graph :PyApplication anchor.          │
-│    --neo4j-uri                           TEXT            Push the graph to a live Neo4j over Bolt. [env: NEO4J_URI]            │
-│    --neo4j-user                          TEXT            Neo4j username. [env: NEO4J_USERNAME] [default: neo4j]               │
-│    --neo4j-password                      TEXT            Neo4j password. [env: NEO4J_PASSWORD] [default: neo4j]               │
-│    --neo4j-database                      TEXT            Neo4j database name. [env: NEO4J_DATABASE]                           │
-│    --codeql              --no-codeql                     Enable CodeQL-based analysis. [default: no-codeql]                   │
-│    --eager               --lazy                          Enable eager or lazy analysis. Defaults to lazy. [default: lazy]     │
-│    --cache-dir       -c                  PATH            Directory to store analysis cache. [default: None]                   │
-│    --clear-cache         --keep-cache                    Clear cache after analysis. [default: keep-cache]                    │
-│                      -v                  INTEGER         Increase verbosity: -v, -vv, -vvv [default: 0]                       │
-│    --help                                                Show this message and exit.                                          │
-╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────────────────────────╮
+│ --input           -i                     PATH                 Path to the project root directory │
+│                                                               (not required for --emit schema).  │
+│ --output          -o                     PATH                 Output directory for artifacts.    │
+│ --format          -f                     [json|msgpack]       Output format for --emit json:     │
+│                                                               json or msgpack.                   │
+│                                                               [default: json]                    │
+│ --emit                                   [json|neo4j|schema]  Output target: json                │
+│                                                               (analysis.json, default) | neo4j   │
+│                                                               (graph.cypher or live Bolt push) | │
+│                                                               schema (the Neo4j schema.json      │
+│                                                               contract).                         │
+│                                                               [default: json]                    │
+│ --app-name                               TEXT                 Logical application name for the   │
+│                                                               graph :PyApplication anchor        │
+│                                                               (default: input dir name).         │
+│ --neo4j-uri                              TEXT                 Push the graph to a live Neo4j     │
+│                                                               over Bolt (incremental); omit to   │
+│                                                               write graph.cypher.                │
+│                                                               [env var: NEO4J_URI]               │
+│ --neo4j-user                             TEXT                 Neo4j username.                    │
+│                                                               [env var: NEO4J_USERNAME]          │
+│                                                               [default: neo4j]                   │
+│ --neo4j-password                         TEXT                 Neo4j password. Prefer the env var │
+│                                                               over the flag (the flag is visible │
+│                                                               in shell history / process list).  │
+│                                                               [env var: NEO4J_PASSWORD]          │
+│                                                               [default: neo4j]                   │
+│ --neo4j-database                         TEXT                 Neo4j database name (default:      │
+│                                                               server default).                   │
+│                                                               [env var: NEO4J_DATABASE]          │
+│ --codeql              --no-codeql                             Enable CodeQL-based analysis.      │
+│                                                               [default: no-codeql]               │
+│ --ray                 --no-ray                                Enable Ray for distributed         │
+│                                                               analysis.                          │
+│                                                               [default: no-ray]                  │
+│ --eager               --lazy                                  Enable eager or lazy analysis.     │
+│                                                               Defaults to lazy.                  │
+│                                                               [default: lazy]                    │
+│ --skip-tests          --include-tests                         Skip test files in analysis.       │
+│                                                               [default: skip-tests]              │
+│ --file-name                              PATH                 Analyze only the specified file    │
+│                                                               (relative to input directory).     │
+│ --cache-dir       -c                     PATH                 Directory to store analysis cache. │
+│                                                               Defaults to '.codeanalyzer' in the │
+│                                                               input directory.                   │
+│ --clear-cache         --keep-cache                            Clear cache after analysis. By     │
+│                                                               default, cache is retained.        │
+│                                                               [default: keep-cache]              │
+│                   -v                     INTEGER              Increase verbosity: -v, -vv, -vvv  │
+│                                                               [default: 0]                       │
+│ --help                                                        Show this message and exit.        │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
+
+<!-- END canpy-help -->
 
 ### Examples
 
 1. **Basic analysis with symbol table:**
    ```bash
-   codeanalyzer --input ./my-python-project
+   canpy --input ./my-python-project
    ```
 
    This will print the symbol table to stdout in JSON format. If you want to save the output, you can use the `--output` option.
 
    ```bash
-   codeanalyzer --input ./my-python-project --output /path/to/analysis-results
+   canpy --input ./my-python-project --output /path/to/analysis-results
    ```
 
    Now, you can find the analysis results in `analysis.json` in the specified directory.
 
 2. **Change output format to msgpack:**
    ```bash
-   codeanalyzer --input ./my-python-project --output /path/to/analysis-results --format msgpack
+   canpy --input ./my-python-project --output /path/to/analysis-results --format msgpack
    ```
 
    This will save the analysis results in `analysis.msgpack` in the specified directory.
 
 3. **Analysis with CodeQL enabled:**
    ```bash
-   codeanalyzer --input ./my-python-project --codeql
+   canpy --input ./my-python-project --codeql
    ```
    Every run produces a symbol table **and** a call graph. By default, edges come from Jedi's lexical analysis. Adding `--codeql` resolves additional edges (including RPC / third-party / dynamically-dispatched targets) and merges them with the Jedi-derived edges. CodeQL also backfills resolved callees on Jedi-emitted call sites where Jedi couldn't resolve them.
 
@@ -140,26 +178,26 @@ To view the available options and commands, run `codeanalyzer --help`. You shoul
 
 4. **Eager analysis with custom cache directory:**
    ```bash
-   codeanalyzer --input ./my-python-project --eager --cache-dir /path/to/custom-cache
+   canpy --input ./my-python-project --eager --cache-dir /path/to/custom-cache
    ```
     This will rebuild the analysis cache at every run and store it in `/path/to/custom-cache/.codeanalyzer`.
 
 5. **Emit a Neo4j snapshot, or push to a live database:**
    ```bash
-   codeanalyzer --input ./my-python-project --emit neo4j --output ./out   # → ./out/graph.cypher
-   codeanalyzer --input ./my-python-project --emit neo4j \
+   canpy --input ./my-python-project --emit neo4j --output ./out   # → ./out/graph.cypher
+   canpy --input ./my-python-project --emit neo4j \
      --neo4j-uri bolt://localhost:7687 --neo4j-user neo4j --neo4j-password secret
    ```
 
 6. **Emit the Neo4j schema contract:**
    ```bash
-   codeanalyzer --emit schema                  # print schema.json to stdout (no project needed)
-   codeanalyzer --emit schema --output ./out    # → ./out/schema.json
+   canpy --emit schema                  # print schema.json to stdout (no project needed)
+   canpy --emit schema --output ./out    # → ./out/schema.json
    ```
 
 ## Output targets
 
-`codeanalyzer` builds one analysis in memory and can emit it three ways (`--emit`):
+`canpy` builds one analysis in memory and can emit it three ways (`--emit`):
 
 ### `analysis.json` (default)
 
@@ -188,7 +226,7 @@ The connection options also read from the standard Neo4j environment variables �
 ```sh
 export NEO4J_URI=bolt://localhost:7687
 export NEO4J_PASSWORD=secret
-codeanalyzer -i ./my-project --emit neo4j     # credentials picked up from the environment
+canpy -i ./my-project --emit neo4j     # credentials picked up from the environment
 ```
 
 ### Schema contract
@@ -220,8 +258,8 @@ This project uses [uv](https://docs.astral.sh/uv/) for dependency management dur
 ### Running from Source
 
 ```bash
-uv run codeanalyzer --input /path/to/python/project
-uv run codeanalyzer --emit schema > schema.neo4j.json    # regenerate the checked-in schema contract
+uv run canpy --input /path/to/python/project
+uv run canpy --emit schema > schema.neo4j.json    # regenerate the checked-in schema contract
 ```
 
 ### Running Tests

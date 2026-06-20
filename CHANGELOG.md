@@ -16,11 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`codeanalyzer.neo4j`** package: `catalog` (the single source-of-truth schema catalog), `project` (pure IR → graph rows), `cypher` (snapshot writer), `bolt` (incremental writer), and `rows` (the output-agnostic intermediate).
 - **Schema conformance test** (`test/test_neo4j_schema.py`, always runs) — asserts the emitter never produces a label/relationship/property the catalog doesn't declare, and that the checked-in `schema.neo4j.json` is regenerated.
 - **Neo4j Testcontainers integration test** (`test/test_neo4j_bolt.py`, opt-in via `RUN_CONTAINER_TESTS=1`) — spins up a real Neo4j and asserts the pushed graph, idempotent re-push, vanished-declaration cleanup, and full-run orphan pruning.
-- **Install script** (`packaging/install/codeanalyzer-installer.sh`) — a `curl … | sh` installer that provisions the CLI via uv / pipx / pip, published as a release asset.
+- **Install script** (`packaging/install/canpy-installer.sh`) — a `curl … | sh` installer that provisions the CLI via uv / pipx / pip, published as a release asset.
 - **`schema-uml.drawio`** — a clean UML of the `analysis.json` schema (the `PyApplication` containment tree).
 
 ### Changed
-- The release workflow now installs the `[neo4j]` extra, syncs `schema.neo4j.json` from source before publishing, and uploads the schema contract (`schema.json`) and installer script as GitHub Release assets.
+- **The CLI command is now `canpy`** (was `codeanalyzer`), matching the `cants` (TypeScript) sibling. The PyPI package name is unchanged (`codeanalyzer-python`), as is the importable `codeanalyzer` module.
+- The README `canpy --help` block is now generated from the live CLI (`scripts/update_readme.py`, between `<!-- BEGIN/END canpy-help -->` markers) so it can't drift from the code.
+- The release workflow now installs the `[neo4j]` extra, syncs both the README `--help` block and `schema.neo4j.json` from source before publishing, and uploads the schema contract (`schema.json`) and installer script as GitHub Release assets.
 
 ## [0.1.15] - 2026-05-15
 

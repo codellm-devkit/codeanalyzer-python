@@ -220,7 +220,7 @@ def _write_output(artifacts, output_dir: Path, format: OutputFormat):
 
 app = typer.Typer(
     callback=main,
-    name="codeanalyzer",
+    name="canpy",
     help="Static Analysis on Python source code using Jedi, CodeQL and Tree sitter.",
     invoke_without_command=True,
     no_args_is_help=True,

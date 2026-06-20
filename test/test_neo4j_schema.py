@@ -4,7 +4,7 @@ and properties that the catalog (``codeanalyzer/neo4j/catalog.py``) declares.
 This is the anti-drift guard: if ``project.py`` grows a label or property that
 ``catalog.py`` doesn't declare, this fails — keeping the published
 ``schema.neo4j.json`` honest. It also checks the checked-in ``schema.neo4j.json``
-is regenerated (run ``codeanalyzer --emit schema > schema.neo4j.json``).
+is regenerated (run ``canpy --emit schema > schema.neo4j.json``).
 """
 import json
 from pathlib import Path
@@ -88,7 +88,7 @@ def test_render_cypher_is_deterministic_and_self_contained():
 
 
 def test_checked_in_schema_matches_catalog():
-    """Run `codeanalyzer --emit schema > schema.neo4j.json` if this fails."""
+    """Run `canpy --emit schema > schema.neo4j.json` if this fails."""
     on_disk_path = Path(__file__).resolve().parents[1] / "schema.neo4j.json"
     assert on_disk_path.exists(), "schema.neo4j.json is missing — regenerate it"
     on_disk = json.loads(on_disk_path.read_text())

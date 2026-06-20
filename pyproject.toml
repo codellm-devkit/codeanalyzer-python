@@ -68,7 +68,7 @@ dev = [
 ]
 
 [project.scripts]
-codeanalyzer = "codeanalyzer.__main__:app"
+canpy = "codeanalyzer.__main__:app"
 
 [build-system]
 requires = ["hatchling"]
