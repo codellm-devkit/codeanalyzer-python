@@ -95,10 +95,10 @@ To view the available options and commands, run `codeanalyzer --help`. You shoul
 │    --emit                                [json|neo4j|    Output target: json (analysis.json) | neo4j (graph.cypher or live    │
 │                                           schema]         Bolt push) | schema (the Neo4j schema.json contract). [default: json]│
 │    --app-name                            TEXT            Logical application name for the graph :Application anchor.          │
-│    --neo4j-uri                           TEXT            Push the graph to a live Neo4j over Bolt; omit to write graph.cypher.│
-│    --neo4j-user                          TEXT            Neo4j username. [default: neo4j]                                     │
-│    --neo4j-password                      TEXT            Neo4j password. [default: neo4j]                                     │
-│    --neo4j-database                      TEXT            Neo4j database name (default: server default).                       │
+│    --neo4j-uri                           TEXT            Push the graph to a live Neo4j over Bolt. [env: NEO4J_URI]            │
+│    --neo4j-user                          TEXT            Neo4j username. [env: NEO4J_USERNAME] [default: neo4j]               │
+│    --neo4j-password                      TEXT            Neo4j password. [env: NEO4J_PASSWORD] [default: neo4j]               │
+│    --neo4j-database                      TEXT            Neo4j database name. [env: NEO4J_DATABASE]                           │
 │    --codeql              --no-codeql                     Enable CodeQL-based analysis. [default: no-codeql]                   │
 │    --eager               --lazy                          Enable eager or lazy analysis. Defaults to lazy. [default: lazy]     │
 │    --cache-dir       -c                  PATH            Directory to store analysis cache. [default: None]                   │
@@ -182,6 +182,14 @@ By default this is printed to stdout in JSON; with `--output` it is written to `
 - **With `--neo4j-uri`** — pushes to a live Neo4j over Bolt **incrementally**: only modules whose content hash changed are rewritten, and on a full run modules whose source file vanished are pruned. Requires the `neo4j` extra. Every graph carries a `schema_version` on its `:Application` node.
 
 Call-graph endpoints that aren't present in the symbol table (third-party / framework / RPC targets) are materialized as `:External` ghost nodes, mirroring the analyzer's own ghost-node behaviour.
+
+The connection options also read from the standard Neo4j environment variables — `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`, `NEO4J_DATABASE` — when the corresponding flag is omitted (an explicit flag wins). Prefer the env var for the password so it doesn't land in shell history or the process list:
+
+```sh
+export NEO4J_URI=bolt://localhost:7687
+export NEO4J_PASSWORD=secret
+codeanalyzer -i ./my-project --emit neo4j     # credentials picked up from the environment
+```
 
 ### Schema contract
 

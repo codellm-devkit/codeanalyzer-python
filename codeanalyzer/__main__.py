@@ -53,19 +53,35 @@ def main(
         Optional[str],
         typer.Option(
             "--neo4j-uri",
+            envvar="NEO4J_URI",
             help="Push the graph to a live Neo4j over Bolt (incremental); omit to write "
-            "graph.cypher.",
+            "graph.cypher. [env: NEO4J_URI]",
         ),
     ] = None,
     neo4j_user: Annotated[
-        str, typer.Option("--neo4j-user", help="Neo4j username.")
+        str,
+        typer.Option(
+            "--neo4j-user",
+            envvar="NEO4J_USERNAME",
+            help="Neo4j username. [env: NEO4J_USERNAME]",
+        ),
     ] = "neo4j",
     neo4j_password: Annotated[
-        str, typer.Option("--neo4j-password", help="Neo4j password.")
+        str,
+        typer.Option(
+            "--neo4j-password",
+            envvar="NEO4J_PASSWORD",
+            help="Neo4j password. Prefer the env var over the flag (the flag is visible in shell "
+            "history / process list). [env: NEO4J_PASSWORD]",
+        ),
     ] = "neo4j",
     neo4j_database: Annotated[
         Optional[str],
-        typer.Option("--neo4j-database", help="Neo4j database name (default: server default)."),
+        typer.Option(
+            "--neo4j-database",
+            envvar="NEO4J_DATABASE",
+            help="Neo4j database name (default: server default). [env: NEO4J_DATABASE]",
+        ),
     ] = None,
     using_codeql: Annotated[
         bool, typer.Option("--codeql/--no-codeql", help="Enable CodeQL-based analysis.")
