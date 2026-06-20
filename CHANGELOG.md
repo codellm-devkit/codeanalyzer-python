@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Homebrew tap** — `brew install codellm-devkit/tap/codeanalyzer-python`. The release workflow auto-generates a formula (`packaging/homebrew/generate_formula.sh`) that installs the pinned PyPI release as an isolated `uv` tool, and pushes it to `codellm-devkit/homebrew-tap`. Because the package is pure-Python with heavy native dependencies (`ray`, `pandas`, `numpy`), the formula depends on `uv` and runs the release via `uvx` rather than vendoring every transitive dependency as a Homebrew resource.
+
 ## [0.2.0] - 2026-06-20
 
 ### Added

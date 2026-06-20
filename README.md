@@ -36,6 +36,7 @@ and merges them with the Jedi-derived edges, also backfilling callees Jedi could
   - [Prerequisites](#prerequisites)
   - [Install via pip (PyPI)](#install-via-pip-pypi)
   - [Install via shell script](#install-via-shell-script)
+  - [Install via Homebrew](#install-via-homebrew)
   - [Build from source](#build-from-source)
 - [Usage](#usage)
   - [Options](#options)
@@ -101,6 +102,15 @@ Install the CLI as an isolated tool with the one-line installer (provisions via 
 ```sh
 curl --proto '=https' --tlsv1.2 -LsSf https://github.com/codellm-devkit/codeanalyzer-python/releases/latest/download/canpy-installer.sh | sh
 ```
+
+### Install via Homebrew
+
+```sh
+brew install codellm-devkit/tap/codeanalyzer-python
+```
+
+The formula depends on [uv](https://docs.astral.sh/uv/) and installs `canpy` as an isolated,
+version-pinned uv tool (the package and its dependencies are resolved and cached on first run).
 
 ### Build from source
 
