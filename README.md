@@ -133,59 +133,102 @@ $ canpy --help
 
  Static Analysis on Python source code using Jedi, CodeQL and Tree sitter.
 
-╭─ Options ────────────────────────────────────────────────────────────────────────────────────────╮
-│ --input           -i                     PATH                 Path to the project root directory │
-│                                                               (not required for --emit schema).  │
-│ --output          -o                     PATH                 Output directory for artifacts.    │
-│ --format          -f                     [json|msgpack]       Output format for --emit json:     │
-│                                                               json or msgpack.                   │
-│                                                               [default: json]                    │
-│ --emit                                   [json|neo4j|schema]  Output target: json                │
-│                                                               (analysis.json, default) | neo4j   │
-│                                                               (graph.cypher or live Bolt push) | │
-│                                                               schema (the Neo4j schema.json      │
-│                                                               contract).                         │
-│                                                               [default: json]                    │
-│ --app-name                               TEXT                 Logical application name for the   │
-│                                                               graph :PyApplication anchor        │
-│                                                               (default: input dir name).         │
-│ --neo4j-uri                              TEXT                 Push the graph to a live Neo4j     │
-│                                                               over Bolt (incremental); omit to   │
-│                                                               write graph.cypher.                │
-│                                                               [env var: NEO4J_URI]               │
-│ --neo4j-user                             TEXT                 Neo4j username.                    │
-│                                                               [env var: NEO4J_USERNAME]          │
-│                                                               [default: neo4j]                   │
-│ --neo4j-password                         TEXT                 Neo4j password. Prefer the env var │
-│                                                               over the flag (the flag is visible │
-│                                                               in shell history / process list).  │
-│                                                               [env var: NEO4J_PASSWORD]          │
-│                                                               [default: neo4j]                   │
-│ --neo4j-database                         TEXT                 Neo4j database name (default:      │
-│                                                               server default).                   │
-│                                                               [env var: NEO4J_DATABASE]          │
-│ --codeql              --no-codeql                             Enable CodeQL-based analysis.      │
-│                                                               [default: no-codeql]               │
-│ --ray                 --no-ray                                Enable Ray for distributed         │
-│                                                               analysis.                          │
-│                                                               [default: no-ray]                  │
-│ --eager               --lazy                                  Enable eager or lazy analysis.     │
-│                                                               Defaults to lazy.                  │
-│                                                               [default: lazy]                    │
-│ --skip-tests          --include-tests                         Skip test files in analysis.       │
-│                                                               [default: skip-tests]              │
-│ --file-name                              PATH                 Analyze only the specified file    │
-│                                                               (relative to input directory).     │
-│ --cache-dir       -c                     PATH                 Directory to store analysis cache. │
-│                                                               Defaults to '.codeanalyzer' in the │
-│                                                               input directory.                   │
-│ --clear-cache         --keep-cache                            Clear cache after analysis. By     │
-│                                                               default, cache is retained.        │
-│                                                               [default: keep-cache]              │
-│                   -v                     INTEGER              Increase verbosity: -v, -vv, -vvv  │
-│                                                               [default: 0]                       │
-│ --help                                                        Show this message and exit.        │
-╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --input           -i                     PATH              Path to the       │
+│                                                            project root      │
+│                                                            directory (not    │
+│                                                            required for      │
+│                                                            --emit schema).   │
+│ --output          -o                     PATH              Output directory  │
+│                                                            for artifacts.    │
+│ --format          -f                     [json|msgpack]    Output format for │
+│                                                            --emit json: json │
+│                                                            or msgpack.       │
+│                                                            [default: json]   │
+│ --emit                                   [json|neo4j|sche  Output target:    │
+│                                          ma]               json              │
+│                                                            (analysis.json,   │
+│                                                            default) | neo4j  │
+│                                                            (graph.cypher or  │
+│                                                            live Bolt push) | │
+│                                                            schema (the Neo4j │
+│                                                            schema.json       │
+│                                                            contract).        │
+│                                                            [default: json]   │
+│ --app-name                               TEXT              Logical           │
+│                                                            application name  │
+│                                                            for the graph     │
+│                                                            :PyApplication    │
+│                                                            anchor (default:  │
+│                                                            input dir name).  │
+│ --neo4j-uri                              TEXT              Push the graph to │
+│                                                            a live Neo4j over │
+│                                                            Bolt              │
+│                                                            (incremental);    │
+│                                                            omit to write     │
+│                                                            graph.cypher.     │
+│                                                            [env var:         │
+│                                                            NEO4J_URI]        │
+│ --neo4j-user                             TEXT              Neo4j username.   │
+│                                                            [env var:         │
+│                                                            NEO4J_USERNAME]   │
+│                                                            [default: neo4j]  │
+│ --neo4j-password                         TEXT              Neo4j password.   │
+│                                                            Prefer the env    │
+│                                                            var over the flag │
+│                                                            (the flag is      │
+│                                                            visible in shell  │
+│                                                            history / process │
+│                                                            list).            │
+│                                                            [env var:         │
+│                                                            NEO4J_PASSWORD]   │
+│                                                            [default: neo4j]  │
+│ --neo4j-database                         TEXT              Neo4j database    │
+│                                                            name (default:    │
+│                                                            server default).  │
+│                                                            [env var:         │
+│                                                            NEO4J_DATABASE]   │
+│ --codeql              --no-codeql                          Enable            │
+│                                                            CodeQL-based      │
+│                                                            analysis.         │
+│                                                            [default:         │
+│                                                            no-codeql]        │
+│ --ray                 --no-ray                             Enable Ray for    │
+│                                                            distributed       │
+│                                                            analysis.         │
+│                                                            [default: no-ray] │
+│ --eager               --lazy                               Enable eager or   │
+│                                                            lazy analysis.    │
+│                                                            Defaults to lazy. │
+│                                                            [default: lazy]   │
+│ --skip-tests          --include-tests                      Skip test files   │
+│                                                            in analysis.      │
+│                                                            [default:         │
+│                                                            skip-tests]       │
+│ --file-name                              PATH              Analyze only the  │
+│                                                            specified file    │
+│                                                            (relative to      │
+│                                                            input directory). │
+│ --cache-dir       -c                     PATH              Directory to      │
+│                                                            store analysis    │
+│                                                            cache. Defaults   │
+│                                                            to                │
+│                                                            '.codeanalyzer'   │
+│                                                            in the input      │
+│                                                            directory.        │
+│ --clear-cache         --keep-cache                         Clear cache after │
+│                                                            analysis. By      │
+│                                                            default, cache is │
+│                                                            retained.         │
+│                                                            [default:         │
+│                                                            keep-cache]       │
+│                   -v                     INTEGER           Increase          │
+│                                                            verbosity: -v,    │
+│                                                            -vv, -vvv         │
+│                                                            [default: 0]      │
+│ --help                                                     Show this message │
+│                                                            and exit.         │
+╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
 <!-- END canpy-help -->
