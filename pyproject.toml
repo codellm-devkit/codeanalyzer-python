@@ -1,7 +1,7 @@
 [project]
 name = "codeanalyzer-python"
-version = "0.1.15"
-description = "Static Analysis on Python source code using Jedi, CodeQL and Treesitter."
+version = "0.2.0"
+description = "Static Analysis on Python source code using Jedi, CodeQL and Treesitter — emits analysis.json or a Neo4j property graph."
 readme = "README.md"
 authors = [
   { name = "Rahul Krishna", email = "i.m.ralk@gmail.com" }
@@ -45,12 +45,22 @@ dependencies = [
     "packaging>=25.0",
 ]
 
+[project.optional-dependencies]
+# The Neo4j Bolt driver is only needed for `--emit neo4j --neo4j-uri ...` (a live
+# push). The `graph.cypher` snapshot and `--emit schema` need no extra packages.
+neo4j = [
+  "neo4j>=5.0.0,<6.0.0",
+]
+
 [dependency-groups]
 test = [
   "pytest>=7.0.0,<8.0.0",
   "pytest-asyncio>=0.14.0,<0.15.0",
   "pytest-cov>=2.10.0,<3.0.0",
-  "pytest-pspec>=0.0.3"
+  "pytest-pspec>=0.0.3",
+  # Neo4j integration test (opt-in; spins up a real Neo4j via Testcontainers).
+  "neo4j>=5.0.0,<6.0.0",
+  "testcontainers[neo4j]>=4.0.0,<5.0.0; python_version >= '3.11'",
 ]
 dev = [
   "ipdb>=0.13.0,<0.14.0",
@@ -58,7 +68,9 @@ dev = [
 ]
 
 [project.scripts]
-codeanalyzer = "codeanalyzer.__main__:app"
+canpy = "codeanalyzer.__main__:app"
+# Deprecated alias kept for backwards compatibility — warns, then delegates to canpy.
+codeanalyzer = "codeanalyzer.__main__:deprecated_main"
 
 [build-system]
 requires = ["hatchling"]
@@ -72,6 +84,8 @@ include = ["codeanalyzer/py.typed"]
 include = [
   "codeanalyzer",
   "codeanalyzer/py.typed",
+  "schema.neo4j.json",
+  "schema-uml.drawio",
   "README.md",
   "LICENSE",
   "NOTICE"

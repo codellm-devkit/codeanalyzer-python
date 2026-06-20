@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-06-20
+
+### Added
+- **Neo4j property-graph output** (`--emit neo4j`). The same in-memory analysis (`PyApplication`) is projected to a labeled property graph, mirroring the `codeanalyzer-typescript` backend. Node labels are `Py`-prefixed and relationship types are `PY_`-prefixed (e.g. `:PyClass`, `PY_CALLS`) so multiple language analyzers can coexist in one database without label or relationship-type collisions. Two writers:
+  - **`graph.cypher` snapshot** (default) — a self-contained Cypher script (constraints + indexes, a scoped wipe of the project's prior subgraph, then batched `UNWIND … MERGE`). Load it with `cypher-shell < graph.cypher`. Needs no extra dependencies.
+  - **Live Bolt push** (`--neo4j-uri`) — an **incremental** writer: only modules whose `content_hash` changed are rewritten, and on a full run modules whose source file vanished are pruned. Requires the optional `neo4j` driver (`pip install 'codeanalyzer-python[neo4j]'`).
+- **`--emit schema`** — emit the machine-readable, version-stamped Neo4j schema contract (`schema.json`: node labels, relationships, properties, constraints, indexes). Needs no project; bundled in every release as a GitHub Release asset and checked in as `schema.neo4j.json`. A `schema_version` (`1.0.0`) is stamped onto every graph's `:PyApplication` node.
+- **New CLI options** mirroring the TypeScript analyzer's entrypoints: `--emit {json,neo4j,schema}`, `--app-name`, `--neo4j-uri`, `--neo4j-user`, `--neo4j-password`, `--neo4j-database`. `-i/--input` is now optional (not required for `--emit schema`). The four Neo4j connection options also read from the standard `NEO4J_URI` / `NEO4J_USERNAME` / `NEO4J_PASSWORD` / `NEO4J_DATABASE` environment variables when the flag is omitted (an explicit flag wins), so the password need not appear in shell history or the process list.
+- **`codeanalyzer.neo4j`** package: `catalog` (the single source-of-truth schema catalog), `project` (pure IR → graph rows), `cypher` (snapshot writer), `bolt` (incremental writer), and `rows` (the output-agnostic intermediate).
+- **Schema conformance test** (`test/test_neo4j_schema.py`, always runs) — asserts the emitter never produces a label/relationship/property the catalog doesn't declare, and that the checked-in `schema.neo4j.json` is regenerated.
+- **Neo4j Testcontainers integration test** (`test/test_neo4j_bolt.py`, opt-in via `RUN_CONTAINER_TESTS=1`) — spins up a real Neo4j and asserts the pushed graph, idempotent re-push, vanished-declaration cleanup, and full-run orphan pruning.
+- **Install script** (`packaging/install/canpy-installer.sh`) — a `curl … | sh` installer that provisions the CLI via uv / pipx / pip, published as a release asset.
+- **`schema-uml.drawio`** — a clean UML of the `analysis.json` schema (the `PyApplication` containment tree).
+
+### Changed
+- **The CLI command is now `canpy`** (was `codeanalyzer`), matching the `cants` (TypeScript) sibling. The PyPI package name is unchanged (`codeanalyzer-python`), as is the importable `codeanalyzer` module. The old `codeanalyzer` command is retained as a **deprecated alias** that prints a notice (to stderr) and then runs unchanged; it will be removed in a future release.
+- The README `canpy --help` block is now generated from the live CLI (`scripts/update_readme.py`, between `<!-- BEGIN/END canpy-help -->` markers) so it can't drift from the code.
+- The release workflow now installs the `[neo4j]` extra, syncs both the README `--help` block and `schema.neo4j.json` from source before publishing, and uploads the schema contract (`schema.json`) and installer script as GitHub Release assets.
+
 ## [0.1.15] - 2026-05-15
 
 ### Fixed
