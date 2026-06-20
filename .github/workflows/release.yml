@@ -97,9 +97,10 @@ jobs:
 
       - name: Build changelog
         id: gen_changelog
+        continue-on-error: true   # auto-PR-diff is best-effort; CHANGELOG.md is the source of truth
         uses: mikepenz/release-changelog-builder-action@v5
         with:
-          failOnError: "true"
+          failOnError: "false"
           configuration: .github/workflows/release_config.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
