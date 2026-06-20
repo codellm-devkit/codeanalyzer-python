@@ -87,40 +87,50 @@ jobs:
           echo "current_version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
         shell: bash
 
-      - name: Read Changelog Entry
-        id: changelog_reader
-        uses: mindsers/changelog-reader-action@v2
-        with:
-          validation_level: warn
-          version: ${{ steps.tag_name.outputs.current_version }}
-          path: ./CHANGELOG.md
-
-      - name: Build changelog
-        id: gen_changelog
-        continue-on-error: true   # auto-PR-diff is best-effort; CHANGELOG.md is the source of truth
-        uses: mikepenz/release-changelog-builder-action@v5
-        with:
-          failOnError: "false"
-          configuration: .github/workflows/release_config.json
+      # cargo-dist-style notes: install one-liners + a download table. The categorized
+      # "What's Changed" (merged PRs/issues grouped under emoji headings via
+      # .github/release.yml) is appended by generate_release_notes below. Indented code
+      # blocks avoid backticks in the heredoc.
+      - name: Compose release notes header (install + download)
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.tag_name.outputs.current_version }}
+        run: |
+          REPO="codellm-devkit/codeanalyzer-python"
+          BASE="https://github.com/$REPO/releases/download/v$VERSION"
+          cat > "$RUNNER_TEMP/RELEASE_BODY.md" <<EOF
+          ## Install codeanalyzer-python v$VERSION
+
+          Shell script (installs the canpy CLI via uv / pipx / pip):
+
+              curl --proto '=https' --tlsv1.2 -LsSf https://github.com/$REPO/releases/latest/download/canpy-installer.sh | sh
+
+          PyPI:
+
+              pip install codeanalyzer-python==$VERSION
+
+          For the optional live Neo4j push (--emit neo4j --neo4j-uri ...):
+
+              pip install 'codeanalyzer-python[neo4j]==$VERSION'
+
+          ## Download
+
+          | File | Description |
+          | --- | --- |
+          | [codeanalyzer_python-$VERSION-py3-none-any.whl]($BASE/codeanalyzer_python-$VERSION-py3-none-any.whl) | Python wheel |
+          | [codeanalyzer_python-$VERSION.tar.gz]($BASE/codeanalyzer_python-$VERSION.tar.gz) | Source distribution |
+          | [canpy-installer.sh]($BASE/canpy-installer.sh) | Shell installer (uv / pipx / pip) |
+          | [schema.json]($BASE/schema.json) | Neo4j schema contract |
+          EOF
+          echo "----- composed header -----"; cat "$RUNNER_TEMP/RELEASE_BODY.md"
 
       - name: Publish release on GitHub
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/*
             release-assets/*
-          body: |
-            ## Release Notes (from CHANGELOG.md)
-            
-            ${{ steps.changelog_reader.outputs.changes }}
-            
-            ---
-            
-            ## Detailed Changes (auto-generated)
-            
-            ${{ steps.gen_changelog.outputs.changelog }}
+          body_path: ${{ runner.temp }}/RELEASE_BODY.md
+          generate_release_notes: true   # appends categorized "What's Changed" (see .github/release.yml)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
