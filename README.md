@@ -1,84 +1,128 @@
-![logo](https://github.com/codellm-devkit/codeanalyzer-python/blob/main/docs/assets/logo.png?raw=true)
+<div align="center">
 
-# A Python Static Analysis Toolkit (and Library)
+<img src="https://github.com/codellm-devkit/codeanalyzer-python/blob/main/docs/assets/logo.png?raw=true" alt="CodeLLM-DevKit" />
 
-A comprehensive static analysis tool for Python source code that provides symbol table generation, call graph analysis, and semantic analysis using Jedi, CodeQL, and Tree-sitter — emitted as the canonical `analysis.json`, or projected into a **Neo4j property graph**.
+# codeanalyzer-python (`canpy`)
+
+**A Python static-analysis toolkit — the CLDK backend that emits a canonical symbol table and call graph, as `analysis.json` or a Neo4j property graph.**
+
+[![PyPI](https://img.shields.io/pypi/v/codeanalyzer-python?style=for-the-badge&logo=pypi&logoColor=white)](https://pypi.org/project/codeanalyzer-python/)
+[![Python](https://img.shields.io/pypi/pyversions/codeanalyzer-python?style=for-the-badge&logo=python&logoColor=white)](https://pypi.org/project/codeanalyzer-python/)
+[![Release](https://img.shields.io/github/actions/workflow/status/codellm-devkit/codeanalyzer-python/release.yml?style=for-the-badge&label=release&logo=github)](https://github.com/codellm-devkit/codeanalyzer-python/actions/workflows/release.yml)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue?style=for-the-badge)](./LICENSE)
+
+</div>
+
+---
+
+`canpy` is a static analyzer for Python built on [Jedi](https://jedi.readthedocs.io/), with optional
+[CodeQL](https://codeql.github.com/)-resolved call edges and
+[Tree-sitter](https://tree-sitter.github.io/) parsing. It produces the canonical CodeLLM-DevKit
+(CLDK) `analysis.json` — a symbol table plus a call graph — and can project that same analysis into a
+**Neo4j property graph**. It is the Python backend behind
+[CLDK](https://github.com/codellm-devkit/python-sdk), mirroring its
+[TypeScript](https://github.com/codellm-devkit/codeanalyzer-typescript) (`cants`) and
+[Java](https://github.com/codellm-devkit/codeanalyzer-java) siblings.
+
+Every run produces a symbol table **and** a call graph. Edges come from Jedi's lexical resolution by
+default; `--codeql` resolves additional edges (RPC / third-party / dynamically-dispatched targets)
+and merges them with the Jedi-derived edges, also backfilling callees Jedi could not resolve.
+
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation)
+  - [Prerequisites](#prerequisites)
+  - [Install via pip (PyPI)](#install-via-pip-pypi)
+  - [Install via shell script](#install-via-shell-script)
+  - [Build from source](#build-from-source)
+- [Usage](#usage)
+  - [Options](#options)
+  - [Examples](#examples)
+- [Output targets](#output-targets)
+  - [`analysis.json` (default)](#analysisjson-default)
+  - [Neo4j graph](#neo4j-graph)
+  - [Schema contract](#schema-contract)
+- [Development](#development)
+- [License](#license)
+
+## Features
+
+- **Symbol table** — modules, classes, functions, methods, variables, decorators, imports, and
+  docstrings, with precise source spans.
+- **Call graph** — Jedi's lexical resolver by default, with optional **CodeQL**-resolved edges
+  (`--codeql`) for RPC / third-party / dynamically-dispatched targets, merged with the Jedi edges;
+  CodeQL also backfills callees Jedi could not resolve.
+- **Neo4j output** — project the analysis into a labeled property graph: a self-contained
+  `graph.cypher` snapshot, or an **incremental** push to a live database over Bolt.
+- **Versioned schema** — a machine-readable, version-stamped Neo4j schema contract (`--emit schema`),
+  checked in as `schema.neo4j.json` and shipped with every release.
+- **Incremental cache** — per-file results are cached under `.codeanalyzer`; `--lazy` (default)
+  reuses them, `--eager` forces a clean rebuild. `--ray` distributes the work across cores.
+- **Compact output** — canonical `analysis.json`, or binary `analysis.msgpack` for smaller artifacts.
 
 ## Installation
 
-```bash
+### Prerequisites
+
+- **Python 3.10 or newer.**
+- A C toolchain and the `venv` / development headers — the analyzer builds an isolated virtual
+  environment per project (via Python's `venv`) so Jedi can resolve types and imports:
+
+  ```sh
+  # Ubuntu / Debian
+  sudo apt install python3-venv python3-dev build-essential
+
+  # Fedora / RHEL / CentOS
+  sudo dnf group install "Development Tools" && sudo dnf install python3-venv python3-devel
+
+  # macOS
+  xcode-select --install
+  ```
+
+### Install via pip (PyPI)
+
+```sh
 pip install codeanalyzer-python
+canpy --help
 ```
 
 For the optional **live Neo4j push** (`--emit neo4j --neo4j-uri …`), install the `neo4j` extra:
 
-```bash
+```sh
 pip install 'codeanalyzer-python[neo4j]'
 ```
 
-Or install the CLI as an isolated tool with the one-line installer (provisions via uv / pipx / pip):
+### Install via shell script
 
-```bash
+Install the CLI as an isolated tool with the one-line installer (provisions via uv / pipx / pip):
+
+```sh
 curl --proto '=https' --tlsv1.2 -LsSf https://github.com/codellm-devkit/codeanalyzer-python/releases/latest/download/canpy-installer.sh | sh
 ```
 
-### Prerequisites
+### Build from source
 
-- Python 3.12 or higher
+This project uses [uv](https://docs.astral.sh/uv/) for dependency management.
 
-#### System Package Requirements
-
-The tool creates virtual environments internally using Python's built-in `venv` module.
-
-**Ubuntu/Debian systems:**
-```bash
-sudo apt update
-sudo apt install python3.12-venv python3-dev build-essential
+```sh
+git clone https://github.com/codellm-devkit/codeanalyzer-python
+cd codeanalyzer-python
+uv sync --all-groups
+uv run canpy --help
 ```
-
-**Fedora/RHEL/CentOS systems:**
-```bash
-sudo dnf group install "Development Tools"
-sudo dnf install python3-pip python3-venv python3-devel
-```
-or on older versions:
-```bash
-sudo yum groupinstall "Development Tools"
-sudo yum install python3-pip python3-venv python3-devel
-```
-
-**macOS systems:**
-```bash
-# Install Xcode Command Line Tools (for compilation)
-xcode-select --install
-
-# If using Homebrew Python (recommended)
-brew install python@3.12
-
-# If using pyenv (popular Python version manager)
-# First ensure pyenv is properly installed and configured
-pyenv install 3.12.0  # or latest 3.12.x version
-pyenv global 3.12.0   # or pyenv local 3.12.0 for project-specific
-
-# If using system Python, you may need to install certificates
-/Applications/Python\ 3.12/Install\ Certificates.command
-```
-
-> **Note:** These packages are required as the tool uses Python's built-in `venv` module to create isolated environments for analysis.
 
 ## Usage
 
-`canpy` provides a command-line interface for performing static analysis on Python projects.
-
-### Basic Usage
-
-```bash
+```sh
 canpy --input /path/to/python/project
 ```
 
-### Command Line Options
+With no `--output`, the analysis is printed to stdout as compact JSON; with `--output <dir>` it is
+written to `analysis.json` (or `graph.cypher` for `--emit neo4j`, or `analysis.msgpack` with
+`--format msgpack`) in that directory.
 
-To view the available options and commands, run `canpy --help`. You should see output similar to the following:
+### Options
 
 <!-- BEGIN canpy-help -->
 
@@ -148,51 +192,42 @@ $ canpy --help
 
 ### Examples
 
-1. **Basic analysis with symbol table:**
-   ```bash
-   canpy --input ./my-python-project
+1. **Basic analysis to stdout, or to a file:**
+   ```sh
+   canpy --input ./my-python-project                        # compact JSON on stdout
+   canpy --input ./my-python-project --output ./out         # → ./out/analysis.json
    ```
 
-   This will print the symbol table to stdout in JSON format. If you want to save the output, you can use the `--output` option.
-
-   ```bash
-   canpy --input ./my-python-project --output /path/to/analysis-results
+2. **Binary output (msgpack):**
+   ```sh
+   canpy --input ./my-python-project --output ./out --format msgpack   # → ./out/analysis.msgpack
    ```
 
-   Now, you can find the analysis results in `analysis.json` in the specified directory.
-
-2. **Change output format to msgpack:**
-   ```bash
-   canpy --input ./my-python-project --output /path/to/analysis-results --format msgpack
-   ```
-
-   This will save the analysis results in `analysis.msgpack` in the specified directory.
-
-3. **Analysis with CodeQL enabled:**
-   ```bash
+3. **Resolve extra call edges with CodeQL:**
+   ```sh
    canpy --input ./my-python-project --codeql
    ```
-   Every run produces a symbol table **and** a call graph. By default, edges come from Jedi's lexical analysis. Adding `--codeql` resolves additional edges (including RPC / third-party / dynamically-dispatched targets) and merges them with the Jedi-derived edges. CodeQL also backfills resolved callees on Jedi-emitted call sites where Jedi couldn't resolve them.
+   By default, edges come from Jedi's lexical analysis. Adding `--codeql` resolves additional edges
+   (including RPC / third-party / dynamically-dispatched targets) and merges them with the
+   Jedi-derived edges; CodeQL also backfills resolved callees Jedi could not resolve. CodeQL
+   integration is experimental; the CLI is downloaded into `<cache_dir>/codeql/` on first use.
 
-    ***Note: CodeQL integration is experimental. The CLI is downloaded into `<cache_dir>/codeql/` on first use and reused thereafter.***
-
-4. **Eager analysis with custom cache directory:**
-   ```bash
-   canpy --input ./my-python-project --eager --cache-dir /path/to/custom-cache
-   ```
-    This will rebuild the analysis cache at every run and store it in `/path/to/custom-cache/.codeanalyzer`.
-
-5. **Emit a Neo4j snapshot, or push to a live database:**
-   ```bash
+4. **Emit a Neo4j snapshot, or push to a live database:**
+   ```sh
    canpy --input ./my-python-project --emit neo4j --output ./out   # → ./out/graph.cypher
    canpy --input ./my-python-project --emit neo4j \
      --neo4j-uri bolt://localhost:7687 --neo4j-user neo4j --neo4j-password secret
    ```
 
-6. **Emit the Neo4j schema contract:**
-   ```bash
-   canpy --emit schema                  # print schema.json to stdout (no project needed)
+5. **Emit the Neo4j schema contract:**
+   ```sh
+   canpy --emit schema                   # print schema.json to stdout (no project needed)
    canpy --emit schema --output ./out    # → ./out/schema.json
+   ```
+
+6. **Force a clean rebuild with a custom cache directory:**
+   ```sh
+   canpy --input ./my-python-project --eager --cache-dir /path/to/custom-cache
    ```
 
 ## Output targets
@@ -210,18 +245,32 @@ A `PyApplication` document — the canonical CLDK contract:
 }
 ```
 
-By default this is printed to stdout in JSON; with `--output` it is written to `analysis.json` (or `analysis.msgpack` with `--format msgpack`, a more compact binary format).
+By default this is printed to stdout in JSON; with `--output` it is written to `analysis.json` (or
+`analysis.msgpack` with `--format msgpack`, a more compact binary format).
 
 ### Neo4j graph
 
-`--emit neo4j` projects the same analysis into a labeled property graph. Every node label is `Py`-prefixed and every relationship type is `PY_`-prefixed (e.g. `:PyClass`, `PY_CALLS`) so multiple language analyzers can share one database without label or relationship-type collisions. Declarations are keyed by their signature under a shared `:PySymbol` label; calls, imports, inheritance, decorators, and call sites are relationships:
+`--emit neo4j` projects the same analysis into a labeled property graph. Every node label is
+`Py`-prefixed and every relationship type is `PY_`-prefixed (e.g. `:PyClass`, `PY_CALLS`) so multiple
+language analyzers can share one database without label or relationship-type collisions. Declarations
+are keyed by their signature under a shared `:PySymbol` label; calls, imports, inheritance,
+decorators, and call sites are relationships:
 
-- **Without `--neo4j-uri`** — writes a self-contained `graph.cypher` (constraints + indexes, a scoped wipe, then batched `MERGE`s). Load it with `cypher-shell < graph.cypher`. Needs no extra dependencies.
-- **With `--neo4j-uri`** — pushes to a live Neo4j over Bolt **incrementally**: only modules whose content hash changed are rewritten, and on a full run modules whose source file vanished are pruned. Requires the `neo4j` extra. Every graph carries a `schema_version` on its `:PyApplication` node.
+- **Without `--neo4j-uri`** — writes a self-contained `graph.cypher` (constraints + indexes, a scoped
+  wipe, then batched `MERGE`s). Load it with `cypher-shell < graph.cypher`. Needs no extra
+  dependencies.
+- **With `--neo4j-uri`** — pushes to a live Neo4j over Bolt **incrementally**: only modules whose
+  content hash changed are rewritten, and on a full run modules whose source file vanished are
+  pruned. Requires the `neo4j` extra. Every graph carries a `schema_version` on its `:PyApplication`
+  node.
 
-Call-graph endpoints that aren't present in the symbol table (third-party / framework / RPC targets) are materialized as `:PyExternal` ghost nodes, mirroring the analyzer's own ghost-node behaviour.
+Call-graph endpoints that aren't present in the symbol table (third-party / framework / RPC targets)
+are materialized as `:PyExternal` ghost nodes, mirroring the analyzer's own ghost-node behaviour.
 
-The connection options also read from the standard Neo4j environment variables — `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`, `NEO4J_DATABASE` — when the corresponding flag is omitted (an explicit flag wins). Prefer the env var for the password so it doesn't land in shell history or the process list:
+The connection options also read from the standard Neo4j environment variables — `NEO4J_URI`,
+`NEO4J_USERNAME`, `NEO4J_PASSWORD`, `NEO4J_DATABASE` — when the corresponding flag is omitted (an
+explicit flag wins). Prefer the env var for the password so it doesn't land in shell history or the
+process list:
 
 ```sh
 export NEO4J_URI=bolt://localhost:7687
@@ -231,59 +280,36 @@ canpy -i ./my-project --emit neo4j     # credentials picked up from the environm
 
 ### Schema contract
 
-`--emit schema` writes the machine-readable, version-stamped Neo4j schema (`schema.json`: node labels, relationships, properties, constraints, and indexes). It needs no project and is checked into the repo as `schema.neo4j.json` and bundled in every release as a GitHub Release asset, so a consumer can validate producer/consumer compatibility without invoking the tool. The shape of the contract matches the [`codeanalyzer-typescript`](https://github.com/codellm-devkit/codeanalyzer-typescript) backend.
+`--emit schema` writes the machine-readable, version-stamped Neo4j schema (`schema.json`: node labels,
+relationships, properties, constraints, and indexes). It needs no project and is checked into the repo
+as `schema.neo4j.json` and bundled in every release as a GitHub Release asset, so a consumer can
+validate producer/consumer compatibility without invoking the tool. The shape of the contract matches
+the [`codeanalyzer-typescript`](https://github.com/codellm-devkit/codeanalyzer-typescript) backend.
 
-A UML of the `analysis.json` schema (the `PyApplication` containment tree) is checked in as [`schema-uml.drawio`](./schema-uml.drawio).
+A UML of the `analysis.json` schema (the `PyApplication` containment tree) is checked in as
+[`schema-uml.drawio`](./schema-uml.drawio), and the property-graph schema as
+[`neo4j-schema.drawio`](./neo4j-schema.drawio).
 
 ## Development
 
-This project uses [uv](https://docs.astral.sh/uv/) for dependency management during development.
+This project uses [uv](https://docs.astral.sh/uv/).
 
-### Development Setup
-
-1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/)
-
-2. Clone the repository:
-   ```bash
-   git clone https://github.com/codellm-devkit/codeanalyzer-python
-   cd codeanalyzer-python
-   ```
-
-3. Install dependencies using uv:
-   ```bash
-   uv sync --all-groups
-   ```
-   This will install all dependencies including development and test dependencies.
-
-### Running from Source
-
-```bash
-uv run canpy --input /path/to/python/project
-uv run canpy --emit schema > schema.neo4j.json    # regenerate the checked-in schema contract
-```
-
-### Running Tests
-
-```bash
-uv run pytest --pspec -s
+```sh
+uv sync --all-groups
+uv run canpy --input /path/to/project           # run from source
+uv run canpy --emit schema > schema.neo4j.json  # regenerate the checked-in schema contract
+uv run python scripts/update_readme.py          # regenerate the canpy --help block above
+uv run pytest                                   # run the test suite
 ```
 
 The Neo4j schema-conformance test always runs. The Neo4j **bolt** integration test spins up a real
 Neo4j via [Testcontainers](https://testcontainers.com/) and is **opt-in** — it needs a container
 runtime (Docker or Podman) and is enabled with an environment variable:
 
-```bash
+```sh
 RUN_CONTAINER_TESTS=1 uv run pytest test/test_neo4j_bolt.py -s
 ```
 
-### Development Dependencies
+## License
 
-The project includes additional dependency groups for development:
-
-- **test**: pytest and related testing tools (plus `neo4j` + `testcontainers` for the opt-in Neo4j test)
-- **dev**: development tools like ipdb
-
-Install all groups with:
-```bash
-uv sync --all-groups
-```
+Apache 2.0 — see [LICENSE](./LICENSE).

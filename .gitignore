@@ -180,3 +180,7 @@ analysis.json
 
 # UV
 uv.lock
+
+# Node / Astro docs-site build artifacts (never commit these)
+node_modules/
+.astro/
