@@ -5,10 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.1] - 2026-06-22
 
 ### Added
 - **Homebrew tap** — `brew install codellm-devkit/tap/codeanalyzer-python`. The release workflow auto-generates a formula (`packaging/homebrew/generate_formula.sh`) that installs the pinned PyPI release as an isolated `uv` tool, and pushes it to `codellm-devkit/homebrew-tap`. Because the package is pure-Python with heavy native dependencies (`ray`, `pandas`, `numpy`), the formula depends on `uv` and runs the release via `uvx` rather than vendoring every transitive dependency as a Homebrew resource.
+- **First-class external symbols** — `PyApplication.external_symbols` (a `{signature → PyExternalSymbol{name, module}}` map) records call-graph targets outside the analyzed project, mirroring the `codeanalyzer-typescript` backend. `analysis.json` now carries external info that was previously only a bare target string, and the Neo4j projection emits `:PyExternal` authoritatively from it ([#44](https://github.com/codellm-devkit/codeanalyzer-python/issues/44)).
+- **`--no-venv` / `--venv` flag** — skip virtualenv creation and dependency installation and resolve imports against the ambient Python interpreter. Useful in CI / containers where the project's dependencies are already installed, for sandboxed runs without network, and for speed ([#46](https://github.com/codellm-devkit/codeanalyzer-python/issues/46)).
+
+### Changed
+- The per-project analysis virtualenv is now installed with **`uv`** (parallel downloads + a shared global cache; falls back to `pip`), and is now **wired to Jedi** — previously `self.virtualenv` stayed `None`, so the install was never used by the symbol-table builder ([#47](https://github.com/codellm-devkit/codeanalyzer-python/issues/47)).
+- Neo4j `:PyExternal` gains a `module` property; `SCHEMA_VERSION` bumped `1.0.0 → 1.1.0` (additive) ([#44](https://github.com/codellm-devkit/codeanalyzer-python/issues/44)).
+
+### Fixed
+- `--emit neo4j` no longer drops call edges whose target is a bare imported module name (e.g. `os`, `re`, `json`): a `:PyPackage` name can no longer shadow a call target's `:PySymbol` signature, and the node-identity tracking is keyed by `(label, value)` so deferred `PY_EXTENDS` / `PY_RESOLVES_TO` edges can't be shadowed either ([#44](https://github.com/codellm-devkit/codeanalyzer-python/issues/44)).
+- `--emit neo4j` (Bolt) full-run orphan prune is now scoped to the `:PyApplication` anchor, so a full-run push for one application no longer deletes another application's modules from a shared database ([#45](https://github.com/codellm-devkit/codeanalyzer-python/issues/45)).
 
 ## [0.2.0] - 2026-06-20
 
