@@ -12,6 +12,8 @@ from pathlib import Path
 from codeanalyzer.neo4j import NODE_LABELS, REL_TYPES, build_schema_document, project
 from codeanalyzer.neo4j.catalog import MARKER_LABELS
 from codeanalyzer.neo4j.cypher import render_cypher
+from codeanalyzer.schema import PyApplication, PyCallable, PyImport, PyModule
+from codeanalyzer.schema.py_schema import PyCallEdge
 
 from sample_graph_app import make_sample_app
 
@@ -85,6 +87,38 @@ def test_render_cypher_is_deterministic_and_self_contained():
     assert "CREATE CONSTRAINT" in a
     assert "DETACH DELETE" in a
     assert "MERGE (n:PySymbol {signature: row.k})" in a
+
+
+def test_call_edge_to_imported_module_name_is_not_dropped():
+    """Regression for #44: a call whose target is a bare module name that is also
+    imported (e.g. ``os``) must not be dropped. The import creates a :PyPackage
+    named ``os``; that must not shadow the call target's :PySymbol signature."""
+    caller = PyCallable(
+        name="caller", path="m.py", signature="m.caller", return_type="None",
+        code="def caller():\n    os.getcwd()", start_line=1, end_line=2,
+        code_start_line=1, cyclomatic_complexity=1,
+    )
+    mod = PyModule(
+        file_path="m.py", module_name="m",
+        imports=[PyImport(module="os", name="getcwd")],
+        functions={"caller": caller},
+        content_hash="h", last_modified=1.0, file_size=10,
+    )
+    app = PyApplication(
+        symbol_table={"m.py": mod},
+        call_graph=[PyCallEdge(source="m.caller", target="os", weight=1, provenance=["jedi"])],
+    )
+    rows = project(app, "app")
+
+    calls_to_os = [e for e in rows.edges if e.type == "PY_CALLS" and e.to_ref.value == "os"]
+    assert len(calls_to_os) == 1, "PY_CALLS edge to imported module name 'os' was dropped"
+
+    # 'os' is materialized as a :PyExternal symbol (the call target) ...
+    assert any(n.value == "os" and "PyExternal" in n.labels for n in rows.nodes), \
+        ":PyExternal ghost for the call target 'os' is missing"
+    # ... distinct from the :PyPackage 'os' created by the import.
+    assert any(n.value == "os" and "PyPackage" in n.labels for n in rows.nodes), \
+        ":PyPackage for the import 'os' is missing"
 
 
 def test_checked_in_schema_matches_catalog():

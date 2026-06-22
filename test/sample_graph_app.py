@@ -14,6 +14,7 @@ from codeanalyzer.schema import (
     PyClass,
     PyClassAttribute,
     PyComment,
+    PyExternalSymbol,
     PyImport,
     PyModule,
     PyVariableDeclaration,
@@ -149,4 +150,7 @@ def make_sample_app() -> PyApplication:
     return PyApplication(
         symbol_table={"src/service.py": service_mod, "src/util.py": util_mod},
         call_graph=call_graph,
+        # The ghost edge's target (requests.get) is a library member, recorded as a
+        # first-class external symbol so the projection emits a :PyExternal for it.
+        external_symbols={"requests.get": PyExternalSymbol(name="get", module="requests")},
     )

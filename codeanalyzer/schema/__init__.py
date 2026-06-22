@@ -8,6 +8,7 @@ from .py_schema import (
     PyClass,
     PyClassAttribute,
     PyComment,
+    PyExternalSymbol,
     PyImport,
     PyModule,
     PyVariableDeclaration,
@@ -15,6 +16,7 @@ from .py_schema import (
 
 __all__ = [
     "PyApplication",
+    "PyExternalSymbol",
     "PyImport",
     "PyComment",
     "PyModule",

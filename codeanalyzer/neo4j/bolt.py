@@ -77,6 +77,13 @@ def bolt_writer(rows: GraphRows, cfg: BoltConfig, full_run: bool) -> None:
             for stmt in [*CONSTRAINTS, *INDEXES]:
                 s.run(stmt)
 
+        # The application anchor (a shared node) — used to scope the orphan prune
+        # so it never touches modules belonging to a different :PyApplication.
+        app_name = next(
+            (n.value for n in rows.nodes if n.labels and n.labels[0] == "PyApplication"),
+            None,
+        )
+
         # Partition nodes by owning module; shared nodes have no _module.
         by_module: Dict[str, List[NodeRow]] = {}
         shared: List[NodeRow] = []
@@ -135,13 +142,17 @@ def bolt_writer(rows: GraphRows, cfg: BoltConfig, full_run: bool) -> None:
         _upsert_edges(session, neo4j, edges)
 
         # 6. orphan prune — only safe on a full run (a targeted run can't tell deleted from untargeted).
-        if full_run:
+        # Scope to THIS application's anchor so a full run for application B never
+        # deletes application A's modules from a shared database.
+        if full_run and app_name is not None:
             present = list(by_module.keys())
             with session() as s:
                 res = s.run(
-                    "MATCH (m:PyModule) WHERE NOT m.file_key IN $present "
+                    "MATCH (:PyApplication {name: $app})-[:PY_HAS_MODULE]->(m:PyModule) "
+                    "WHERE NOT m.file_key IN $present "
                     f"OPTIONAL MATCH (m)-{DESCENDANTS}->(x) DETACH DELETE x, m "
                     "RETURN count(m) AS pruned",
+                    app=app_name,
                     present=present,
                 )
                 pruned = res.single()

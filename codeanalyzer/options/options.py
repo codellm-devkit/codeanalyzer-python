@@ -38,6 +38,7 @@ class AnalysisOptions:
     using_ray: bool = False
     rebuild_analysis: bool = False
     skip_tests: bool = True
+    no_venv: bool = False
     file_name: Optional[Path] = None
     cache_dir: Optional[Path] = None
     clear_cache: bool = False

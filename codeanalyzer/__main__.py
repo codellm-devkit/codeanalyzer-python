@@ -104,6 +104,14 @@ def main(
             help="Skip test files in analysis.",
         ),
     ] = True,
+    no_venv: Annotated[
+        bool,
+        typer.Option(
+            "--no-venv/--venv",
+            help="Skip virtualenv creation and dependency installation; resolve "
+            "imports against the ambient Python environment instead.",
+        ),
+    ] = False,
     file_name: Annotated[
         Optional[Path],
         typer.Option(
@@ -144,6 +152,7 @@ def main(
         using_ray=using_ray,
         rebuild_analysis=rebuild_analysis,
         skip_tests=skip_tests,
+        no_venv=no_venv,
         file_name=file_name,
         cache_dir=cache_dir,
         clear_cache=clear_cache,
