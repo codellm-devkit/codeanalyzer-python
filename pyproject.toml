@@ -43,6 +43,10 @@ dependencies = [
     "ray==2.0.0; python_version < '3.11'",
     "ray>=2.10.0,<3.0.0; python_version >= '3.11'",
     "packaging>=25.0",
+    # uv -- installs the analyzed project's deps into the analysis venv quickly.
+    # Shipped as a self-contained binary in its wheel, so it's available wherever
+    # canpy is pip-installed (incl. Docker); core.py falls back to pip without it.
+    "uv>=0.5.0",
 ]
 
 [project.optional-dependencies]
