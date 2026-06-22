@@ -15,8 +15,23 @@ import pytest
 
 from codeanalyzer.neo4j import project
 from codeanalyzer.neo4j.bolt import BoltConfig, bolt_writer
+from codeanalyzer.schema import PyApplication, PyCallable, PyModule
 
 from sample_graph_app import make_sample_app
+
+
+def _single_module_app(file_key: str = "appb/main.py") -> PyApplication:
+    """A minimal second application with its own (distinct) module file_key."""
+    fn = PyCallable(
+        name="main", path=file_key, signature="appb.main", return_type="None",
+        code="def main():\n    ...", start_line=1, end_line=2,
+        code_start_line=1, cyclomatic_complexity=1,
+    )
+    mod = PyModule(
+        file_path=file_key, module_name="appb.main", functions={"main": fn},
+        content_hash="h-b", last_modified=1.0, file_size=10,
+    )
+    return PyApplication(symbol_table={file_key: mod}, call_graph=[])
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("RUN_CONTAINER_TESTS"),
@@ -103,6 +118,21 @@ def test_full_push_materializes_the_whole_graph_and_schema(driver, cfg):
     )
     # The ghost edge resolved to an :PyExternal node.
     assert _num(driver, "MATCH (e:PyExternal) RETURN count(e)") >= 1
+
+
+def test_full_run_does_not_prune_another_applications_modules(driver, cfg):
+    """Regression for #45: a full-run push for one application must not prune the
+    modules of a *different* application sharing the database."""
+    bolt_writer(project(make_sample_app(), "app-a"), cfg, full_run=True)
+    before = _num(driver, "MATCH (:PyApplication {name:'app-a'})-[:PY_HAS_MODULE]->(m) RETURN count(m)")
+    assert before > 0
+
+    # A full-run push for a different application must leave app-a untouched.
+    bolt_writer(project(_single_module_app(), "app-b"), cfg, full_run=True)
+
+    after = _num(driver, "MATCH (:PyApplication {name:'app-a'})-[:PY_HAS_MODULE]->(m) RETURN count(m)")
+    assert after == before, "full-run push for app-b pruned app-a's modules (#45)"
+    assert _num(driver, "MATCH (:PyApplication {name:'app-b'})-[:PY_HAS_MODULE]->(m) RETURN count(m)") == 1
 
 
 def test_re_pushing_identical_analysis_is_idempotent(driver, cfg):
