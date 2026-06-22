@@ -66,6 +66,7 @@ class Codeanalyzer:
         self.skip_tests = options.skip_tests
         self.using_codeql = options.using_codeql
         self.rebuild_analysis = options.rebuild_analysis
+        self.no_venv = options.no_venv
         self.cache_dir = (
             options.cache_dir.resolve() if options.cache_dir is not None else self.project_dir
         ) / ".codeanalyzer"
@@ -260,8 +261,13 @@ class Codeanalyzer:
         venv_path = self.cache_dir / self.project_dir.name / "virtualenv"
         # Ensure the cache directory exists for this project
         venv_path.parent.mkdir(parents=True, exist_ok=True)
+        if self.no_venv:
+            logger.info(
+                "--no-venv: using the ambient Python environment "
+                "(skipping virtualenv creation and dependency installation)"
+            )
         # Create the virtual environment if it does not exist
-        if not venv_path.exists() or self.rebuild_analysis:
+        if not self.no_venv and (not venv_path.exists() or self.rebuild_analysis):
             logger.info(f"(Re-)creating virtual environment at {venv_path}")
             self._cmd_exec_helper(
                 [str(self._get_base_interpreter()), "-m", "venv", str(venv_path)],
@@ -320,8 +326,9 @@ class Codeanalyzer:
         # Point Jedi at the analysis venv so it resolves the project's third-party
         # imports. This runs on both a fresh build and a lazy reuse of an existing
         # venv -- previously self.virtualenv stayed None, so the install above was
-        # never actually used by the symbol-table builder.
-        if venv_path.exists():
+        # never actually used by the symbol-table builder. With --no-venv we leave
+        # it None so Jedi resolves against the ambient interpreter instead.
+        if not self.no_venv and venv_path.exists():
             self.virtualenv = venv_path
 
         if self.using_codeql:

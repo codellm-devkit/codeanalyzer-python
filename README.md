@@ -185,6 +185,11 @@ $ canpy --help
 │                                                               [default: lazy]                    │
 │ --skip-tests          --include-tests                         Skip test files in analysis.       │
 │                                                               [default: skip-tests]              │
+│ --no-venv             --venv                                  Skip virtualenv creation and       │
+│                                                               dependency installation; resolve   │
+│                                                               imports against the ambient Python │
+│                                                               environment instead.               │
+│                                                               [default: venv]                    │
 │ --file-name                              PATH                 Analyze only the specified file    │
 │                                                               (relative to input directory).     │
 │ --cache-dir       -c                     PATH                 Directory to store analysis cache. │
