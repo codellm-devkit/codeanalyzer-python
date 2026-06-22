@@ -34,7 +34,7 @@ from typing import Dict, List
 
 from codeanalyzer.neo4j.schema import CONSTRAINTS, INDEXES
 
-SCHEMA_VERSION = "1.0.0"
+SCHEMA_VERSION = "1.1.0"
 
 # PropType ∈ {"string", "integer", "float", "boolean", "string[]", "integer[]"}.
 
@@ -119,7 +119,7 @@ NODE_LABELS: List[NodeLabel] = [
         "PyExternal",
         "PySymbol",
         "signature",
-        {"signature": "string", "name": "string"},
+        {"signature": "string", "name": "string", "module": "string"},
     ),
     NodeLabel("PyPackage", "PyPackage", "name", {"name": "string"}),
     NodeLabel(

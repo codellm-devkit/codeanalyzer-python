@@ -8,7 +8,13 @@ from typing import Any, Dict, Optional, Union, List
 
 import ray
 from codeanalyzer.utils import logger
-from codeanalyzer.schema import PyApplication, PyModule, model_dump_json, model_validate_json
+from codeanalyzer.schema import (
+    PyApplication,
+    PyExternalSymbol,
+    PyModule,
+    model_dump_json,
+    model_validate_json,
+)
 from codeanalyzer.schema.py_schema import PyCallEdge
 from codeanalyzer.semantic_analysis.call_graph import (
     jedi_call_graph_edges,
@@ -379,6 +385,43 @@ class Codeanalyzer:
             logger.info(f"Clearing cache directory: {self.cache_dir}")
             shutil.rmtree(self.cache_dir)
 
+    @staticmethod
+    def _compute_external_symbols(symbol_table, call_graph):
+        """Build the external-symbol map: every call-graph endpoint whose signature
+        is not a declared class/callable in the symbol table is an external (an
+        imported library or builtin member). ``name``/``module`` are derived from
+        the signature (best effort: split on the last dot)."""
+        declared = set()
+
+        def walk_callable(c):
+            declared.add(c.signature)
+            for ic in (c.inner_callables or {}).values():
+                walk_callable(ic)
+            for cl in (c.inner_classes or {}).values():
+                walk_class(cl)
+
+        def walk_class(cl):
+            declared.add(cl.signature)
+            for m in (cl.methods or {}).values():
+                walk_callable(m)
+            for ic in (cl.inner_classes or {}).values():
+                walk_class(ic)
+
+        for mod in symbol_table.values():
+            for c in (mod.functions or {}).values():
+                walk_callable(c)
+            for cl in (mod.classes or {}).values():
+                walk_class(cl)
+
+        externals: Dict[str, PyExternalSymbol] = {}
+        for edge in call_graph:
+            for sig in (edge.source, edge.target):
+                if sig in declared or sig in externals:
+                    continue
+                module, name = sig.rsplit(".", 1) if "." in sig else (sig, sig)
+                externals[sig] = PyExternalSymbol(name=name, module=module)
+        return externals
+
     def analyze(self) -> PyApplication:
         """Analyze the project and return a PyApplication with symbol table.
         
@@ -418,8 +461,19 @@ class Codeanalyzer:
         jedi_edges = jedi_call_graph_edges(symbol_table)
         call_graph = merge_edges(jedi_edges, codeql_edges)
 
+        # Classify call-graph endpoints that are not declared in the symbol table
+        # (imported library / builtin members) once, so the JSON and Neo4j backends
+        # share one authoritative external-symbol set.
+        external_symbols = self._compute_external_symbols(symbol_table, call_graph)
+
         # Recreate pyapplication
-        app = PyApplication.builder().symbol_table(symbol_table).call_graph(call_graph).build()
+        app = (
+            PyApplication.builder()
+            .symbol_table(symbol_table)
+            .call_graph(call_graph)
+            .external_symbols(external_symbols)
+            .build()
+        )
         
         # Save to cache
         self._save_analysis_cache(app, cache_file)

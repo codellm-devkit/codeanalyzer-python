@@ -83,7 +83,11 @@ class RowBuilder:
         self._nodes: Dict[str, NodeRow] = {}  # key: f"{labels[0]} {value}"
         self._edges: List[EdgeRow] = []
         self._deferred: List[EdgeRow] = []  # edges gated against node existence at finish()
-        self._keys: set = set()  # every node value seen, for resolved-gating
+        # (merge_label, value) of every node seen, for resolved-gating. Keyed by
+        # label too so a :PyPackage name can't shadow a :PySymbol signature (and
+        # vice versa) — otherwise a call to an imported module name like ``os``
+        # resolves to a :PySymbol node that was never created and the edge is lost.
+        self._keys: set = set()
 
     def node(self, labels: List[str], key_prop: str, value: str, props: Props) -> NodeRef:
         """Upsert a node. Re-seeing the same ``(labels[0], value)`` merges props
@@ -98,7 +102,7 @@ class RowBuilder:
                     existing.labels.append(label)
         else:
             self._nodes[node_id] = NodeRow(list(labels), key_prop, value, dict(props))
-        self._keys.add(value)
+        self._keys.add((labels[0], value))
         return NodeRef(labels[0], key_prop, value)
 
     def edge(self, type_: str, from_ref: NodeRef, to_ref: NodeRef, props: Optional[Props] = None) -> None:
@@ -121,12 +125,13 @@ class RowBuilder:
             )
         )
 
-    def has_key(self, value: str) -> bool:
-        return value in self._keys
+    def has_key(self, label: str, value: str) -> bool:
+        """Whether a node with this ``(merge_label, value)`` identity was emitted."""
+        return (label, value) in self._keys
 
     def finish(self) -> GraphRows:
         for e in self._deferred:
-            if e.to_ref.value in self._keys:
+            if (e.to_ref.label, e.to_ref.value) in self._keys:
                 self._edges.append(e)
         nodes = sorted(self._nodes.values(), key=lambda n: f"{n.labels[0]} {n.value}")
         edges = sorted(self._edges, key=lambda e: f"{e.type} {e.from_ref.value} {e.to_ref.value}")

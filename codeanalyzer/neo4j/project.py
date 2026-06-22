@@ -60,11 +60,12 @@ def project(app: PyApplication, app_name: str) -> GraphRows:
         b.edge("PY_HAS_MODULE", app_ref, mod_ref)
         _project_module_body(b, file_key, mod_ref, mod)
 
-    # The aggregated :PY_CALLS twin. Endpoints not present in the symbol table become
-    # :PyExternal ghost nodes (the analyzer already preserves them as ghost nodes).
+    # The aggregated :PY_CALLS twin. Endpoints listed in app.external_symbols become
+    # :PyExternal ghost nodes; the rest are declared :PySymbol nodes already emitted.
+    externals = app.external_symbols or {}
     for e in app.call_graph:
-        src = _call_endpoint(b, e.source)
-        tgt = _call_endpoint(b, e.target)
+        src = _call_endpoint(b, e.source, externals)
+        tgt = _call_endpoint(b, e.target, externals)
         b.edge("PY_CALLS", src, tgt, _call_edge_props(e.weight, list(e.provenance or [])))
 
     return b.finish()
@@ -74,13 +75,20 @@ def _sym(signature: str) -> NodeRef:
     return NodeRef("PySymbol", "signature", signature)
 
 
-def _call_endpoint(b: RowBuilder, signature: str) -> NodeRef:
-    """A call-graph endpoint: a known callable already emitted, or a phantom
-    :PyExternal symbol materialized on demand for a ghost target."""
-    if b.has_key(signature):
+def _call_endpoint(b: RowBuilder, signature: str, externals: dict) -> NodeRef:
+    """A call-graph endpoint: a declared callable already emitted, or an external
+    symbol (imported library / builtin member) materialized as a :PyExternal ghost.
+
+    Classification is authoritative -- it comes from ``app.external_symbols``, not a
+    "present in the graph" heuristic -- so an imported module name (which exists only
+    as a :PyPackage) can never shadow the call target. A small fallback still
+    materializes an external for any endpoint that is neither declared nor listed."""
+    ext = externals.get(signature)
+    if ext is None and b.has_key("PySymbol", signature):
         return _sym(signature)
-    name = signature.rsplit(".", 1)[-1] if "." in signature else signature
-    return b.node(["PySymbol", "PyExternal"], "signature", signature, {"name": name})
+    name = ext.name if ext is not None else (signature.rsplit(".", 1)[-1] if "." in signature else signature)
+    module = ext.module if ext is not None else None
+    return b.node(["PySymbol", "PyExternal"], "signature", signature, prune({"name": name, "module": module}))
 
 
 # ----------------------------------------------------------------------------------------------
