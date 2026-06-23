@@ -7,7 +7,6 @@
 **A Python static-analysis toolkit — the CLDK backend that emits a canonical symbol table and call graph, as `analysis.json` or a Neo4j property graph.**
 
 [![PyPI](https://img.shields.io/pypi/v/codeanalyzer-python?style=for-the-badge&logo=pypi&logoColor=white)](https://pypi.org/project/codeanalyzer-python/)
-[![Python](https://img.shields.io/pypi/pyversions/codeanalyzer-python?style=for-the-badge&logo=python&logoColor=white)](https://pypi.org/project/codeanalyzer-python/)
 [![GitHub release](https://img.shields.io/github/v/release/codellm-devkit/codeanalyzer-python?style=for-the-badge&logo=github&label=GitHub&color=2dba4e)](https://github.com/codellm-devkit/codeanalyzer-python/releases/latest)
 [![Release](https://img.shields.io/github/actions/workflow/status/codellm-devkit/codeanalyzer-python/release.yml?style=for-the-badge&label=release&logo=githubactions&logoColor=white)](https://github.com/codellm-devkit/codeanalyzer-python/actions/workflows/release.yml)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue?style=for-the-badge)](./LICENSE)
