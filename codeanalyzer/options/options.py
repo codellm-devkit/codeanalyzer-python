@@ -22,3 +22,6 @@ class AnalysisOptions:
     cache_dir: Optional[Path] = None
     clear_cache: bool = False
     verbosity: int = 0
+    pycg_shard: bool = False
+    pycg_shard_ceiling: int = 100
+    pycg_shard_timeout: int = 120

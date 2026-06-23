@@ -247,26 +247,33 @@ class Codeanalyzer:
             for dep_file, pip_args in dependency_files:
                 if (self.project_dir / dep_file).exists():
                     logger.info(f"Installing dependencies from {dep_file}")
-                    self._cmd_exec_helper(
-                        [str(venv_python), "-m", "pip", "install", "-U"] + pip_args + [str(self.project_dir / dep_file)],
-                        cwd=self.project_dir,
-                        check=True,
-                    )
+                    try:
+                        self._cmd_exec_helper(
+                            [str(venv_python), "-m", "pip", "install", "-U"] + pip_args + [str(self.project_dir / dep_file)],
+                            cwd=self.project_dir,
+                            check=True,
+                        )
+                    except subprocess.CalledProcessError as e:
+                        logger.warning(
+                            f"Dependency installation from {dep_file} failed (analysis will continue): {e}"
+                        )
 
             # Handle Pipenv files
             if (self.project_dir / "Pipfile").exists():
                 logger.info("Installing dependencies from Pipfile")
-                # Note: This would require pipenv to be installed
-                self._cmd_exec_helper(
-                    [str(venv_python), "-m", "pip", "install", "pipenv"],
-                    cwd=self.project_dir,
-                    check=True,
-                )
-                self._cmd_exec_helper(
-                    ["pipenv", "install", "--dev"],
-                    cwd=self.project_dir,
-                    check=True,
-                )
+                try:
+                    self._cmd_exec_helper(
+                        [str(venv_python), "-m", "pip", "install", "pipenv"],
+                        cwd=self.project_dir,
+                        check=True,
+                    )
+                    self._cmd_exec_helper(
+                        ["pipenv", "install", "--dev"],
+                        cwd=self.project_dir,
+                        check=True,
+                    )
+                except subprocess.CalledProcessError as e:
+                    logger.warning(f"Pipenv dependency installation failed (analysis will continue): {e}")
 
             # Handle conda environment files
             conda_files = ["conda.yml", "environment.yml"]
@@ -284,11 +291,14 @@ class Codeanalyzer:
 
             if any((self.project_dir / file).exists() for file in package_definition_files):
                 logger.info("Installing project in editable mode")
-                self._cmd_exec_helper(
-                    [str(venv_python), "-m", "pip", "install", "-e", str(self.project_dir)],
-                    cwd=self.project_dir,
-                    check=True,
-                )
+                try:
+                    self._cmd_exec_helper(
+                        [str(venv_python), "-m", "pip", "install", "-e", str(self.project_dir)],
+                        cwd=self.project_dir,
+                        check=True,
+                    )
+                except subprocess.CalledProcessError as e:
+                    logger.warning(f"Editable install failed (analysis will continue): {e}")
             else:
                 logger.warning("No package definition files found, skipping editable installation")
 
@@ -552,11 +562,18 @@ class Codeanalyzer:
         continue with Jedi-only edges.
         """
         try:
-            pycg = PyCG(self.project_dir, skip_tests=self.skip_tests)
+            pycg = PyCG(
+                self.project_dir,
+                skip_tests=self.skip_tests,
+                shard=self.options.pycg_shard,
+                shard_ceiling=self.options.pycg_shard_ceiling,
+                shard_timeout=self.options.pycg_shard_timeout,
+            )
             return pycg.build_call_graph_edges(symbol_table)
         except PyCGExceptions.PyCGImportError as exc:
             logger.warning(f"PyCG not installed — level 2 edges will be Jedi-only: {exc}")
             return []
         except PyCGExceptions.PyCGAnalysisError as exc:
             logger.warning(f"PyCG analysis failed — level 2 edges will be Jedi-only: {exc}")
+            logger.debug("PyCG full traceback:", exc_info=True)
             return []
