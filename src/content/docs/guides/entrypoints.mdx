@@ -24,6 +24,11 @@ flowchart LR
     EP -->|references by signature| C["app.views.list_orders"]
     C --> G[call graph]
     G --> R["reachable sinks?"]
+    G --> IR["in-memory PyApplication"]
+    IR -->|"--emit json (default)"| AJ["analysis.json"]
+    IR -->|"--emit neo4j"| PG["Neo4j property graph"]
+    PG -->|no --neo4j-uri| SNAP["graph.cypher snapshot"]
+    PG -->|"--neo4j-uri (live Bolt)"| BOLT["incremental push"]
 ```
 
 ## What a PyEntrypoint carries
@@ -87,6 +92,10 @@ roots = [ep["signature"]
 
 reachable = any(nx.has_path(g, root, sink_sig) for root in roots if root in g)
 ```
+
+<Aside type="note" title="Entrypoints stay in analysis.json — they are not projected to Neo4j">
+The Neo4j property graph (`canpy --emit neo4j`) projects the symbol table and call graph — `:PyModule`, `:PyClass`, `:PyCallable`, `:PyCallSite`, the `PY_CALLS` edges, and so on. There is **no `:PyEntrypoint` label or `PY_*` relationship** for entrypoints in the schema; the catalog declares none. Entrypoints live only in `analysis.json` today. So reachability-from-roots is a JSON-side concern: read `app["entrypoints"]` for the seed set and run the `networkx` traversal above against the call graph — whether that call graph came from `analysis.json` or was reconstructed from the graph via the CLDK Neo4j backend. See [Neo4j graph schema](/codeanalyzer-python/reference/neo4j-schema/) for the labels and relationships that *are* projected.
+</Aside>
 
 ## Extending detection
 

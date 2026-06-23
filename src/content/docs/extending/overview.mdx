@@ -10,7 +10,7 @@ import { Badge, CardGrid, LinkCard, Aside } from "@astrojs/starlight/components"
   <Badge text="Help wanted" variant="note" />
 </p>
 
-After the symbol table and base call graph are built, codeanalyzer runs a pipeline of **analysis passes** — whole-application steps that contribute framework-dispatched **entrypoints** and **synthetic call edges** the static graph can't observe. Out-of-tree packages register their own through the `codeanalyzer.analysis_passes` entry-point group, so you can teach codeanalyzer a new framework or a new dispatch mechanism **without forking it**.
+After the symbol table and base call graph are built, `canpy` runs a pipeline of **analysis passes** — whole-application steps that contribute framework-dispatched **entrypoints** and **synthetic call edges** the static graph can't observe. Out-of-tree packages register their own through the `codeanalyzer.analysis_passes` entry-point group, so you can teach `canpy` a new framework or a new dispatch mechanism **without forking it**.
 
 This is the youngest part of codeanalyzer-python: the **mechanism** exists, but **no concrete framework finder ships yet**. `BUILTIN_PASS_FACTORIES` is empty, so until a finder is written, `PyApplication.entrypoints` comes back empty. The frameworks named on this page (Flask, FastAPI, Celery, Click, gRPC, …) are the **roadmap** — the shapes finders will target — not detection that runs today. Writing the first finder for a framework is itself the contribution.
 
@@ -35,6 +35,10 @@ This is the youngest part of codeanalyzer-python: the **mechanism** exists, but 
 **Built today:** the analysis-pass pipeline, the `AbstractEntrypointFinder` base class (a JackEE-style port of the Java analyzer's entrypoint architecture), pass discovery and topological ordering, and out-of-tree registration via the `codeanalyzer.analysis_passes` entry-point group. The extension API is the part you can rely on.
 
 **Not built yet:** any concrete finder. No framework — Flask, FastAPI, Celery, Click, gRPC, Django, or otherwise — is detected out of the box. Synthetic-edge passes are likewise scaffolding-only. Everything framework-specific is roadmap.
+</Aside>
+
+<Aside type="note" title="Synthetic edges carry into the graph">
+A synthetic call edge contributed by a pass is tagged with a **provenance** token (the pass's framework/extension name). That token survives projection: when you run `canpy --emit neo4j`, it lands in the `provenance` array on the `PY_CALLS` relationship, exactly as it appears in `analysis.json`. So a consumer can filter the call graph by who contributed each edge — `jedi`, `codeql`, or your extension — whether it reads `analysis.json` or queries the Neo4j graph.
 </Aside>
 
 <Aside type="tip" title="Help wanted">

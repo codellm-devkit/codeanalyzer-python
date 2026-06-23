@@ -21,7 +21,7 @@ export default defineConfig({
       title: "codeanalyzer-python",
       tagline: "Static analysis for Python your agents can call.",
       description:
-        "codeanalyzer-python turns a Python project into one typed artifact — symbol table, call graph, and framework entrypoints — using Jedi, CodeQL, and Tree-sitter. The Python backend behind CLDK.",
+        "codeanalyzer-python turns a Python project into a typed symbol table and call graph — emitted as one analysis JSON artifact or a queryable Neo4j property graph — using Jedi, CodeQL, and Tree-sitter. The Python backend behind CLDK.",
       logo: {
         src: "./src/assets/logo.png",
         replacesTitle: true,
@@ -97,6 +97,7 @@ export default defineConfig({
             { label: "CLI usage", slug: "guides/cli-usage" },
             { label: "Core concepts", slug: "guides/concepts" },
             { label: "CodeQL analysis", slug: "guides/codeql" },
+            { label: "Neo4j graph", slug: "guides/neo4j" },
           ],
         },
         {

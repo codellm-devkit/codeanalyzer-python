@@ -5,7 +5,7 @@ description: Install codeanalyzer-python from PyPI, and set up the system packag
 
 import { Tabs, TabItem, Aside } from "@astrojs/starlight/components";
 
-`codeanalyzer-python` is [published on PyPI](https://pypi.org/project/codeanalyzer-python/) and installs with any Python package manager.
+`codeanalyzer-python` is [published on PyPI](https://pypi.org/project/codeanalyzer-python/) and installs with any Python package manager. It also ships a one-line installer and a Homebrew formula.
 
 ## Install
 
@@ -25,27 +25,67 @@ import { Tabs, TabItem, Aside } from "@astrojs/starlight/components";
     uv tool install codeanalyzer-python
     ```
   </TabItem>
+  <TabItem label="Homebrew">
+    ```shell
+    brew install codellm-devkit/tap/codeanalyzer-python
+    ```
+
+    The formula depends on [uv](https://docs.astral.sh/uv/) and installs `canpy` as an isolated, version-pinned uv tool — the package and its dependencies are resolved and cached on first run.
+  </TabItem>
+  <TabItem label="Shell script">
+    The one-line installer provisions the CLI as an isolated tool (via uv / pipx / pip):
+
+    ```shell
+    curl --proto '=https' --tlsv1.2 -LsSf https://github.com/codellm-devkit/codeanalyzer-python/releases/latest/download/canpy-installer.sh | sh
+    ```
+  </TabItem>
 </Tabs>
 
-This installs the `codeanalyzer` command. Verify it:
+This installs the `canpy` command. Verify it:
 
 ```shell
-codeanalyzer --help
+canpy --help
 ```
+
+<Aside type="note" title="The command was renamed">
+The CLI is now `canpy` (matching the `cants` TypeScript sibling). The old `codeanalyzer` command still works as a deprecated alias — it prints a notice on stderr and delegates to `canpy` — but new scripts should call `canpy` directly.
+</Aside>
+
+## Optional: live Neo4j push
+
+`canpy` can [emit a Neo4j property graph](/codeanalyzer-python/reference/cli/) instead of `analysis.json`. The `graph.cypher` snapshot (`--emit neo4j` with no `--neo4j-uri`) and the schema contract (`--emit schema`) need **nothing extra**. Only the **incremental live Bolt push** (`--emit neo4j --neo4j-uri …`) needs the Neo4j driver, which ships as an optional extra:
+
+```shell
+pip install 'codeanalyzer-python[neo4j]'
+```
+
+This pulls in `neo4j>=5,<6`. The driver is imported lazily off the default path, so a standard install stays lean; if you reach for `--neo4j-uri` without the extra, `canpy` raises a clear error telling you to install it.
+
+```shell
+# graph.cypher snapshot — no extra deps; load it later with cypher-shell
+canpy --input ./my-service --emit neo4j --app-name my-service --output ./out
+
+# live incremental push — needs the [neo4j] extra
+export NEO4J_PASSWORD=…   # keep it out of shell history / the process list
+canpy --input ./my-service --emit neo4j --app-name my-service \
+  --neo4j-uri bolt://localhost:7687 --neo4j-user neo4j
+```
+
+The password (and the URI, user, and database) are read from the standard `NEO4J_PASSWORD` / `NEO4J_URI` / `NEO4J_USERNAME` / `NEO4J_DATABASE` environment variables when the matching flag is omitted, so credentials need not appear on the command line. See the [Neo4j graph guide](/codeanalyzer-python/guides/concepts/) for the producer/consumer model and the CLDK read-back SDK.
 
 ## Prerequisites
 
-- **Python 3.12 or higher.**
+- **Python 3.10 or newer.**
 
 ### Why system packages are needed
 
-To analyze a project the way it actually runs, codeanalyzer builds an **isolated virtual environment** for it (under `.codeanalyzer/`) using Python's built-in `venv` module, installs the project's dependencies into it, and resolves symbols against that environment. That means the host needs `venv` support and a compiler toolchain for any dependencies with native extensions.
+To analyze a project the way it actually runs, `canpy` builds an **isolated virtual environment** for it (under `.codeanalyzer/`), installs the project's dependencies into it, and resolves symbols against that environment. That means the host needs `venv` support and a compiler toolchain for any dependencies with native extensions.
 
 <Tabs>
   <TabItem label="Ubuntu/Debian">
     ```shell
     sudo apt update
-    sudo apt install python3.12-venv python3-dev build-essential
+    sudo apt install python3-venv python3-dev build-essential
     ```
   </TabItem>
   <TabItem label="Fedora/RHEL/CentOS">
@@ -73,23 +113,33 @@ To analyze a project the way it actually runs, codeanalyzer builds an **isolated
     Using pyenv instead:
 
     ```shell
-    pyenv install 3.12.0   # or the latest 3.12.x
+    pyenv install 3.12.0   # or any 3.10+ release
     pyenv global 3.12.0    # or `pyenv local 3.12.0` per project
     ```
   </TabItem>
 </Tabs>
 
 <Aside type="tip" title="Running inside a virtual environment">
-If you run `codeanalyzer` from within a virtual environment, it still needs a **base** interpreter to build the per-project venv. It auto-detects one (via `sys.base_executable`, then `pyenv` / `conda` / `asdf` / `PATH`). If detection fails, set `SYSTEM_PYTHON` to point at a working interpreter:
+If you run `canpy` from within a virtual environment, it still needs a **base** interpreter to build the per-project venv. It auto-detects one (via `sys.base_executable`, then `pyenv` / `conda` / `asdf` / `PATH`). If detection fails, set `SYSTEM_PYTHON` to point at a working interpreter:
 
 ```shell
-export SYSTEM_PYTHON=/usr/bin/python3.12
+export SYSTEM_PYTHON=/usr/bin/python3
 ```
 </Aside>
 
+### Skipping the per-project venv
+
+In CI, containers, or sandboxed runs where you'd rather not provision a per-project environment, pass `--no-venv`. `canpy` then resolves imports against the **ambient** Python interpreter instead of building one under `.codeanalyzer/`:
+
+```shell
+canpy --input ./my-service --no-venv
+```
+
+This trades some resolution fidelity for speed and a smaller footprint — it's most useful when the project's dependencies are already importable in the current environment (for example, inside an image that already has them installed).
+
 ## Optional: CodeQL
 
-CodeQL-based resolution is opt-in via `--codeql`. You do **not** need to install CodeQL yourself — on first use codeanalyzer downloads the CLI into the project cache (`<cache-dir>/codeql/`) and reuses it. If a `codeql` binary is already on your `PATH`, the project-local copy still takes precedence for deterministic behavior. See [CodeQL analysis](/codeanalyzer-python/guides/codeql/).
+CodeQL-based call-graph augmentation is opt-in via `--codeql`. You do **not** need to install CodeQL yourself — on first use `canpy` downloads the CLI into the project cache (`<cache-dir>/codeql/`) and reuses it. If a `codeql` binary is already on your `PATH`, the project-local copy still takes precedence for deterministic behavior. See [CodeQL analysis](/codeanalyzer-python/guides/codeql/).
 
 ## From source (development)
 
@@ -99,7 +149,7 @@ The project uses [uv](https://docs.astral.sh/uv/) for development.
 git clone https://github.com/codellm-devkit/codeanalyzer-python
 cd codeanalyzer-python
 uv sync --all-groups          # installs runtime + test + dev dependencies
-uv run codeanalyzer --input /path/to/python/project
+uv run canpy --input /path/to/python/project
 ```
 
 Run the test suite with:

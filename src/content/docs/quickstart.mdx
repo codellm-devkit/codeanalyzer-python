@@ -1,41 +1,45 @@
 ---
 title: Quickstart
-description: Install codeanalyzer-python, run it against a Python project, and read your first analysis.json — symbol table, call graph, and entrypoints — in three steps.
+description: Install codeanalyzer-python, run it against a Python project, and read your first analysis — as analysis.json or a Neo4j property graph — in three steps.
 ---
 
 import { Steps, Aside, LinkCard, CardGrid, Tabs, TabItem } from "@astrojs/starlight/components";
 
-codeanalyzer-python points at a Python project and produces one typed artifact — its symbol table, call graph, and framework entrypoints. Three steps below: install, run it against a project, and read the result.
+`canpy` points at a Python project and produces one typed artifact — its symbol table, call graph, and framework entrypoints. Three steps below: install, run it against a project, and read the result. Then emit the same analysis into a Neo4j property graph.
 
 <Aside type="note" title="Prerequisite">
-You need **Python 3.12 or higher**. The tool builds an isolated virtual environment per project using the standard-library `venv` module, so a few system packages may be required on Linux — see [Installation](/codeanalyzer-python/installing/).
+You need **Python 3.12 or higher**. The tool builds an isolated virtual environment per project, so a few system packages may be required on Linux — see [Installation](/codeanalyzer-python/installing/).
 </Aside>
 
 <Steps>
 
 1. **Install the CLI.**
 
-   ```shell
+   ```bash
    pip install codeanalyzer-python
    ```
 
-   That installs the `codeanalyzer` command. Jedi and Tree-sitter ship with the package; CodeQL is downloaded on demand only if you opt in with `--codeql`.
+   That installs the `canpy` command. Jedi and Tree-sitter ship with the package; CodeQL is downloaded on demand only if you opt in with `--codeql`.
+
+   <Aside type="note" title="The CLI is now `canpy`">
+   The command was renamed from `codeanalyzer` to `canpy` (matching the `cants` TypeScript sibling). The old `codeanalyzer` command still works as a deprecated alias and prints a notice to stderr.
+   </Aside>
 
 2. **Run it against a project.**
 
    Point `--input` at any Python project root and `--output` at a directory for the result.
 
-   ```shell
-   codeanalyzer --input ./my-python-project --output ./out
+   ```bash
+   canpy --input ./my-python-project --output ./out
    ```
 
-   On the first run codeanalyzer creates a virtual environment under `.codeanalyzer/`, installs the project's dependencies into it, walks every `.py` file, and writes `./out/analysis.json`.
+   On the first run `canpy` creates a virtual environment under `.codeanalyzer/`, installs the project's dependencies into it, walks every `.py` file, and writes `./out/analysis.json`. This is the default `--emit json` target.
 
    <Aside type="tip">
    Omit `--output` to stream the JSON to stdout instead — handy for piping into `jq`:
 
-   ```shell
-   codeanalyzer --input ./my-python-project | jq '.entrypoints'
+   ```bash
+   canpy --input ./my-python-project | jq '.entrypoints'
    ```
    </Aside>
 
@@ -43,7 +47,7 @@ You need **Python 3.12 or higher**. The tool builds an isolated virtual environm
 
    `analysis.json` is a single `PyApplication` object with three top-level keys.
 
-   ```shell
+   ```bash
    jq 'keys' ./out/analysis.json
    # [ "call_graph", "entrypoints", "symbol_table" ]
 
@@ -55,7 +59,7 @@ You need **Python 3.12 or higher**. The tool builds an isolated virtual environm
 
 </Steps>
 
-## Load it into a graph
+## Load it into a graph (networkx)
 
 The call graph is a flat list of `source -> target` edges keyed by callable signature, so it drops straight into `networkx`:
 
@@ -74,12 +78,93 @@ print(g.number_of_nodes(), "nodes,", g.number_of_edges(), "edges")
 # print(nx.has_path(g, entry_sig, sink_sig))
 ```
 
+This works well for one application held in memory. When you want the analysis to persist, compose across many applications, or be read by other tools without re-running it, emit it into Neo4j instead.
+
+## Load it into Neo4j
+
+`canpy` builds one analysis in memory and can project it into a labeled property graph with `--emit neo4j`. Every node label is `Py`-prefixed and every relationship type `PY_`-prefixed (`:PyClass`, `PY_CALLS`), so Java, TypeScript, and Python analyzers can share one database without label or relationship-type collisions. Each application is anchored at its own `:PyApplication` node, named by `--app-name`, so a single Neo4j database holds many applications and you query across them with Cypher instead of loading giant JSON blobs.
+
+There are two ways to get the graph into Neo4j, selected solely by whether you pass `--neo4j-uri`.
+
+<Tabs>
+<TabItem label="Snapshot (graph.cypher)">
+
+Without `--neo4j-uri`, `canpy` writes a self-contained `graph.cypher` to `--output` (constraints + indexes, a scoped wipe of this app's prior subgraph, then batched `MERGE`s). It needs no extra dependencies and expresses the full truth of the analysis:
+
+```bash
+canpy --input ./my-python-project --emit neo4j --app-name my-service --output ./out
+```
+
+Load it into a running Neo4j with `cypher-shell`:
+
+```bash
+cypher-shell < ./out/graph.cypher
+```
+
+The snapshot does a scoped `DETACH DELETE` of the `:PyApplication {name: "my-service"}` subtree before reloading, so re-running it replaces this application cleanly without touching other applications in the database.
+
+</TabItem>
+<TabItem label="Live push (Bolt)">
+
+With `--neo4j-uri`, `canpy` pushes to a live Neo4j over Bolt incrementally — it diffs each module's content hash against the database and only rewrites modules that changed, and on a full run it prunes modules whose source file vanished. The prune is scoped to the `:PyApplication` anchor named by `--app-name`, so writing one application never deletes another's modules from a shared database.
+
+```bash
+export NEO4J_URI=bolt://localhost:7687
+export NEO4J_USERNAME=neo4j
+export NEO4J_PASSWORD=secret
+
+canpy --input ./my-python-project --emit neo4j --app-name my-service
+```
+
+The live push reads `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`, and `NEO4J_DATABASE` from the environment (an explicit flag wins when set). Prefer the env var for the password so it doesn't land in your shell history or the process list.
+
+</TabItem>
+</Tabs>
+
+<Aside type="caution" title="The live push needs the neo4j extra">
+The Bolt path imports the `neo4j` driver lazily. If it's missing, `canpy` raises a clear error — install it with `pip install 'codeanalyzer-python[neo4j]'`. The `graph.cypher` snapshot and the schema contract need nothing extra.
+</Aside>
+
+Once the graph is loaded, query it with Cypher — for example, the call edges out of a single application:
+
+```cypher
+MATCH (:PyApplication {name: "my-service"})-[:PY_HAS_MODULE]->(:PyModule)
+      -[:PY_DECLARES]->(c:PyCallable)-[:PY_CALLS]->(callee)
+RETURN c.signature, callee.signature
+LIMIT 25;
+```
+
+### Read it back with the CLDK SDK
+
+The graph is populated out of band by `canpy`; consumers just read it. The CLDK Python SDK has a read-only Neo4j backend — point it at the Bolt URI with the same `application_name` you loaded under, and it reconstructs the **same** typed `PyClass` / `PyCallable` objects and the same `networkx` call graph as the in-process analyzer, with no JDK, no native binary, and no project source on the consumer. It only needs the graph and read-only credentials.
+
+```python title="read_graph.py"
+from cldk import CLDK
+from cldk.analysis.commons.backend_config import Neo4jConnectionConfig
+
+analysis = CLDK.python(
+    backend=Neo4jConnectionConfig(
+        uri="bolt://localhost:7687",
+        username="neo4j",
+        password="neo4j",
+        application_name="my-service",  # matches canpy --app-name
+    ),
+)
+
+classes = analysis.get_classes()      # Dict[str, PyClass]
+cg = analysis.get_call_graph()        # networkx.DiGraph keyed by callable signatures
+
+print(len(classes), "classes,", cg.number_of_edges(), "call edges")
+```
+
+The Neo4j backend in the SDK is the same optional extra: `pip install cldk[neo4j]`. See the [Neo4j property graph](/codeanalyzer-python/guides/neo4j/) guide for the full schema, incremental semantics, and the SDK read API.
+
 ## Go deeper with CodeQL
 
-The default run uses Jedi for resolution — fast, no external tooling. Add `--codeql` to resolve the edges lexical analysis misses (dynamic dispatch, RPC, third-party targets). The CodeQL CLI is downloaded into the project cache on first use and reused thereafter.
+The default run uses Jedi for resolution — fast, no external tooling. Add `--codeql` to resolve the edges lexical analysis misses (dynamic dispatch, RPC, third-party targets). The CodeQL CLI is downloaded into the project cache on first use and reused thereafter. This augmentation applies to both the `json` and `neo4j` emit targets — the same enriched call graph is what gets projected into the property graph.
 
-```shell
-codeanalyzer --input ./my-python-project --output ./out --codeql
+```bash
+canpy --input ./my-python-project --output ./out --codeql
 ```
 
 <Aside type="caution">
@@ -89,8 +174,8 @@ The first `--codeql` run downloads the CodeQL CLI and builds a database, so it t
 ## Where this goes next
 
 <CardGrid>
-  <LinkCard title="CLI usage" description="Output formats, caching, single-file mode, verbosity — every flag with examples." href="/codeanalyzer-python/guides/cli-usage/" />
+  <LinkCard title="Neo4j property graph" description="The full property-graph schema, incremental Bolt push, and reading it back with the CLDK SDK — no JDK, no source on the consumer." href="/codeanalyzer-python/guides/neo4j/" />
+  <LinkCard title="CLI usage" description="Output targets, caching, single-file mode, verbosity — every flag with examples." href="/codeanalyzer-python/guides/cli-usage/" />
   <LinkCard title="Core concepts" description="What the symbol table, call graph, and entrypoints actually contain." href="/codeanalyzer-python/guides/concepts/" />
-  <LinkCard title="Entrypoint detection" description="The planned JackEE-style finder layer for Flask, FastAPI, Celery, Click, and gRPC roots (work in progress)." href="/codeanalyzer-python/guides/entrypoints/" />
   <LinkCard title="Output schema" description="The PyApplication data model, field by field." href="/codeanalyzer-python/reference/schema/" />
 </CardGrid>

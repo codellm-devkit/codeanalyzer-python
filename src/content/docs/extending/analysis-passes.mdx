@@ -45,6 +45,8 @@ Passes declare capability tokens — free-form strings — in `provides` and `re
 
 Passes hand derived facts to each other through `ctx.shared`, keyed by capability token: the provider writes `ctx.shared["odoo.model_identity"] = ...`; the consumer reads it back. `ctx.shared` is the one mutable part of the otherwise-frozen context.
 
+The pipeline produces a single enriched `PyApplication`. That in-memory model is what `canpy` then emits — as `analysis.json` by default, or projected into a Neo4j property graph with `--emit neo4j`. Either way it is the *same* model, so your pass's entrypoints and synthetic edges flow through both targets unchanged:
+
 ```mermaid
 flowchart LR
     A["pass A
@@ -53,6 +55,12 @@ requires: model_identity"]
     A --> M[merge into app]
     B --> M
     M --> N[next pass sees both]
+    N --> IR["enriched PyApplication (IR)"]
+    IR -->|"--emit json"| J["analysis.json"]
+    IR -->|"--emit neo4j"| G["labeled property graph
+(:PyApplication / PY_CALLS)"]
+    G -.->|"no --neo4j-uri"| SNAP["graph.cypher snapshot"]
+    G -.->|"--neo4j-uri (Bolt)"| LIVE["live incremental push"]
 ```
 
 ## The AnalysisContext
@@ -144,6 +152,10 @@ class OdooDispatchPass(AnalysisPass):
 
 Core never interprets your `provenance` tokens, `detection_source` values, or `tags` keys — they round-trip through `analysis.json` untouched, so downstream consumers (or an LLM) can reason over them.
 
+<Aside type="note" title="Provenance survives the Neo4j projection">
+When you emit to Neo4j with `--emit neo4j`, each synthetic `PyCallEdge` becomes a `PY_CALLS` relationship, and your `provenance` token is preserved on its `provenance` property (alongside the integer `weight`) — so an extension's edges stay attributable whether a consumer reads `analysis.json` or queries the property graph. See [Output schema](/codeanalyzer-python/reference/schema/) for the projected node and relationship types.
+</Aside>
+
 ## Registering your pass
 
 Declare the entry point in your package's `pyproject.toml`. Each entry point must resolve to an `AnalysisPass` subclass (or an instance).
@@ -158,9 +170,9 @@ odoo-dispatch = "my_package.passes:OdooDispatchPass"
 
 1. **Install your package** into the same environment as codeanalyzer (`pip install -e .`).
 
-2. **Run codeanalyzer normally.** `discover_passes()` finds your entry point, instantiates it, and the registry orders it among the built-ins.
+2. **Run `canpy` normally.** `discover_passes()` finds your entry point, instantiates it, and the registry orders it among the built-ins.
 
-3. **Check the artifact.** Your entrypoints appear under `app.entrypoints[framework]`; your edges appear in `app.call_graph` with your provenance token.
+3. **Check the artifact.** Your entrypoints appear under `app.entrypoints[framework]`; your edges appear in `app.call_graph` with your provenance token — and likewise on the `PY_CALLS` edges if you emit to Neo4j.
 
 </Steps>
 

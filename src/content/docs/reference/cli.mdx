@@ -1,35 +1,46 @@
 ---
 title: CLI options
-description: The complete option reference for the codeanalyzer command — every flag, its default, and what it controls.
+description: The complete option reference for the canpy command — every flag, its default, and what it controls.
 ---
 
 import { Aside, LinkCard, CardGrid } from "@astrojs/starlight/components";
 
 ```
-codeanalyzer [OPTIONS]
+canpy [OPTIONS]
 ```
 
-Static analysis on Python source code using Jedi, CodeQL, and Tree-sitter. The only required option is `--input`. With no `--output`, the artifact is printed to stdout as compact JSON.
+Static analysis on Python source code using Jedi, CodeQL, and Tree-sitter. `canpy` builds one analysis in memory and emits it to one of three targets selected by `--emit`: the default `analysis.json` (symbol table + call graph), a Neo4j property graph, or the version-stamped Neo4j schema contract.
+
+<Aside type="note" title="Renamed from codeanalyzer">
+The command is now `canpy` (matching the `cants` TypeScript sibling). The old `codeanalyzer` command still works as a deprecated alias — it prints a one-line notice to stderr, then runs unchanged. Update your scripts to `canpy`.
+</Aside>
 
 ## Options
 
 | Option | Alias | Type | Default | Description |
 | --- | --- | --- | --- | --- |
-| `--input` | `-i` | `PATH` | *required* | Path to the project root directory. |
-| `--output` | `-o` | `PATH` | `None` | Output **directory** for artifacts. If unset, JSON is printed to stdout. |
-| `--format` | `-f` | `json` \| `msgpack` | `json` | Output serialization format. |
-| `--codeql` / `--no-codeql` | | flag | `--no-codeql` | Enable CodeQL-based resolution in addition to Jedi. |
+| `--input` | `-i` | `PATH` | `None` | Path to the project root directory. Required for `--emit json` and `--emit neo4j`; not required for `--emit schema`. |
+| `--output` | `-o` | `PATH` | `None` | Output **directory** for artifacts. Behavior depends on `--emit` (see [Output files](#output-files)). |
+| `--format` | `-f` | `json` \| `msgpack` | `json` | Output serialization for `--emit json`. |
+| `--emit` | | `json` \| `neo4j` \| `schema` | `json` | Output target. `json` → `analysis.json`; `neo4j` → `graph.cypher` snapshot or a live Bolt push; `schema` → the Neo4j `schema.json` contract. |
+| `--app-name` | | `TEXT` | input dir name | Logical application name for the graph's `:PyApplication` anchor. Defaults to the resolved basename of `--input`. |
+| `--neo4j-uri` | | `TEXT` | `None` | Push the graph to a live Neo4j over Bolt (incremental). Omit to write `graph.cypher`. Reads `NEO4J_URI`. Requires the `neo4j` extra. |
+| `--neo4j-user` | | `TEXT` | `neo4j` | Neo4j username. Reads `NEO4J_USERNAME`. |
+| `--neo4j-password` | | `TEXT` | `neo4j` | Neo4j password. Reads `NEO4J_PASSWORD`. Prefer the env var — the flag is visible in shell history and the process list. |
+| `--neo4j-database` | | `TEXT` | `None` | Neo4j database name. `None` uses the server default. Reads `NEO4J_DATABASE`. |
+| `--codeql` / `--no-codeql` | | flag | `--no-codeql` | Enable CodeQL-based call-graph resolution in addition to Jedi. |
 | `--ray` / `--no-ray` | | flag | `--no-ray` | Use Ray to build the symbol table in parallel. |
 | `--eager` / `--lazy` | | flag | `--lazy` | Rebuild the analysis (and venv) from scratch vs. reuse cache. |
 | `--skip-tests` / `--include-tests` | | flag | `--skip-tests` | Exclude or include test files in the analysis. |
+| `--no-venv` / `--venv` | | flag | `--venv` | Resolve imports against the ambient interpreter instead of building a per-project venv. Useful in CI, containers, and sandboxed runs. |
 | `--file-name` | | `PATH` | `None` | Analyze only this file (relative to `--input`; must be `.py`). |
 | `--cache-dir` | `-c` | `PATH` | `None` | Where to store the cache. Defaults to `.codeanalyzer` in the input dir. |
 | `--clear-cache` / `--keep-cache` | | flag | `--keep-cache` | Delete the cache on exit vs. retain it. |
 | `-v` | | count | `0` | Increase verbosity: `-v` (info), `-vv` (debug), `-vvv` (trace). |
 | `--help` | | | | Show the help message and exit. |
 
-<Aside type="note" title="Output is a directory">
-`--output` names a directory, not a file. codeanalyzer writes `analysis.json` (or `analysis.msgpack`) inside it, creating the directory if needed.
+<Aside type="note" title="The four Neo4j flags read environment variables">
+`--neo4j-uri`, `--neo4j-user`, `--neo4j-password`, and `--neo4j-database` fall back to `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`, and `NEO4J_DATABASE` when the flag is omitted. An explicit flag always wins. Keeping the password in the environment keeps it out of shell history and the process list.
 </Aside>
 
 ## Notes on defaults
@@ -37,39 +48,157 @@ Static analysis on Python source code using Jedi, CodeQL, and Tree-sitter. The o
 - **Lazy by default.** Analysis reuses cached results for unchanged files. Use `--eager` to force a full rebuild.
 - **Cache is kept by default.** The cache survives between runs. Use `--clear-cache` to discard it on exit.
 - **Tests excluded by default.** Files under `test`/`tests` directories, or named `test_*.py` / `*_test.py`, are skipped unless you pass `--include-tests`.
-- **CodeQL off by default.** Jedi resolves the call graph alone unless `--codeql` is set.
+- **CodeQL off by default.** Jedi resolves the call graph alone unless `--codeql` is set; CodeQL augments it.
+- **A venv is built by default.** `canpy` provisions a per-project analysis venv (built with `uv`, falling back to `pip`) and wires it to Jedi for import resolution. Pass `--no-venv` to skip it and resolve against the ambient interpreter.
 
 ## Output files
 
-| Format | File | Notes |
-| --- | --- | --- |
-| `json` | `analysis.json` | Compact JSON. Also the stdout format when `--output` is omitted. |
-| `msgpack` | `analysis.msgpack` | gzip-compressed MessagePack; the CLI logs the compression ratio vs. JSON. |
+What `canpy` produces depends on `--emit`:
 
-Both encode the same `PyApplication` schema — see [Output schema](/codeanalyzer-python/reference/schema/).
+| `--emit` | With `--output ./out` | Without `--output` |
+| --- | --- | --- |
+| `json` (default) | `./out/analysis.json` (or `analysis.msgpack` with `--format msgpack`) | compact JSON on stdout |
+| `neo4j` (no `--neo4j-uri`) | `./out/graph.cypher` | `graph.cypher` in the current directory |
+| `neo4j` (with `--neo4j-uri`) | live Bolt push — `--output` is unused | live Bolt push |
+| `schema` | `./out/schema.json` | `schema.json` on stdout |
+
+For `--emit json`, `--output` names a directory, not a file — `canpy` writes `analysis.json` (or `analysis.msgpack`) inside it, creating the directory if needed. The `json` and `msgpack` formats encode the same `PyApplication` schema; see [Output schema](/codeanalyzer-python/reference/schema/). The `msgpack` form is gzip-compressed MessagePack, and the CLI logs the compression ratio vs. JSON.
+
+## Emit targets
+
+`--emit` chooses where the single in-memory analysis goes. The analysis is built once; the target only decides how it is projected.
+
+### `analysis.json` — the default
+
+The canonical symbol table and call graph as one JSON document. This is the in-process artifact every other tool has always consumed.
+
+```bash
+# Symbol table + call graph to stdout
+canpy --input ./my-python-project
+
+# Write JSON to a directory
+canpy --input ./my-python-project --output ./out
+
+# msgpack + CodeQL, eager rebuild, cache discarded
+canpy --input ./my-python-project --output ./out --format msgpack --codeql --eager --clear-cache
+```
+
+### Neo4j property graph — `--emit neo4j`
+
+Projects the same in-memory `PyApplication` into a labeled property graph. Every node label is `Py`-prefixed and every relationship type is `PY_`-prefixed (e.g. `:PyClass`, `PY_CALLS`), so Java, TypeScript, and Python analyzers can share one database without label or relationship-type collisions. Declarations are keyed by their `signature` under a shared `:PySymbol` label, and the application is anchored at a single `:PyApplication` node named by `--app-name`. The full topology is documented in the [graph schema reference](/codeanalyzer-python/reference/schema/).
+
+There are two sub-modes, decided solely by whether `--neo4j-uri` is set.
+
+**Without `--neo4j-uri` — a self-contained `graph.cypher` snapshot.** Constraints and indexes, a scoped `DETACH DELETE` wipe of this app's prior subtree, then batched `UNWIND … MERGE` for nodes and edges. It needs no extra dependencies and expresses the full truth of the analysis — it is not incremental. Load it with `cypher-shell`:
+
+```bash
+canpy --input ./my-python-project --emit neo4j --app-name my-service --output ./out
+cypher-shell < ./out/graph.cypher
+```
+
+**With `--neo4j-uri` — an incremental live Bolt push.** Ensures the DDL, diffs each module's `content_hash` against the database, and rewrites only modules whose content changed. Shared `:PyExternal` / `:PyPackage` / `:PyDecorator` nodes are `MERGE`-only and nodes are never blindly deleted, so cross-module references survive. On a full run (no `--file-name`), modules whose source file vanished are pruned — scoped to this app's `:PyApplication` anchor, so pushing app B never deletes app A's modules from a shared database. Every graph carries a `schema_version` on its `:PyApplication` node (currently `1.1.0`).
+
+Prefer the environment for the password so it never lands in shell history or the process list:
+
+```bash
+export NEO4J_URI=bolt://localhost:7687
+export NEO4J_PASSWORD=secret
+canpy --input ./my-python-project --emit neo4j --app-name my-service
+```
+
+The same run spelled out with flags:
+
+```bash
+canpy --input ./my-python-project --emit neo4j --app-name my-service \
+  --neo4j-uri bolt://localhost:7687 --neo4j-user neo4j
+# NEO4J_PASSWORD is read from the environment
+```
+
+The live Bolt path needs the optional `neo4j` driver extra. If it is missing, `canpy` raises a clear error telling you to install it:
+
+```bash
+pip install 'codeanalyzer-python[neo4j]'
+```
+
+The snapshot (`graph.cypher`) and `--emit schema` modes need nothing extra.
+
+<Aside type="tip" title="Targeted single-file pushes skip pruning">
+On a Bolt push, `--file-name` makes the run *targeted* — only that module is reconciled, and orphan pruning is skipped (deleted files are not removed). A full run (no `--file-name`) enables pruning. Use targeted pushes for fast incremental CI updates; run a full push periodically to reclaim vanished modules.
+</Aside>
+
+### Schema contract — `--emit schema`
+
+Emits the machine-readable, version-stamped Neo4j schema (`schema.json`: node labels, relationship types, and their properties). It is a static catalog, so no project is required — `--input` is optional here.
+
+```bash
+# Print the schema contract to stdout (no project needed)
+canpy --emit schema
+
+# Write it to a directory
+canpy --emit schema --output ./out   # → ./out/schema.json
+```
+
+The schema carries `SCHEMA_VERSION` (currently `1.1.0`), the same value stamped onto every graph's `:PyApplication` node. Pin to it so consumers can detect contract changes.
+
+## Reading the graph back with CLDK
+
+Once a graph is in Neo4j, the [CLDK Python SDK](https://github.com/codellm-devkit/python-sdk) reads it directly — no JDK, no native binary, and no project source on the consumer, only read-only Neo4j credentials. Point `CLDK.python` at a `Neo4jConnectionConfig` whose `application_name` matches the `--app-name` the graph was loaded with, and it reconstructs the same typed `PyApplication` model and the same `networkx` call graph the in-process analyzer would build.
+
+```python
+from cldk import CLDK
+from cldk.analysis.commons.backend_config import Neo4jConnectionConfig
+
+analysis = CLDK.python(
+    backend=Neo4jConnectionConfig(
+        uri="bolt://localhost:7687",
+        username="neo4j",
+        password="neo4j",
+        application_name="my-service",  # matches canpy --app-name
+    ),
+)
+classes = analysis.get_classes()    # Dict[str, PyClass]
+cg = analysis.get_call_graph()      # networkx.DiGraph keyed by callable signatures
+```
+
+The SDK's `neo4j` driver is an optional extra: `pip install cldk[neo4j]`. See the [Neo4j guide](/codeanalyzer-python/guides/neo4j/) for the full read API.
 
 ## Examples
 
-```shell
+```bash
 # Symbol table + call graph to stdout
-codeanalyzer --input ./proj
+canpy --input ./proj
 
 # Write JSON to a directory
-codeanalyzer --input ./proj --output ./out
+canpy --input ./proj --output ./out
 
 # msgpack + CodeQL, eager rebuild, cache discarded
-codeanalyzer --input ./proj --output ./out --format msgpack --codeql --eager --clear-cache
+canpy --input ./proj --output ./out --format msgpack --codeql --eager --clear-cache
 
-# One file only
-codeanalyzer --input ./proj --file-name src/app/routes.py
+# Property-graph snapshot to ./out/graph.cypher
+canpy --input ./proj --emit neo4j --app-name proj --output ./out
+
+# Incremental Bolt push (password from the environment)
+NEO4J_PASSWORD=secret canpy --input ./proj --emit neo4j --app-name proj \
+  --neo4j-uri bolt://localhost:7687
+
+# Targeted single-file push (skips orphan pruning)
+NEO4J_PASSWORD=secret canpy --input ./proj --emit neo4j --app-name proj \
+  --neo4j-uri bolt://localhost:7687 --file-name src/app/routes.py
+
+# Publish the version-stamped schema contract
+canpy --emit schema --output ./out
+
+# Ambient interpreter, no per-project venv (CI / containers)
+canpy --input ./proj --no-venv --output ./out
 
 # Custom cache location, debug logging
-codeanalyzer --input ./proj --cache-dir /tmp/ca -vv
+canpy --input ./proj --cache-dir /tmp/ca -vv
 ```
 
 ## Where to go next
 
 <CardGrid>
   <LinkCard title="CLI usage" description="Worked examples and the reasoning behind each flag." href="/codeanalyzer-python/guides/cli-usage/" />
-  <LinkCard title="Output schema" description="The PyApplication artifact, field by field." href="/codeanalyzer-python/reference/schema/" />
+  <LinkCard title="Neo4j property graph" description="Producer/consumer architecture, the schema, and reading with CLDK." href="/codeanalyzer-python/guides/neo4j/" />
+  <LinkCard title="Output schema" description="The PyApplication artifact and the graph schema, field by field." href="/codeanalyzer-python/reference/schema/" />
 </CardGrid>
