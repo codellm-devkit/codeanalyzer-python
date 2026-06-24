@@ -360,8 +360,23 @@ class PyCallEdge(BaseModel):
 
 @builder
 @msgpk
+class PyExternalSymbol(BaseModel):
+    """A call-graph target outside the analyzed project -- an imported library or
+    builtin member. Mirrors codeanalyzer-typescript's ``TSExternalSymbol`` and is
+    keyed in ``PyApplication.external_symbols`` by its call-graph signature."""
+
+    name: str  # the member/short name, e.g. "get" for "requests.get"
+    module: Optional[str] = None  # best-effort owning module, e.g. "requests"
+
+
+@builder
+@msgpk
 class PyApplication(BaseModel):
     """Represents a Python application."""
 
     symbol_table: Dict[str, PyModule]
     call_graph: List[PyCallEdge] = []
+    # Call-graph endpoints not declared in the symbol table (imported library /
+    # builtin members), keyed by signature. Populated by the analyzer so every
+    # backend (JSON and Neo4j) shares one authoritative external-symbol set.
+    external_symbols: Dict[str, PyExternalSymbol] = {}

@@ -7,13 +7,18 @@ from codeanalyzer.core import Codeanalyzer
 from codeanalyzer.utils import _set_log_level, logger
 from codeanalyzer.config import OutputFormat
 from codeanalyzer.schema import model_dump_json
-from codeanalyzer.options import AnalysisOptions
+from codeanalyzer.options import AnalysisOptions, EmitTarget
 
 
 def main(
     input: Annotated[
-        Path, typer.Option("-i", "--input", help="Path to the project root directory.")
-    ],
+        Optional[Path],
+        typer.Option(
+            "-i",
+            "--input",
+            help="Path to the project root directory (not required for --emit schema).",
+        ),
+    ] = None,
     output: Annotated[
         Optional[Path],
         typer.Option("-o", "--output", help="Output directory for artifacts."),
@@ -23,10 +28,64 @@ def main(
         typer.Option(
             "-f",
             "--format",
-            help="Output format: json or msgpack.",
+            help="Output format for --emit json: json or msgpack.",
             case_sensitive=False,
         ),
     ] = OutputFormat.JSON,
+    emit: Annotated[
+        EmitTarget,
+        typer.Option(
+            "--emit",
+            help="Output target: json (analysis.json, default) | neo4j (graph.cypher or live "
+            "Bolt push) | schema (the Neo4j schema.json contract).",
+            case_sensitive=False,
+        ),
+    ] = EmitTarget.JSON,
+    app_name: Annotated[
+        Optional[str],
+        typer.Option(
+            "--app-name",
+            help="Logical application name for the graph :PyApplication anchor "
+            "(default: input dir name).",
+        ),
+    ] = None,
+    neo4j_uri: Annotated[
+        Optional[str],
+        typer.Option(
+            "--neo4j-uri",
+            envvar="NEO4J_URI",
+            help="Push the graph to a live Neo4j over Bolt (incremental); omit to write "
+            "graph.cypher. [env: NEO4J_URI]",
+        ),
+    ] = None,
+    neo4j_user: Annotated[
+        str,
+        typer.Option(
+            "--neo4j-user",
+            envvar="NEO4J_USERNAME",
+            help="Neo4j username. [env: NEO4J_USERNAME]",
+        ),
+    ] = "neo4j",
+    neo4j_password: Annotated[
+        str,
+        typer.Option(
+            "--neo4j-password",
+            envvar="NEO4J_PASSWORD",
+            help="Neo4j password. Prefer the env var over the flag (the flag is visible in shell "
+            "history / process list). [env: NEO4J_PASSWORD]",
+        ),
+    ] = "neo4j",
+    neo4j_database: Annotated[
+        Optional[str],
+        typer.Option(
+            "--neo4j-database",
+            envvar="NEO4J_DATABASE",
+            help="Neo4j database name (default: server default). [env: NEO4J_DATABASE]",
+        ),
+    ] = None,
+    using_codeql: Annotated[
+        bool, typer.Option("--codeql/--no-codeql", help="Enable CodeQL-based analysis.")
+    ] = False,
     analysis_level: Annotated[
         int,
         typer.Option(
@@ -55,6 +114,14 @@ def main(
             help="Skip test files in analysis.",
         ),
     ] = True,
+    no_venv: Annotated[
+        bool,
+        typer.Option(
+            "--no-venv/--venv",
+            help="Skip virtualenv creation and dependency installation; resolve "
+            "imports against the ambient Python environment instead.",
+        ),
+    ] = False,
     file_name: Annotated[
         Optional[Path],
         typer.Option(
@@ -127,10 +194,18 @@ def main(
         input=input,
         output=output,
         format=format,
+        emit=emit,
+        app_name=app_name,
+        neo4j_uri=neo4j_uri,
+        neo4j_user=neo4j_user,
+        neo4j_password=neo4j_password,
+        neo4j_database=neo4j_database,
+        using_codeql=using_codeql,
         analysis_level=analysis_level,
         using_ray=using_ray,
         rebuild_analysis=rebuild_analysis,
         skip_tests=skip_tests,
+        no_venv=no_venv,
         file_name=file_name,
         cache_dir=cache_dir,
         clear_cache=clear_cache,
@@ -141,6 +216,18 @@ def main(
     )
 
     _set_log_level(options.verbosity)
+
+    # The schema contract is a static artifact — no project analysis required.
+    if options.emit == EmitTarget.SCHEMA:
+        from codeanalyzer.neo4j.emit import emit_schema
+
+        emit_schema(options.output)
+        return
+
+    # Every other target requires an input project.
+    if options.input is None:
+        logger.error("Missing option '-i' / '--input' (required for --emit json | neo4j).")
+        raise typer.Exit(code=1)
     if not options.input.exists():
         logger.error(f"Input path '{options.input}' does not exist.")
         raise typer.Exit(code=1)
@@ -164,7 +251,11 @@ def main(
     with Codeanalyzer(options) as analyzer:
         artifacts = analyzer.analyze()
 
-        if options.output is None:
+        if options.emit == EmitTarget.NEO4J:
+            from codeanalyzer.neo4j.emit import emit_neo4j
+
+            emit_neo4j(artifacts, options)
+        elif options.output is None:
             print(model_dump_json(artifacts, separators=(",", ":")))
         else:
             options.output.mkdir(parents=True, exist_ok=True)
@@ -194,14 +285,29 @@ def _write_output(artifacts, output_dir: Path, format: OutputFormat):
 
 app = typer.Typer(
     callback=main,
-    name="codeanalyzer",
-    help="Static Analysis on Python source code using Jedi, PyCG and Tree sitter.",
+    name="canpy",
+    help="Static Analysis on Python source code using Jedi, PyCG, CodeQL and Tree sitter.",
     invoke_without_command=True,
     no_args_is_help=True,
     add_completion=False,
     rich_markup_mode="rich",
     pretty_exceptions_show_locals=False,
 )
+
+def deprecated_main() -> None:
+    """Entry point for the legacy ``codeanalyzer`` command. Prints a one-line
+    deprecation notice to stderr (so piped stdout — e.g. ``--emit schema`` — stays
+    clean) and then runs the CLI unchanged. Kept for backwards compatibility; will
+    be removed in a future release."""
+    import sys
+
+    print(
+        "codeanalyzer: this command has been renamed to `canpy`. The `codeanalyzer` "
+        "alias is deprecated and will be removed in a future release — please use `canpy`.",
+        file=sys.stderr,
+    )
+    app()
+
 
 if __name__ == "__main__":
     app()

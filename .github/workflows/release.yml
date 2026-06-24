@@ -32,7 +32,26 @@ jobs:
         run: uv sync --all-groups
       
       - name: Install dependencies
-        run: uv pip install -e .
+        run: uv pip install -e ".[neo4j]"
+
+      # Keep generated docs in lockstep with the code being released: regenerate the
+      # README `canpy --help` block and the Neo4j schema.json from source, and commit
+      # them back to main. Releases are cut from main HEAD, so this fast-forwards;
+      # best-effort if main moved.
+      - name: Sync generated docs (README --help + Neo4j schema)
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          uv run python scripts/update_readme.py
+          uv run canpy --emit schema > schema.neo4j.json
+          if git diff --quiet README.md schema.neo4j.json; then
+            echo "Generated docs already current."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add README.md schema.neo4j.json
+            git commit -m "docs: sync README --help and Neo4j schema for ${GITHUB_REF#refs/tags/}"
+            git push origin HEAD:main || echo "::warning::could not push doc sync to main (diverged?)"
+          fi
 
       - name: Run tests
         id: test
@@ -51,45 +70,114 @@ jobs:
       - name: Build package
         run: uv build
 
+      # Platform-independent, version-locked release assets published alongside the
+      # wheels/sdist: the Neo4j schema contract (so a consumer can validate
+      # producer/consumer compatibility without installing the package) and the
+      # cargo-dist-style install script.
+      - name: Stage release assets (Neo4j schema + installer script)
+        run: |
+          mkdir -p release-assets
+          uv run canpy --emit schema > release-assets/schema.json
+          cp packaging/install/canpy-installer.sh release-assets/canpy-installer.sh
+          ls -lh release-assets
+
       - name: Get version from tag
         id: tag_name
         run: |
           echo "current_version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
         shell: bash
 
-      - name: Read Changelog Entry
-        id: changelog_reader
-        uses: mindsers/changelog-reader-action@v2
-        with:
-          validation_level: warn
-          version: ${{ steps.tag_name.outputs.current_version }}
-          path: ./CHANGELOG.md
-
-      - name: Build changelog
-        id: gen_changelog
-        uses: mikepenz/release-changelog-builder-action@v5
-        with:
-          failOnError: "true"
-          configuration: .github/workflows/release_config.json
+      # cargo-dist-style notes: install one-liners + a download table. The categorized
+      # "What's Changed" (merged PRs/issues grouped under emoji headings via
+      # .github/release.yml) is appended by generate_release_notes below. Indented code
+      # blocks avoid backticks in the heredoc.
+      - name: Compose release notes header (install + download)
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.tag_name.outputs.current_version }}
+        run: |
+          REPO="codellm-devkit/codeanalyzer-python"
+          BASE="https://github.com/$REPO/releases/download/v$VERSION"
+          cat > "$RUNNER_TEMP/RELEASE_BODY.md" <<EOF
+          ## Install codeanalyzer-python v$VERSION
+
+          Shell script (installs the canpy CLI via uv / pipx / pip):
+
+              curl --proto '=https' --tlsv1.2 -LsSf https://github.com/$REPO/releases/latest/download/canpy-installer.sh | sh
+
+          PyPI:
+
+              pip install codeanalyzer-python==$VERSION
+
+          For the optional live Neo4j push (--emit neo4j --neo4j-uri ...):
+
+              pip install 'codeanalyzer-python[neo4j]==$VERSION'
+
+          ## Download
+
+          | File | Description |
+          | --- | --- |
+          | [codeanalyzer_python-$VERSION-py3-none-any.whl]($BASE/codeanalyzer_python-$VERSION-py3-none-any.whl) | Python wheel |
+          | [codeanalyzer_python-$VERSION.tar.gz]($BASE/codeanalyzer_python-$VERSION.tar.gz) | Source distribution |
+          | [canpy-installer.sh]($BASE/canpy-installer.sh) | Shell installer (uv / pipx / pip) |
+          | [schema.json]($BASE/schema.json) | Neo4j schema contract |
+          EOF
+          echo "----- composed header -----"; cat "$RUNNER_TEMP/RELEASE_BODY.md"
 
       - name: Publish release on GitHub
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
-          body: |
-            ## Release Notes (from CHANGELOG.md)
-            
-            ${{ steps.changelog_reader.outputs.changes }}
-            
-            ---
-            
-            ## Detailed Changes (auto-generated)
-            
-            ${{ steps.gen_changelog.outputs.changelog }}
+          files: |
+            dist/*
+            release-assets/*
+          body_path: ${{ runner.temp }}/RELEASE_BODY.md
+          generate_release_notes: true   # appends categorized "What's Changed" (see .github/release.yml)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish to PyPI via Trusted Publishing
         run: uv publish
+
+  # Regenerate the Homebrew formula and push it to the shared tap. Split into its
+  # own job (needs: release) so a tap-push failure -- e.g. a missing
+  # HOMEBREW_TAP_TOKEN -- is isolated from the PyPI and GitHub Release steps above.
+  # The non-Rust equivalent of what cargo-dist does for you.
+  homebrew:
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Derive version from tag
+        id: ver
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate Homebrew formula
+        env:
+          REPO: ${{ github.repository }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          chmod +x packaging/homebrew/generate_formula.sh
+          # The release job just published the sdist as a Release asset; hash the
+          # exact bytes users will download so the formula checksum always matches.
+          sdist="https://github.com/${REPO}/releases/download/v${VERSION}/codeanalyzer_python-${VERSION}.tar.gz"
+          SHA256="$(curl -fLsS "$sdist" | shasum -a 256 | cut -d' ' -f1)"
+          REPO="$REPO" VERSION="$VERSION" SHA256="$SHA256" \
+            ./packaging/homebrew/generate_formula.sh > codeanalyzer-python.rb
+          cat codeanalyzer-python.rb
+
+      - name: Push formula to codellm-devkit/homebrew-tap
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}   # PAT with write access to homebrew-tap
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/codellm-devkit/homebrew-tap.git" tap
+          mkdir -p tap/Formula
+          cp codeanalyzer-python.rb tap/Formula/codeanalyzer-python.rb
+          cd tap
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/codeanalyzer-python.rb
+          git commit -m "codeanalyzer-python ${VERSION}" || { echo "no formula change"; exit 0; }
+          git push

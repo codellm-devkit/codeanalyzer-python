@@ -1,3 +1,3 @@
-from .options import AnalysisOptions
+from .options import AnalysisOptions, EmitTarget, OutputFormat
 
-__all__ = ["AnalysisOptions"]
+__all__ = ["AnalysisOptions", "EmitTarget", "OutputFormat"]

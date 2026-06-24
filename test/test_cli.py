@@ -38,6 +38,27 @@ def test_cli_call_symbol_table_with_json(cli_runner, whole_applications__xarray)
     assert len(json_obj["symbol_table"]) > 0, "Symbol table should not be empty"
 
 
+def test_no_venv_skips_virtualenv(
+    cli_runner, single_functionalities__stuff_nested_in_functions, tmp_path
+):
+    """#46: --no-venv must skip virtualenv creation/installation and still analyze."""
+    out = tmp_path / "out"
+    cache = tmp_path / "cache"
+    result = cli_runner.invoke(
+        app,
+        [
+            "--input", str(single_functionalities__stuff_nested_in_functions),
+            "--output", str(out),
+            "--cache-dir", str(cache),
+            "--no-venv", "--no-codeql", "--no-ray",
+        ],
+        env={"NO_COLOR": "1", "TERM": "dumb"},
+    )
+    assert result.exit_code == 0, result.output
+    assert (out / "analysis.json").exists(), "analysis.json should still be produced with --no-venv"
+    assert not list(cache.rglob("virtualenv")), "--no-venv must not create a virtualenv"
+
+
 def test_single_file(cli_runner, single_functionalities__stuff_nested_in_functions):
     """Must be able to run the CLI with single file analysis using --file-name flag."""
     output_dir = single_functionalities__stuff_nested_in_functions.joinpath(".output")

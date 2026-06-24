@@ -8,7 +8,13 @@ from typing import Any, Dict, Optional, Union, List
 
 import ray
 from codeanalyzer.utils import logger
-from codeanalyzer.schema import PyApplication, PyModule, model_dump_json, model_validate_json
+from codeanalyzer.schema import (
+    PyApplication,
+    PyExternalSymbol,
+    PyModule,
+    model_dump_json,
+    model_validate_json,
+)
 from codeanalyzer.schema.py_schema import PyCallEdge
 from codeanalyzer.semantic_analysis.call_graph import (
     filter_external_edges,
@@ -59,6 +65,7 @@ class Codeanalyzer:
         self.skip_tests = options.skip_tests
         self.analysis_level = options.analysis_level
         self.rebuild_analysis = options.rebuild_analysis
+        self.no_venv = options.no_venv
         self.cache_dir = (
             options.cache_dir.resolve() if options.cache_dir is not None else self.project_dir
         ) / ".codeanalyzer"
@@ -222,13 +229,41 @@ class Codeanalyzer:
             f"a working Python interpreter that can create virtual environments."
         )
 
+    @staticmethod
+    def _uv_bin() -> Optional[str]:
+        """Path to a uv binary: the one bundled with the ``uv`` PyPI package (a
+        dependency, so normally always present -- including inside a Docker image),
+        else a uv on PATH, else ``None`` (callers fall back to pip)."""
+        try:
+            from uv import find_uv_bin
+
+            return str(find_uv_bin())
+        except Exception:
+            return shutil.which("uv")
+
+    def _install_into_venv(self, venv_python: Path, args: List[str]) -> None:
+        """Install packages into the target venv, preferring uv for speed (parallel
+        downloads + a shared global cache) and falling back to the venv's own pip
+        when uv is unavailable."""
+        uv = self._uv_bin()
+        if uv:
+            cmd = [uv, "pip", "install", "--python", str(venv_python), *args]
+        else:
+            cmd = [str(venv_python), "-m", "pip", "install", *args]
+        self._cmd_exec_helper(cmd, cwd=self.project_dir, check=True)
+
     def __enter__(self) -> "Codeanalyzer":
         # If no virtualenv is provided, try to create one using requirements.txt or pyproject.toml
         venv_path = self.cache_dir / self.project_dir.name / "virtualenv"
         # Ensure the cache directory exists for this project
         venv_path.parent.mkdir(parents=True, exist_ok=True)
+        if self.no_venv:
+            logger.info(
+                "--no-venv: using the ambient Python environment "
+                "(skipping virtualenv creation and dependency installation)"
+            )
         # Create the virtual environment if it does not exist
-        if not venv_path.exists() or self.rebuild_analysis:
+        if not self.no_venv and (not venv_path.exists() or self.rebuild_analysis):
             logger.info(f"(Re-)creating virtual environment at {venv_path}")
             self._cmd_exec_helper(
                 [str(self._get_base_interpreter()), "-m", "venv", str(venv_path)],
@@ -245,36 +280,23 @@ class Codeanalyzer:
                 ("test-requirements.txt", ["-r"]),
             ]
 
-            for dep_file, pip_args in dependency_files:
+            for dep_file, _ in dependency_files:
                 if (self.project_dir / dep_file).exists():
                     logger.info(f"Installing dependencies from {dep_file}")
-                    try:
-                        self._cmd_exec_helper(
-                            [str(venv_python), "-m", "pip", "install", "-U"] + pip_args + [str(self.project_dir / dep_file)],
-                            cwd=self.project_dir,
-                            check=True,
-                        )
-                    except subprocess.CalledProcessError as e:
-                        logger.warning(
-                            f"Dependency installation from {dep_file} failed (analysis will continue): {e}"
-                        )
+                    self._install_into_venv(
+                        venv_python,
+                        ["--upgrade", "-r", str(self.project_dir / dep_file)],
+                    )
 
             # Handle Pipenv files
             if (self.project_dir / "Pipfile").exists():
                 logger.info("Installing dependencies from Pipfile")
-                try:
-                    self._cmd_exec_helper(
-                        [str(venv_python), "-m", "pip", "install", "pipenv"],
-                        cwd=self.project_dir,
-                        check=True,
-                    )
-                    self._cmd_exec_helper(
-                        ["pipenv", "install", "--dev"],
-                        cwd=self.project_dir,
-                        check=True,
-                    )
-                except subprocess.CalledProcessError as e:
-                    logger.warning(f"Pipenv dependency installation failed (analysis will continue): {e}")
+                self._install_into_venv(venv_python, ["pipenv"])
+                self._cmd_exec_helper(
+                    ["pipenv", "install", "--dev"],
+                    cwd=self.project_dir,
+                    check=True,
+                )
 
             # Handle conda environment files
             conda_files = ["conda.yml", "environment.yml"]
@@ -292,16 +314,71 @@ class Codeanalyzer:
 
             if any((self.project_dir / file).exists() for file in package_definition_files):
                 logger.info("Installing project in editable mode")
-                try:
-                    self._cmd_exec_helper(
-                        [str(venv_python), "-m", "pip", "install", "-e", str(self.project_dir)],
-                        cwd=self.project_dir,
-                        check=True,
-                    )
-                except subprocess.CalledProcessError as e:
-                    logger.warning(f"Editable install failed (analysis will continue): {e}")
+                self._install_into_venv(venv_python, ["-e", str(self.project_dir)])
             else:
                 logger.warning("No package definition files found, skipping editable installation")
+
+        # Point Jedi at the analysis venv so it resolves the project's third-party
+        # imports. This runs on both a fresh build and a lazy reuse of an existing
+        # venv -- previously self.virtualenv stayed None, so the install above was
+        # never actually used by the symbol-table builder. With --no-venv we leave
+        # it None so Jedi resolves against the ambient interpreter instead.
+        if not self.no_venv and venv_path.exists():
+            self.virtualenv = venv_path
+
+        if self.using_codeql:
+            logger.info(f"(Re-)initializing CodeQL analysis for {self.project_dir}")
+
+            # Resolve the CLI binary before anything else uses it: DB build
+            # below needs it, and so does every subsequent query run.
+            self.codeql_bin = self._ensure_codeql_bin()
+            # Download the standard query library pack (idempotent). The
+            # CLI install ships only the language extractors; the
+            # ``codeql/python-all`` library pack must be fetched separately.
+            self.codeql_packs_dir = self._ensure_codeql_packs(self.codeql_bin)
+
+            cache_root = self.cache_dir / "codeql"
+            cache_root.mkdir(parents=True, exist_ok=True)
+            self.db_path = cache_root / f"{self.project_dir.name}-db"
+            self.db_path.mkdir(exist_ok=True)
+
+            checksum_file = self.db_path / ".checksum"
+            current_checksum = self._compute_checksum(self.project_dir)
+
+            def is_cache_valid() -> bool:
+                if not (self.db_path / "db-python").exists():
+                    return False
+                if not checksum_file.exists():
+                    return False
+                return checksum_file.read_text().strip() == current_checksum
+
+            if self.rebuild_analysis or not is_cache_valid():
+                logger.info("Creating new CodeQL database...")
+
+                cmd = [
+                    str(self.codeql_bin),
+                    "database",
+                    "create",
+                    str(self.db_path),
+                    f"--source-root={self.project_dir}",
+                    "--language=python",
+                    "--overwrite",
+                ]
+
+                proc = subprocess.Popen(
+                    cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
+                )
+                _, err = proc.communicate()
+
+                if proc.returncode != 0:
+                    raise CodeQLExceptions.CodeQLDatabaseBuildException(
+                        f"Error building CodeQL database:\n{err.decode()}"
+                    )
+
+                checksum_file.write_text(current_checksum)
+
+            else:
+                logger.info(f"Reusing cached CodeQL DB at {self.db_path}")
 
         return self
 
@@ -309,6 +386,43 @@ class Codeanalyzer:
         if self.clear_cache and self.cache_dir.exists():
             logger.info(f"Clearing cache directory: {self.cache_dir}")
             shutil.rmtree(self.cache_dir)
+
+    @staticmethod
+    def _compute_external_symbols(symbol_table, call_graph):
+        """Build the external-symbol map: every call-graph endpoint whose signature
+        is not a declared class/callable in the symbol table is an external (an
+        imported library or builtin member). ``name``/``module`` are derived from
+        the signature (best effort: split on the last dot)."""
+        declared = set()
+
+        def walk_callable(c):
+            declared.add(c.signature)
+            for ic in (c.inner_callables or {}).values():
+                walk_callable(ic)
+            for cl in (c.inner_classes or {}).values():
+                walk_class(cl)
+
+        def walk_class(cl):
+            declared.add(cl.signature)
+            for m in (cl.methods or {}).values():
+                walk_callable(m)
+            for ic in (cl.inner_classes or {}).values():
+                walk_class(ic)
+
+        for mod in symbol_table.values():
+            for c in (mod.functions or {}).values():
+                walk_callable(c)
+            for cl in (mod.classes or {}).values():
+                walk_class(cl)
+
+        externals: Dict[str, PyExternalSymbol] = {}
+        for edge in call_graph:
+            for sig in (edge.source, edge.target):
+                if sig in declared or sig in externals:
+                    continue
+                module, name = sig.rsplit(".", 1) if "." in sig else (sig, sig)
+                externals[sig] = PyExternalSymbol(name=name, module=module)
+        return externals
 
     def analyze(self) -> PyApplication:
         """Analyze the project and return a PyApplication with symbol table.
@@ -330,21 +444,36 @@ class Codeanalyzer:
         # Build symbol table from cached application if available (if no available, the build a new one)
         symbol_table = self._build_symbol_table(cached_pyapplication.symbol_table if cached_pyapplication else {})
 
+        # Optional CodeQL pass: augments PyCallsites in-place before Jedi runs,
+        # so Jedi edges benefit from CodeQL's resolved callee_signatures.
+        codeql_edges = self._get_call_graph(symbol_table, augment_sites=True)
+
         resolve_unresolved_constructors(symbol_table)
 
-        # Level 1: Jedi call graph (always built when analysis_level >= 1).
+        # Level 1: Jedi + CodeQL call graph.
         jedi_edges = jedi_call_graph_edges(symbol_table)
-        call_graph = list(jedi_edges)
+        call_graph = merge_edges(jedi_edges, codeql_edges)
 
         if self.analysis_level >= 2:
-            # Level 2: add PyCG edges and merge with Jedi.
+            # Level 2: also add PyCG edges.
             pycg_edges = self._get_pycg_call_graph(symbol_table)
-            call_graph = merge_edges(jedi_edges, pycg_edges)
+            call_graph = merge_edges(call_graph, pycg_edges)
 
         call_graph = filter_external_edges(call_graph, symbol_table)
 
+        # Classify call-graph endpoints that are not declared in the symbol table
+        # (imported library / builtin members) once, so the JSON and Neo4j backends
+        # share one authoritative external-symbol set.
+        external_symbols = self._compute_external_symbols(symbol_table, call_graph)
+
         # Recreate pyapplication
-        app = PyApplication.builder().symbol_table(symbol_table).call_graph(call_graph).build()
+        app = (
+            PyApplication.builder()
+            .symbol_table(symbol_table)
+            .call_graph(call_graph)
+            .external_symbols(external_symbols)
+            .build()
+        )
         
         # Save to cache
         self._save_analysis_cache(app, cache_file)
