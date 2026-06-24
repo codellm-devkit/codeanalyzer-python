@@ -50,7 +50,7 @@ def test_no_venv_skips_virtualenv(
             "--input", str(single_functionalities__stuff_nested_in_functions),
             "--output", str(out),
             "--cache-dir", str(cache),
-            "--no-venv", "--no-codeql", "--no-ray",
+            "--no-venv", "--no-ray",
         ],
         env={"NO_COLOR": "1", "TERM": "dumb"},
     )
@@ -131,12 +131,12 @@ def _run_analysis(cli_runner, fixture_dir, analysis_level=1, file_name=None, ext
 # ---------------------------------------------------------------------------
 
 def test_decorators_hof_level1(cli_runner, single_functionalities__decorators_and_hof):
-    """Level 1 on decorators_and_hof: symbol table populated, call_graph empty."""
+    """Level 1 on decorators_and_hof: symbol table populated, call_graph has Jedi edges."""
     main_py = single_functionalities__decorators_and_hof / "main.py"
     obj = _run_analysis(cli_runner, single_functionalities__decorators_and_hof,
                         analysis_level=1, file_name=main_py)
     assert len(obj["symbol_table"]) > 0
-    assert obj["call_graph"] == [], "Level 1 must not populate call_graph"
+    assert len(obj["call_graph"]) > 0, "Level 1 must populate call_graph with Jedi edges"
     sigs = {c["signature"] for mod in obj["symbol_table"].values()
             for c in _all_callables(mod)}
     assert any("main" in s for s in sigs), "Expected 'main' callable in symbol table"
@@ -176,7 +176,7 @@ def test_class_hierarchy_level1(cli_runner, single_functionalities__class_hierar
     main_py = single_functionalities__class_hierarchy / "main.py"
     obj = _run_analysis(cli_runner, single_functionalities__class_hierarchy,
                         analysis_level=1, file_name=main_py)
-    assert obj["call_graph"] == [], "Level 1 must not populate call_graph"
+    assert len(obj["call_graph"]) > 0, "Level 1 must populate call_graph with Jedi edges"
     classes = {cls for mod in obj["symbol_table"].values()
                for cls in mod.get("classes", {}).keys()}
     assert any("Animal" in c for c in classes)
@@ -218,7 +218,7 @@ def test_async_patterns_level1(cli_runner, single_functionalities__async_pattern
     main_py = single_functionalities__async_patterns / "main.py"
     obj = _run_analysis(cli_runner, single_functionalities__async_patterns,
                         analysis_level=1, file_name=main_py)
-    assert obj["call_graph"] == [], "Level 1 must not populate call_graph"
+    assert len(obj["call_graph"]) > 0, "Level 1 must populate call_graph with Jedi edges"
     sigs = {c["signature"] for mod in obj["symbol_table"].values()
             for c in _all_callables(mod)}
     assert any("fetch_data" in s for s in sigs)
@@ -264,7 +264,7 @@ def test_flask_level1(cli_runner, whole_applications__flask):
     """Level 1 on Flask 3.0.3: symbol table populated."""
     obj = _run_analysis(cli_runner, whole_applications__flask, analysis_level=1)
     assert len(obj["symbol_table"]) > 0
-    assert obj["call_graph"] == [], "Level 1 must not populate call_graph"
+    assert len(obj["call_graph"]) > 0, "Level 1 must populate call_graph with Jedi edges"
     assert any("flask" in mod_path.lower() for mod_path in obj["symbol_table"]), \
         "Flask modules should be in symbol table"
 
@@ -288,7 +288,7 @@ def test_requests_level1(cli_runner, whole_applications__requests):
     """Level 1 on requests 2.31.0: symbol table populated."""
     obj = _run_analysis(cli_runner, whole_applications__requests, analysis_level=1)
     assert len(obj["symbol_table"]) > 0
-    assert obj["call_graph"] == [], "Level 1 must not populate call_graph"
+    assert len(obj["call_graph"]) > 0, "Level 1 must populate call_graph with Jedi edges"
 
 
 def test_requests_level2(cli_runner, whole_applications__requests):
