@@ -32,7 +32,7 @@ def main(
         typer.Option(
             "-a",
             "--analysis-level",
-            help="Analysis depth: 1=symbol table only, 2=+call graph (PyCG+Jedi).",
+            help="Analysis depth: 1=symbol table+Jedi call graph, 2=+PyCG call graph.",
             min=1,
             max=2,
         ),

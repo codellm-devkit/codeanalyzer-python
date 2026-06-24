@@ -246,6 +246,27 @@ def resolve_unresolved_constructors(symbol_table: Dict[str, PyModule]) -> int:
     return resolved
 
 
+def filter_external_edges(
+    edges: List[PyCallEdge],
+    symbol_table: Dict[str, PyModule],
+) -> List[PyCallEdge]:
+    """Remove edges where both source and target are outside the app namespace.
+
+    Edges where an app callable calls a library function (or vice-versa) are
+    retained; only lib→lib edges are dropped.  The app symbol set is built by
+    walking every callable in the symbol table recursively (including nested
+    functions and closures via ``inner_callables``) plus every class, so
+    PyCG-discovered closure nodes are correctly recognised as app symbols.
+    """
+    app_symbols: set = {c.signature for c in iter_callables_in_symbol_table(symbol_table)}
+    app_symbols.update(cls.signature for cls in iter_classes_in_symbol_table(symbol_table))
+
+    return [
+        e for e in edges
+        if e.source in app_symbols or e.target in app_symbols
+    ]
+
+
 def merge_edges(*edge_lists: list) -> list:
     """Merge multiple ``List[PyCallEdge]`` into one.
 

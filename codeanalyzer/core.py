@@ -11,6 +11,7 @@ from codeanalyzer.utils import logger
 from codeanalyzer.schema import PyApplication, PyModule, model_dump_json, model_validate_json
 from codeanalyzer.schema.py_schema import PyCallEdge
 from codeanalyzer.semantic_analysis.call_graph import (
+    filter_external_edges,
     jedi_call_graph_edges,
     merge_edges,
     resolve_unresolved_constructors,
@@ -329,22 +330,18 @@ class Codeanalyzer:
         # Build symbol table from cached application if available (if no available, the build a new one)
         symbol_table = self._build_symbol_table(cached_pyapplication.symbol_table if cached_pyapplication else {})
 
-        # Level 1: symbol table only — constructor heuristic still runs to
-        # enrich PyCallsite.callee_signature inside the symbol table itself,
-        # but no call_graph edge list is produced.
         resolve_unresolved_constructors(symbol_table)
 
-        call_graph = []
+        # Level 1: Jedi call graph (always built when analysis_level >= 1).
+        jedi_edges = jedi_call_graph_edges(symbol_table)
+        call_graph = list(jedi_edges)
+
         if self.analysis_level >= 2:
-            # Level 2: build call graph.
-            #   1. Derive Jedi edges from the augmented symbol table.
-            #   2. Run PyCG (iterative name-pointer analysis) for additional
-            #      edges — particularly locally-scoped function calls and
-            #      higher-order patterns that Jedi misses.
-            #   3. Merge; provenance unions for edges seen by both backends.
-            jedi_edges = jedi_call_graph_edges(symbol_table)
+            # Level 2: add PyCG edges and merge with Jedi.
             pycg_edges = self._get_pycg_call_graph(symbol_table)
             call_graph = merge_edges(jedi_edges, pycg_edges)
+
+        call_graph = filter_external_edges(call_graph, symbol_table)
 
         # Recreate pyapplication
         app = PyApplication.builder().symbol_table(symbol_table).call_graph(call_graph).build()
