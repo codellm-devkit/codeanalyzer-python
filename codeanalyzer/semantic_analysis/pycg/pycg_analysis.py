@@ -81,6 +81,62 @@ from codeanalyzer.semantic_analysis.pycg.pycg_exceptions import PyCGExceptions
 from codeanalyzer.utils import logger
 
 
+def _pycg_shard_worker(
+    entry_points: List[str],
+    package_dir: str,
+    prefix: str,
+) -> List[tuple]:
+    """Run PyCG on one shard; called in a Ray worker process.
+
+    Returns a list of ``(source, target, weight)`` tuples that the caller
+    converts to :class:`PyCallEdge` objects.  This function is a plain
+    module-level callable so it can be pickled by Ray without capturing any
+    class-level state.
+    """
+    import importlib
+    import sys
+
+    # Python 3.13 compatibility pre-imports (mirroring the top-level block).
+    import importlib.metadata  # noqa: F401
+    import importlib.util  # noqa: F401
+    import json  # noqa: F401
+    from collections import Counter as _WorkerCounter
+
+    CallGraphGenerator = None
+    for pkg_name in ("pycg", "PyCG"):
+        try:
+            mod = importlib.import_module(pkg_name)
+            sys.modules.setdefault("pycg", mod)
+            sys.modules.setdefault("PyCG", mod)
+            pycg_mod = importlib.import_module(f"{pkg_name}.pycg")
+            CallGraphGenerator = pycg_mod.CallGraphGenerator
+            break
+        except ImportError:
+            continue
+
+    if CallGraphGenerator is None:
+        raise RuntimeError("pycg is not installed in Ray worker — run `pip install pycg`")
+
+    _apply_pycg_posonly_patch()
+
+    cg = CallGraphGenerator(
+        entry_points=entry_points,
+        package=package_dir,
+        max_iter=-1,
+        operation="call-graph",
+    )
+    cg.analyze()
+
+    edge_counts = _WorkerCounter()
+    for src, dst in cg.output_edges():
+        if prefix:
+            src = f"{prefix}.{src}"
+            dst = f"{prefix}.{dst}"
+        edge_counts[(src, dst)] += 1
+
+    return [(src, dst, count) for (src, dst), count in edge_counts.items()]
+
+
 def _apply_pycg_posonly_patch() -> None:
     """Monkey-patch PyCG's PreProcessor to handle Python 3.8+ positional-only params.
 
@@ -256,6 +312,7 @@ class PyCG:
         shard: bool = False,
         shard_ceiling: Optional[int] = None,
         shard_timeout: Optional[int] = None,
+        using_ray: bool = False,
     ) -> None:
         self.project_dir = Path(project_dir).resolve()
         self.skip_tests = skip_tests
@@ -266,6 +323,7 @@ class PyCG:
         self.shard_timeout = (
             shard_timeout if shard_timeout is not None else self._PYCG_SHARD_TIMEOUT
         )
+        self.using_ray = using_ray
         self._CallGraphGenerator: Optional[Any] = None
 
     # ------------------------------------------------------------------
@@ -423,6 +481,9 @@ class PyCG:
             len(entry_points), len(shards),
         )
 
+        if self.using_ray:
+            return self._build_sharded_ray(shards)
+
         all_edges: List[PyCallEdge] = []
         skipped = 0
         for pkg_root, files in shards.items():
@@ -479,6 +540,96 @@ class PyCG:
         result = list(merged.values())
         logger.debug(
             "PyCG: sharding produced %d edges (%d before dedup) from %d/%d shard(s)",
+            len(result), len(all_edges), len(shards) - skipped, len(shards),
+        )
+        return result
+
+    def _build_sharded_ray(self, shards: Dict[Path, List[str]]) -> List[PyCallEdge]:
+        """Ray-parallel variant of the sequential shard loop.
+
+        All eligible shards are submitted as Ray remote tasks simultaneously.
+        ``ray.wait(timeout=shard_timeout)`` is used to collect results and
+        cancel stragglers — Ray workers cannot use SIGALRM, so the timeout is
+        enforced at the orchestrator level instead.
+        """
+        import ray
+
+        remote_fn = ray.remote(_pycg_shard_worker)
+        futures: List[Any] = []
+        meta: Dict[Any, tuple] = {}  # ObjectRef -> (pkg_label, n_files)
+        skipped = 0
+
+        for pkg_root, files in shards.items():
+            n = len(files)
+            pkg_label = str(pkg_root.relative_to(self.project_dir)) or "."
+            if n > self.shard_ceiling:
+                logger.warning(
+                    "PyCG shard '%s': %d files exceeds shard ceiling of %d — skipped",
+                    pkg_label, n, self.shard_ceiling,
+                )
+                skipped += 1
+                continue
+            prefix = self._package_prefix(pkg_root, self.project_dir)
+            fut = remote_fn.remote(files, str(pkg_root), prefix)
+            futures.append(fut)
+            meta[fut] = (pkg_label, n)
+
+        all_edges: List[PyCallEdge] = []
+        if futures:
+            timeout = float(self.shard_timeout) if self.shard_timeout > 0 else None
+            ready, timed_out = ray.wait(futures, num_returns=len(futures), timeout=timeout)
+
+            for fut in ready:
+                pkg_label, n = meta[fut]
+                try:
+                    triples = ray.get(fut)
+                    edges = [
+                        PyCallEdge(source=s, target=t, weight=w, provenance=["pycg"])
+                        for s, t, w in triples
+                    ]
+                    all_edges.extend(edges)
+                    logger.debug(
+                        "PyCG shard '%s': %d edges from %d files (Ray)",
+                        pkg_label, len(edges), n,
+                    )
+                except Exception as exc:
+                    logger.warning("PyCG shard '%s' failed — skipped: %s", pkg_label, exc)
+                    skipped += 1
+
+            for fut in timed_out:
+                pkg_label, _ = meta[fut]
+                logger.warning(
+                    "PyCG shard '%s' timed out after %ds — skipped",
+                    pkg_label, self.shard_timeout,
+                )
+                ray.cancel(fut, force=True)
+                skipped += 1
+
+        if skipped:
+            logger.warning(
+                "PyCG: %d shard(s) were skipped (exceeded %d-file ceiling, "
+                "%ds timeout, or failed)",
+                skipped, self.shard_ceiling, self.shard_timeout,
+            )
+
+        merged: Dict[tuple, PyCallEdge] = {}
+        for edge in all_edges:
+            key = (edge.source, edge.target)
+            if key in merged:
+                existing = merged[key]
+                merged[key] = PyCallEdge(
+                    source=existing.source,
+                    target=existing.target,
+                    weight=existing.weight + edge.weight,
+                    provenance=existing.provenance,
+                )
+            else:
+                merged[key] = edge
+
+        result = list(merged.values())
+        logger.debug(
+            "PyCG: Ray-parallel sharding produced %d edges (%d before dedup) "
+            "from %d/%d shard(s)",
             len(result), len(all_edges), len(shards) - skipped, len(shards),
         )
         return result

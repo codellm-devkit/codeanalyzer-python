@@ -636,6 +636,7 @@ class Codeanalyzer:
                 shard=self.options.pycg_shard,
                 shard_ceiling=self.options.pycg_shard_ceiling,
                 shard_timeout=self.options.pycg_shard_timeout,
+                using_ray=self.using_ray,
             )
             return pycg.build_call_graph_edges(symbol_table)
         except PyCGExceptions.PyCGImportError as exc:
