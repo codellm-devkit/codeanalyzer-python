@@ -326,60 +326,6 @@ class Codeanalyzer:
         if not self.no_venv and venv_path.exists():
             self.virtualenv = venv_path
 
-        if self.using_codeql:
-            logger.info(f"(Re-)initializing CodeQL analysis for {self.project_dir}")
-
-            # Resolve the CLI binary before anything else uses it: DB build
-            # below needs it, and so does every subsequent query run.
-            self.codeql_bin = self._ensure_codeql_bin()
-            # Download the standard query library pack (idempotent). The
-            # CLI install ships only the language extractors; the
-            # ``codeql/python-all`` library pack must be fetched separately.
-            self.codeql_packs_dir = self._ensure_codeql_packs(self.codeql_bin)
-
-            cache_root = self.cache_dir / "codeql"
-            cache_root.mkdir(parents=True, exist_ok=True)
-            self.db_path = cache_root / f"{self.project_dir.name}-db"
-            self.db_path.mkdir(exist_ok=True)
-
-            checksum_file = self.db_path / ".checksum"
-            current_checksum = self._compute_checksum(self.project_dir)
-
-            def is_cache_valid() -> bool:
-                if not (self.db_path / "db-python").exists():
-                    return False
-                if not checksum_file.exists():
-                    return False
-                return checksum_file.read_text().strip() == current_checksum
-
-            if self.rebuild_analysis or not is_cache_valid():
-                logger.info("Creating new CodeQL database...")
-
-                cmd = [
-                    str(self.codeql_bin),
-                    "database",
-                    "create",
-                    str(self.db_path),
-                    f"--source-root={self.project_dir}",
-                    "--language=python",
-                    "--overwrite",
-                ]
-
-                proc = subprocess.Popen(
-                    cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
-                )
-                _, err = proc.communicate()
-
-                if proc.returncode != 0:
-                    raise CodeQLExceptions.CodeQLDatabaseBuildException(
-                        f"Error building CodeQL database:\n{err.decode()}"
-                    )
-
-                checksum_file.write_text(current_checksum)
-
-            else:
-                logger.info(f"Reusing cached CodeQL DB at {self.db_path}")
-
         return self
 
     def __exit__(self, *args, **kwargs) -> None:
@@ -444,15 +390,11 @@ class Codeanalyzer:
         # Build symbol table from cached application if available (if no available, the build a new one)
         symbol_table = self._build_symbol_table(cached_pyapplication.symbol_table if cached_pyapplication else {})
 
-        # Optional CodeQL pass: augments PyCallsites in-place before Jedi runs,
-        # so Jedi edges benefit from CodeQL's resolved callee_signatures.
-        codeql_edges = self._get_call_graph(symbol_table, augment_sites=True)
-
         resolve_unresolved_constructors(symbol_table)
 
-        # Level 1: Jedi + CodeQL call graph.
+        # Level 1: Jedi call graph.
         jedi_edges = jedi_call_graph_edges(symbol_table)
-        call_graph = merge_edges(jedi_edges, codeql_edges)
+        call_graph = list(jedi_edges)
 
         if self.analysis_level >= 2:
             # Level 2: also add PyCG edges.
