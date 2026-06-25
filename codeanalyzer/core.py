@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional, Union, List
 
+import time
+
 import ray
 from codeanalyzer.utils import logger
 from codeanalyzer.schema import (
@@ -81,6 +83,7 @@ class Codeanalyzer:
         capture_output: bool = True,
         check: bool = True,
         suppress_output: bool = False,
+        log_on_failure: bool = True,
     ) -> subprocess.CompletedProcess:
         """
         Runs a subprocess with real-time output streaming to the logger.
@@ -90,7 +93,10 @@ class Codeanalyzer:
             cwd: Working directory to run the command in.
             capture_output: If True, retains and returns the output.
             check: If True, raises CalledProcessError on non-zero exit.
-            suppress_output: If True, silences log output.
+            suppress_output: If True, silences per-line debug output.
+            log_on_failure: If False, suppresses the error-level log on
+                non-zero exit (use when the caller handles the exception and
+                will emit its own diagnostic).
 
         Returns:
             subprocess.CompletedProcess
@@ -121,9 +127,10 @@ class Codeanalyzer:
 
         if check and returncode != 0:
             error_output = "\n".join(output_lines)
-            logger.error(f"Command failed with exit code {returncode}: {' '.join(cmd)}")
-            if error_output:
-                logger.error(f"Command output:\n{error_output}")
+            if log_on_failure:
+                logger.error(f"Command failed with exit code {returncode}: {' '.join(cmd)}")
+                if error_output:
+                    logger.error(f"Command output:\n{error_output}")
             raise subprocess.CalledProcessError(returncode, cmd, output=error_output)
 
         return subprocess.CompletedProcess(
@@ -244,13 +251,22 @@ class Codeanalyzer:
     def _install_into_venv(self, venv_python: Path, args: List[str]) -> None:
         """Install packages into the target venv, preferring uv for speed (parallel
         downloads + a shared global cache) and falling back to the venv's own pip
-        when uv is unavailable."""
+        when uv is unavailable.
+
+        Raises ``subprocess.CalledProcessError`` on failure; callers in
+        ``__enter__`` catch this and warn-and-continue so a single failing
+        package (e.g. a C extension that needs system libs) does not abort the
+        entire analysis.
+        """
         uv = self._uv_bin()
         if uv:
             cmd = [uv, "pip", "install", "--python", str(venv_python), *args]
         else:
             cmd = [str(venv_python), "-m", "pip", "install", *args]
-        self._cmd_exec_helper(cmd, cwd=self.project_dir, check=True)
+        self._cmd_exec_helper(
+            cmd, cwd=self.project_dir, check=True,
+            suppress_output=True, log_on_failure=False,
+        )
 
     def __enter__(self) -> "Codeanalyzer":
         # If no virtualenv is provided, try to create one using requirements.txt or pyproject.toml
@@ -283,20 +299,32 @@ class Codeanalyzer:
             for dep_file, _ in dependency_files:
                 if (self.project_dir / dep_file).exists():
                     logger.info(f"Installing dependencies from {dep_file}")
-                    self._install_into_venv(
-                        venv_python,
-                        ["--upgrade", "-r", str(self.project_dir / dep_file)],
-                    )
+                    try:
+                        self._install_into_venv(
+                            venv_python,
+                            ["--upgrade", "-r", str(self.project_dir / dep_file)],
+                        )
+                    except subprocess.CalledProcessError as exc:
+                        logger.warning(
+                            f"Dependency installation from {dep_file} failed "
+                            f"(exit {exc.returncode}) — continuing without it. "
+                            "Jedi type resolution may be incomplete."
+                        )
 
             # Handle Pipenv files
             if (self.project_dir / "Pipfile").exists():
                 logger.info("Installing dependencies from Pipfile")
-                self._install_into_venv(venv_python, ["pipenv"])
-                self._cmd_exec_helper(
-                    ["pipenv", "install", "--dev"],
-                    cwd=self.project_dir,
-                    check=True,
-                )
+                try:
+                    self._install_into_venv(venv_python, ["pipenv"])
+                    self._cmd_exec_helper(
+                        ["pipenv", "install", "--dev"],
+                        cwd=self.project_dir,
+                        check=True,
+                    )
+                except subprocess.CalledProcessError as exc:
+                    logger.warning(
+                        f"Pipenv installation failed (exit {exc.returncode}) — continuing without it."
+                    )
 
             # Handle conda environment files
             conda_files = ["conda.yml", "environment.yml"]
@@ -314,7 +342,13 @@ class Codeanalyzer:
 
             if any((self.project_dir / file).exists() for file in package_definition_files):
                 logger.info("Installing project in editable mode")
-                self._install_into_venv(venv_python, ["-e", str(self.project_dir)])
+                try:
+                    self._install_into_venv(venv_python, ["-e", str(self.project_dir)])
+                except subprocess.CalledProcessError as exc:
+                    logger.warning(
+                        f"Editable install failed (exit {exc.returncode}) — "
+                        "continuing without it. Jedi type resolution may be incomplete."
+                    )
             else:
                 logger.warning("No package definition files found, skipping editable installation")
 
@@ -393,8 +427,10 @@ class Codeanalyzer:
         resolve_unresolved_constructors(symbol_table)
 
         # Level 1: Jedi call graph.
+        t0_jedi = time.perf_counter()
         jedi_edges = jedi_call_graph_edges(symbol_table)
         call_graph = list(jedi_edges)
+        logger.info("✅ Jedi: %d edges in %.1fs", len(call_graph), time.perf_counter() - t0_jedi)
 
         if self.analysis_level >= 2:
             # Level 2: also add PyCG edges.
@@ -508,7 +544,8 @@ class Codeanalyzer:
             Dict[str, PyModule]: A dictionary mapping file paths to PyModule objects.
         """
         symbol_table: Dict[str, PyModule] = {}
-        
+        t0_st = time.perf_counter()
+
         # Handle single file analysis
         if self.file_name is not None:
             single_file = self.project_dir / self.file_name
@@ -615,7 +652,10 @@ class Codeanalyzer:
             if files_from_cache > 0:
                 logger.info(f"Reused {files_from_cache} files from cache, processed {files_processed} new/changed files")
 
-        logger.info("✅ Symbol table generation complete.")
+        logger.info(
+            "✅ Symbol table: %d modules in %.1fs",
+            len(symbol_table), time.perf_counter() - t0_st,
+        )
         return symbol_table
 
     def _get_pycg_call_graph(

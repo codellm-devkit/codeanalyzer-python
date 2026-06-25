@@ -3,8 +3,11 @@ import logging
 from rich.console import Console
 from rich.logging import RichHandler
 
-# Set up base logger with RichHandler
-console = Console()
+# Logs go to stderr so stdout stays clean for piped output (e.g. --emit json | jq).
+# The same console instance is shared with ProgressBar so Rich can coordinate
+# live-display updates with log messages without the two consoles stomping on each
+# other (which causes progress bars to appear twice when a warning interrupts them).
+console = Console(stderr=True)
 handler = RichHandler(console=console, show_time=True, show_level=True, show_path=False)
 
 logger = logging.getLogger("codeanalyzer")

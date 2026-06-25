@@ -44,6 +44,7 @@ import importlib.util  # noqa: F401
 import contextlib
 import json  # noqa: F401
 import signal
+import time
 
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -78,7 +79,7 @@ def _shard_timeout(seconds: int) -> Generator[None, None, None]:
 from codeanalyzer.schema.py_schema import PyCallEdge, PyModule
 from codeanalyzer.semantic_analysis.call_graph import iter_callables_in_symbol_table
 from codeanalyzer.semantic_analysis.pycg.pycg_exceptions import PyCGExceptions
-from codeanalyzer.utils import logger
+from codeanalyzer.utils import ProgressBar, logger
 
 
 def _pycg_shard_worker(
@@ -486,34 +487,37 @@ class PyCG:
 
         all_edges: List[PyCallEdge] = []
         skipped = 0
-        for pkg_root, files in shards.items():
-            n = len(files)
-            pkg_label = str(pkg_root.relative_to(self.project_dir)) or "."
-            if n > self.shard_ceiling:
-                logger.warning(
-                    "PyCG shard '%s': %d files exceeds shard ceiling of %d — skipped",
-                    pkg_label, n, self.shard_ceiling,
-                )
-                skipped += 1
-                continue
-            prefix = self._package_prefix(pkg_root, self.project_dir)
-            try:
-                with _shard_timeout(self.shard_timeout):
-                    edges = self._run_pycg_batch(files, pkg_root, resolver, prefix=prefix)
-                all_edges.extend(edges)
-                logger.debug(
-                    "PyCG shard '%s': %d edges from %d files",
-                    pkg_label, len(edges), n,
-                )
-            except TimeoutError as exc:
-                logger.warning(
-                    "PyCG shard '%s' timed out after %ds — skipped",
-                    pkg_label, self.shard_timeout,
-                )
-                skipped += 1
-            except PyCGExceptions.PyCGAnalysisError as exc:
-                logger.warning("PyCG shard '%s' failed — skipped: %s", pkg_label, exc)
-                skipped += 1
+        with ProgressBar(len(shards), "Building call graph shards", item_label="shards") as progress:
+            for pkg_root, files in shards.items():
+                n = len(files)
+                pkg_label = str(pkg_root.relative_to(self.project_dir)) or "."
+                if n > self.shard_ceiling:
+                    logger.warning(
+                        "PyCG shard '%s': %d files exceeds shard ceiling of %d — skipped",
+                        pkg_label, n, self.shard_ceiling,
+                    )
+                    skipped += 1
+                    progress.advance()
+                    continue
+                prefix = self._package_prefix(pkg_root, self.project_dir)
+                try:
+                    with _shard_timeout(self.shard_timeout):
+                        edges = self._run_pycg_batch(files, pkg_root, resolver, prefix=prefix)
+                    all_edges.extend(edges)
+                    logger.debug(
+                        "PyCG shard '%s': %d edges from %d files",
+                        pkg_label, len(edges), n,
+                    )
+                except TimeoutError:
+                    logger.warning(
+                        "PyCG shard '%s' timed out after %ds — skipped",
+                        pkg_label, self.shard_timeout,
+                    )
+                    skipped += 1
+                except PyCGExceptions.PyCGAnalysisError as exc:
+                    logger.warning("PyCG shard '%s' failed — skipped: %s", pkg_label, exc)
+                    skipped += 1
+                progress.advance()
 
         if skipped:
             logger.warning(
@@ -538,9 +542,9 @@ class PyCG:
                 merged[key] = edge
 
         result = list(merged.values())
-        logger.debug(
-            "PyCG: sharding produced %d edges (%d before dedup) from %d/%d shard(s)",
-            len(result), len(all_edges), len(shards) - skipped, len(shards),
+        logger.info(
+            "PyCG: %d edges from %d/%d shard(s) (%d before dedup)",
+            len(result), len(shards) - skipped, len(shards), len(all_edges),
         )
         return result
 
@@ -552,34 +556,57 @@ class PyCG:
         cancel stragglers — Ray workers cannot use SIGALRM, so the timeout is
         enforced at the orchestrator level instead.
         """
+        import os
         import ray
+
+        # force-cancel kills worker processes; suppress Ray's "worker died
+        # unexpectedly" noise since the death is intentional here.
+        os.environ.setdefault("RAY_IGNORE_UNHANDLED_ERRORS", "1")
 
         remote_fn = ray.remote(_pycg_shard_worker)
         futures: List[Any] = []
         meta: Dict[Any, tuple] = {}  # ObjectRef -> (pkg_label, n_files)
         skipped = 0
 
-        for pkg_root, files in shards.items():
-            n = len(files)
-            pkg_label = str(pkg_root.relative_to(self.project_dir)) or "."
-            if n > self.shard_ceiling:
-                logger.warning(
-                    "PyCG shard '%s': %d files exceeds shard ceiling of %d — skipped",
-                    pkg_label, n, self.shard_ceiling,
-                )
-                skipped += 1
-                continue
-            prefix = self._package_prefix(pkg_root, self.project_dir)
-            fut = remote_fn.remote(files, str(pkg_root), prefix)
-            futures.append(fut)
-            meta[fut] = (pkg_label, n)
-
         all_edges: List[PyCallEdge] = []
-        if futures:
-            timeout = float(self.shard_timeout) if self.shard_timeout > 0 else None
-            ready, timed_out = ray.wait(futures, num_returns=len(futures), timeout=timeout)
+        with ProgressBar(len(shards), "Building call graph shards (parallel)", item_label="shards") as progress:
+            for pkg_root, files in shards.items():
+                n = len(files)
+                pkg_label = str(pkg_root.relative_to(self.project_dir)) or "."
+                if n > self.shard_ceiling:
+                    logger.warning(
+                        "PyCG shard '%s': %d files exceeds shard ceiling of %d — skipped",
+                        pkg_label, n, self.shard_ceiling,
+                    )
+                    skipped += 1
+                    progress.advance()
+                    continue
+                prefix = self._package_prefix(pkg_root, self.project_dir)
+                fut = remote_fn.remote(files, str(pkg_root), prefix)
+                futures.append(fut)
+                meta[fut] = (pkg_label, n)
 
-            for fut in ready:
+            # Collect results one shard at a time so the progress bar ticks per
+            # completed shard.  A single deadline governs the whole batch: tasks
+            # submitted simultaneously all have the same wall-clock budget.
+            deadline = (
+                time.perf_counter() + float(self.shard_timeout)
+                if self.shard_timeout > 0 else None
+            )
+            pending = list(futures)
+            while pending:
+                if deadline is not None:
+                    remaining = deadline - time.perf_counter()
+                    if remaining <= 0:
+                        break
+                else:
+                    remaining = None
+
+                ready, pending = ray.wait(pending, num_returns=1, timeout=remaining)
+                if not ready:
+                    break  # deadline reached before any new result
+
+                fut = ready[0]
                 pkg_label, n = meta[fut]
                 try:
                     triples = ray.get(fut)
@@ -595,8 +622,10 @@ class PyCG:
                 except Exception as exc:
                     logger.warning("PyCG shard '%s' failed — skipped: %s", pkg_label, exc)
                     skipped += 1
+                progress.advance()
 
-            for fut in timed_out:
+            # Cancel any shards that did not complete before the deadline.
+            for fut in pending:
                 pkg_label, _ = meta[fut]
                 logger.warning(
                     "PyCG shard '%s' timed out after %ds — skipped",
@@ -604,6 +633,7 @@ class PyCG:
                 )
                 ray.cancel(fut, force=True)
                 skipped += 1
+                progress.advance()
 
         if skipped:
             logger.warning(
@@ -627,10 +657,9 @@ class PyCG:
                 merged[key] = edge
 
         result = list(merged.values())
-        logger.debug(
-            "PyCG: Ray-parallel sharding produced %d edges (%d before dedup) "
-            "from %d/%d shard(s)",
-            len(result), len(all_edges), len(shards) - skipped, len(shards),
+        logger.info(
+            "PyCG: %d edges from %d/%d shard(s) (%d before dedup, Ray-parallel)",
+            len(result), len(shards) - skipped, len(shards), len(all_edges),
         )
         return result
 
@@ -668,13 +697,16 @@ class PyCG:
 
         n_files = len(entry_points)
         resolver = _PyCGCallableResolver.from_symbol_table(symbol_table)
+        t0 = time.perf_counter()
 
         if n_files > self._PYCG_FILE_CEILING:
             if self.shard:
-                logger.debug(
-                    "PyCG: %d entry points — running sharded analysis", n_files
+                mode = "Ray-parallel" if self.using_ray else "sequential"
+                logger.info(
+                    "PyCG: starting sharded call graph analysis (%d files, %s)",
+                    n_files, mode,
                 )
-                return self._build_sharded(entry_points, resolver)
+                edges = self._build_sharded(entry_points, resolver)
             else:
                 logger.warning(
                     "PyCG: %d entry points exceeds ceiling of %d — "
@@ -683,15 +715,16 @@ class PyCG:
                     n_files, self._PYCG_FILE_CEILING,
                 )
                 return []
+        else:
+            # Small project (≤ ceiling): whole-project analysis.
+            logger.info("PyCG: starting whole-project call graph analysis (%d files)", n_files)
+            try:
+                edges = self._run_pycg_batch(
+                    entry_points, self.project_dir, resolver, prefix=""
+                )
+            except PyCGExceptions.PyCGAnalysisError as exc:
+                raise
 
-        # Small project (≤ ceiling): whole-project analysis.
-        logger.debug("PyCG: %d entry points — running whole-project analysis", n_files)
-        try:
-            edges = self._run_pycg_batch(
-                entry_points, self.project_dir, resolver, prefix=""
-            )
-        except PyCGExceptions.PyCGAnalysisError as exc:
-            raise
-
-        logger.debug("PyCG: produced %d call edges", len(edges))
+        elapsed = time.perf_counter() - t0
+        logger.info("✅ PyCG: %d edges in %.1fs", len(edges), elapsed)
         return edges
