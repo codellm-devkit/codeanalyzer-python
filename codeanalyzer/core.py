@@ -683,6 +683,7 @@ class Codeanalyzer:
                 shard_ceiling=self.options.pycg_shard_ceiling,
                 shard_timeout=self.options.pycg_shard_timeout,
                 shard_strategy=self.options.pycg_shard_strategy,
+                max_iter=self.options.pycg_max_iter,
                 using_ray=self.using_ray,
             )
             return pycg.build_call_graph_edges(symbol_table, jedi_edges=jedi_edges)

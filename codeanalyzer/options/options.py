@@ -61,3 +61,4 @@ class AnalysisOptions:
     pycg_shard_ceiling: int = 100
     pycg_shard_timeout: int = 120
     pycg_shard_strategy: ShardStrategy = ShardStrategy.JEDI
+    pycg_max_iter: int = 50

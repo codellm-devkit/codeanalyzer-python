@@ -154,13 +154,14 @@ def _pycg_shard_worker(
     entry_points: List[str],
     package_dir: str,
     prefix: str,
+    max_iter: int = -1,
 ) -> List[tuple]:
     """Run PyCG on one shard; called in a Ray worker process.
 
     Returns a list of ``(source, target, weight)`` tuples that the caller
     converts to :class:`PyCallEdge` objects.  This function is a plain
     module-level callable so it can be pickled by Ray without capturing any
-    class-level state.
+    class-level state.  *max_iter* caps PyCG's fixpoint passes (-1 = unbounded).
     """
     import importlib
     import sys
@@ -191,7 +192,7 @@ def _pycg_shard_worker(
     cg = CallGraphGenerator(
         entry_points=entry_points,
         package=package_dir,
-        max_iter=-1,
+        max_iter=max_iter,
         operation="call-graph",
     )
     cg.analyze()
@@ -366,7 +367,22 @@ class PyCG:
     # --pycg-shard-timeout.  Set to 0 to disable.
     _PYCG_SHARD_TIMEOUT: int = 120
 
-    # Directory names that should never be fed to PyCG as entry points.
+    # Cap on PyCG's outer fixpoint passes.  PyCG runs PostProcessor until the
+    # def/scope/MRO state stops changing; its abstract domain (field-sensitive
+    # access paths, no k-limiting or widening) has no ascending-chain bound, so
+    # on heavy metaclass/mixin code (e.g. an ORM) the def set can balloon into
+    # the thousands and each O(defs^2) pass costs seconds — convergence, if it
+    # comes, takes many passes.  A finite cap turns "loop until killed" into a
+    # sound-but-incomplete result that still returns the edges found so far.
+    # 50 is generous — well-behaved code converges in well under 20 passes —
+    # while bounding the pathological case.  Override via --pycg-max-iter;
+    # -1 restores PyCG's unbounded run-to-convergence behaviour.
+    _PYCG_MAX_ITER: int = 50
+
+    # Directory names that should never be fed to PyCG as entry points, nor
+    # followed into during import resolution (an in-tree .codeanalyzer venv /
+    # site-packages lives under project_dir and would otherwise be pulled into
+    # the package bound and analysed — see _shard_symlink_root).
     _SKIP_DIRS: frozenset = frozenset({
         ".codeanalyzer", ".git", "__pycache__",
         "venv", ".venv", "virtualenv", "env", ".env",
@@ -382,6 +398,7 @@ class PyCG:
         shard_ceiling: Optional[int] = None,
         shard_timeout: Optional[int] = None,
         shard_strategy: str = "jedi",
+        max_iter: Optional[int] = None,
         using_ray: bool = False,
     ) -> None:
         self.project_dir = Path(project_dir).resolve()
@@ -393,6 +410,7 @@ class PyCG:
         self.shard_timeout = (
             shard_timeout if shard_timeout is not None else self._PYCG_SHARD_TIMEOUT
         )
+        self.max_iter = max_iter if max_iter is not None else self._PYCG_MAX_ITER
         # "jedi": partition the Jedi module graph (SCC + Louvain) so coupled
         # modules co-compute and few edges are severed (see shard_planner).
         # "package": legacy one-shard-per-package-directory grouping.
@@ -519,7 +537,7 @@ class PyCG:
             cg = self._CallGraphGenerator(
                 entry_points=entry_points,
                 package=str(package_dir),
-                max_iter=-1,
+                max_iter=self.max_iter,
                 operation="call-graph",
             )
             cg.analyze()
@@ -656,7 +674,7 @@ class PyCG:
                         continue
                     root, eps = _materialize_shard_root(files, self.project_dir)
                     roots.append(root)
-                    fut = remote_fn.remote(eps, str(root), "")
+                    fut = remote_fn.remote(eps, str(root), "", self.max_iter)
                     futures.append(fut)
                     meta[fut] = (idx, n)
 
@@ -844,7 +862,7 @@ class PyCG:
                     progress.advance()
                     continue
                 prefix = self._package_prefix(pkg_root, self.project_dir)
-                fut = remote_fn.remote(files, str(pkg_root), prefix)
+                fut = remote_fn.remote(files, str(pkg_root), prefix, self.max_iter)
                 futures.append(fut)
                 meta[fut] = (pkg_label, n)
 
@@ -989,14 +1007,15 @@ class PyCG:
                 )
                 return []
         else:
-            # Small project (≤ ceiling): whole-project analysis.
+            # Small project (≤ ceiling): whole-project analysis.  Run inside a
+            # symlink mini-project mirroring only the (already SKIP_DIRS-filtered)
+            # entry points, so PyCG's package bound covers project source alone.
+            # Pointing PyCG at project_dir directly would put an in-tree
+            # .codeanalyzer venv / site-packages *under* mod_dir, and PyCG would
+            # follow imports into those dependencies and explode the analysis.
             logger.info("PyCG: starting whole-project call graph analysis (%d files)", n_files)
-            try:
-                edges = self._run_pycg_batch(
-                    entry_points, self.project_dir, resolver, prefix=""
-                )
-            except PyCGExceptions.PyCGAnalysisError as exc:
-                raise
+            with _shard_symlink_root(entry_points, self.project_dir) as (root, eps):
+                edges = self._run_pycg_batch(eps, root, resolver, prefix="")
 
         elapsed = time.perf_counter() - t0
         logger.info("✅ PyCG: %d edges in %.1fs", len(edges), elapsed)

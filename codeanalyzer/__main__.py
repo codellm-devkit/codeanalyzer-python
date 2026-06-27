@@ -200,6 +200,22 @@ def main(
             ),
         ),
     ] = ShardStrategy.JEDI,
+    pycg_max_iter: Annotated[
+        int,
+        typer.Option(
+            "--pycg-max-iter",
+            help=(
+                "Cap on PyCG's fixpoint passes per shard/project (level 2; "
+                "default 50). PyCG iterates until its points-to state stops "
+                "changing, but its access-path domain has no convergence bound, "
+                "so heavy metaclass/mixin code (e.g. an ORM) can loop with each "
+                "pass costing seconds. The cap returns a sound-but-incomplete "
+                "call graph instead of looping until the timeout kills it. "
+                "Set to -1 for PyCG's unbounded run-to-convergence behaviour."
+            ),
+            min=-1,
+        ),
+    ] = 50,
 ):
     options = AnalysisOptions(
         input=input,
@@ -224,6 +240,7 @@ def main(
         pycg_shard_ceiling=pycg_shard_ceiling,
         pycg_shard_timeout=pycg_shard_timeout,
         pycg_shard_strategy=pycg_shard_strategy,
+        pycg_max_iter=pycg_max_iter,
     )
 
     _set_log_level(options.verbosity)
