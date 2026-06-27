@@ -141,113 +141,248 @@ $ canpy --help
 
  Usage: canpy [OPTIONS] COMMAND [ARGS]...
 
- Static Analysis on Python source code using Jedi, CodeQL and Tree sitter.
+ Static Analysis on Python source code using Jedi, PyCG and Tree sitter.
 
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --input           -i                     PATH              Path to the       │
-│                                                            project root      │
-│                                                            directory (not    │
-│                                                            required for      │
-│                                                            --emit schema).   │
-│ --output          -o                     PATH              Output directory  │
-│                                                            for artifacts.    │
-│ --format          -f                     [json|msgpack]    Output format for │
-│                                                            --emit json: json │
-│                                                            or msgpack.       │
-│                                                            [default: json]   │
-│ --emit                                   [json|neo4j|sche  Output target:    │
-│                                          ma]               json              │
-│                                                            (analysis.json,   │
-│                                                            default) | neo4j  │
-│                                                            (graph.cypher or  │
-│                                                            live Bolt push) | │
-│                                                            schema (the Neo4j │
-│                                                            schema.json       │
-│                                                            contract).        │
-│                                                            [default: json]   │
-│ --app-name                               TEXT              Logical           │
-│                                                            application name  │
-│                                                            for the graph     │
-│                                                            :PyApplication    │
-│                                                            anchor (default:  │
-│                                                            input dir name).  │
-│ --neo4j-uri                              TEXT              Push the graph to │
-│                                                            a live Neo4j over │
-│                                                            Bolt              │
-│                                                            (incremental);    │
-│                                                            omit to write     │
-│                                                            graph.cypher.     │
-│                                                            [env var:         │
-│                                                            NEO4J_URI]        │
-│ --neo4j-user                             TEXT              Neo4j username.   │
-│                                                            [env var:         │
-│                                                            NEO4J_USERNAME]   │
-│                                                            [default: neo4j]  │
-│ --neo4j-password                         TEXT              Neo4j password.   │
-│                                                            Prefer the env    │
-│                                                            var over the flag │
-│                                                            (the flag is      │
-│                                                            visible in shell  │
-│                                                            history / process │
-│                                                            list).            │
-│                                                            [env var:         │
-│                                                            NEO4J_PASSWORD]   │
-│                                                            [default: neo4j]  │
-│ --neo4j-database                         TEXT              Neo4j database    │
-│                                                            name (default:    │
-│                                                            server default).  │
-│                                                            [env var:         │
-│                                                            NEO4J_DATABASE]   │
-│ --codeql              --no-codeql                          Enable            │
-│                                                            CodeQL-based      │
-│                                                            analysis.         │
-│                                                            [default:         │
-│                                                            no-codeql]        │
-│ --ray                 --no-ray                             Enable Ray for    │
-│                                                            distributed       │
-│                                                            analysis.         │
-│                                                            [default: no-ray] │
-│ --eager               --lazy                               Enable eager or   │
-│                                                            lazy analysis.    │
-│                                                            Defaults to lazy. │
-│                                                            [default: lazy]   │
-│ --skip-tests          --include-tests                      Skip test files   │
-│                                                            in analysis.      │
-│                                                            [default:         │
-│                                                            skip-tests]       │
-│ --no-venv             --venv                               Skip virtualenv   │
-│                                                            creation and      │
-│                                                            dependency        │
-│                                                            installation;     │
-│                                                            resolve imports   │
-│                                                            against the       │
-│                                                            ambient Python    │
-│                                                            environment       │
-│                                                            instead.          │
-│                                                            [default: venv]   │
-│ --file-name                              PATH              Analyze only the  │
-│                                                            specified file    │
-│                                                            (relative to      │
-│                                                            input directory). │
-│ --cache-dir       -c                     PATH              Directory to      │
-│                                                            store analysis    │
-│                                                            cache. Defaults   │
-│                                                            to                │
-│                                                            '.codeanalyzer'   │
-│                                                            in the input      │
-│                                                            directory.        │
-│ --clear-cache         --keep-cache                         Clear cache after │
-│                                                            analysis. By      │
-│                                                            default, cache is │
-│                                                            retained.         │
-│                                                            [default:         │
-│                                                            keep-cache]       │
-│                   -v                     INTEGER           Increase          │
-│                                                            verbosity: -v,    │
-│                                                            -vv, -vvv         │
-│                                                            [default: 0]      │
-│ --help                                                     Show this message │
-│                                                            and exit.         │
+│ --input            -i                     PATH              Path to the      │
+│                                                             project root     │
+│                                                             directory (not   │
+│                                                             required for     │
+│                                                             --emit schema).  │
+│ --output           -o                     PATH              Output directory │
+│                                                             for artifacts.   │
+│ --format           -f                     [json|msgpack]    Output format    │
+│                                                             for --emit json: │
+│                                                             json or msgpack. │
+│                                                             [default: json]  │
+│ --emit                                    [json|neo4j|sche  Output target:   │
+│                                           ma]               json             │
+│                                                             (analysis.json,  │
+│                                                             default) | neo4j │
+│                                                             (graph.cypher or │
+│                                                             live Bolt push)  │
+│                                                             | schema (the    │
+│                                                             Neo4j            │
+│                                                             schema.json      │
+│                                                             contract).       │
+│                                                             [default: json]  │
+│ --app-name                                TEXT              Logical          │
+│                                                             application name │
+│                                                             for the graph    │
+│                                                             :PyApplication   │
+│                                                             anchor (default: │
+│                                                             input dir name). │
+│ --neo4j-uri                               TEXT              Push the graph   │
+│                                                             to a live Neo4j  │
+│                                                             over Bolt        │
+│                                                             (incremental);   │
+│                                                             omit to write    │
+│                                                             graph.cypher.    │
+│                                                             [env var:        │
+│                                                             NEO4J_URI]       │
+│ --neo4j-user                              TEXT              Neo4j username.  │
+│                                                             [env var:        │
+│                                                             NEO4J_USERNAME]  │
+│                                                             [default: neo4j] │
+│ --neo4j-password                          TEXT              Neo4j password.  │
+│                                                             Prefer the env   │
+│                                                             var over the     │
+│                                                             flag (the flag   │
+│                                                             is visible in    │
+│                                                             shell history /  │
+│                                                             process list).   │
+│                                                             [env var:        │
+│                                                             NEO4J_PASSWORD]  │
+│                                                             [default: neo4j] │
+│ --neo4j-database                          TEXT              Neo4j database   │
+│                                                             name (default:   │
+│                                                             server default). │
+│                                                             [env var:        │
+│                                                             NEO4J_DATABASE]  │
+│ --analysis-level   -a                     INTEGER RANGE     Analysis depth:  │
+│                                           [1<=x<=2]         1=symbol         │
+│                                                             table+Jedi call  │
+│                                                             graph, 2=+PyCG   │
+│                                                             call graph.      │
+│                                                             [default: 1]     │
+│ --ray                  --no-ray                             Enable Ray for   │
+│                                                             distributed      │
+│                                                             analysis.        │
+│                                                             [default:        │
+│                                                             no-ray]          │
+│ --eager                --lazy                               Enable eager or  │
+│                                                             lazy analysis.   │
+│                                                             Defaults to      │
+│                                                             lazy.            │
+│                                                             [default: lazy]  │
+│ --skip-tests           --include-tests                      Skip test files  │
+│                                                             in analysis.     │
+│                                                             [default:        │
+│                                                             skip-tests]      │
+│ --no-venv              --venv                               Skip virtualenv  │
+│                                                             creation and     │
+│                                                             dependency       │
+│                                                             installation;    │
+│                                                             resolve imports  │
+│                                                             against the      │
+│                                                             ambient Python   │
+│                                                             environment      │
+│                                                             instead.         │
+│                                                             [default: venv]  │
+│ --file-name                               PATH              Analyze only the │
+│                                                             specified file   │
+│                                                             (relative to     │
+│                                                             input            │
+│                                                             directory).      │
+│ --cache-dir        -c                     PATH              Directory to     │
+│                                                             store analysis   │
+│                                                             cache. Defaults  │
+│                                                             to               │
+│                                                             '.codeanalyzer'  │
+│                                                             in the input     │
+│                                                             directory.       │
+│ --clear-cache          --keep-cache                         Clear cache      │
+│                                                             after analysis.  │
+│                                                             By default,      │
+│                                                             cache is         │
+│                                                             retained.        │
+│                                                             [default:        │
+│                                                             keep-cache]      │
+│                    -v                     INTEGER           Increase         │
+│                                                             verbosity: -v,   │
+│                                                             -vv, -vvv        │
+│                                                             [default: 0]     │
+│ --pycg-shard           --no-pycg-shard                      Shard PyCG       │
+│                                                             call-graph       │
+│                                                             analysis by      │
+│                                                             Python package   │
+│                                                             (level 2 only).  │
+│                                                             When the project │
+│                                                             exceeds the      │
+│                                                             500-file         │
+│                                                             ceiling, PyCG is │
+│                                                             run              │
+│                                                             independently    │
+│                                                             per top-level    │
+│                                                             package with     │
+│                                                             cross-package    │
+│                                                             imports treated  │
+│                                                             as ghost nodes.  │
+│                                                             Without this     │
+│                                                             flag, projects   │
+│                                                             over the ceiling │
+│                                                             fall back to     │
+│                                                             Jedi-only edges. │
+│                                                             [default:        │
+│                                                             no-pycg-shard]   │
+│ --pycg-shard-cei…                         INTEGER RANGE     Maximum files    │
+│                                           [x>=1]            per shard when   │
+│                                                             --pycg-shard is  │
+│                                                             active (default  │
+│                                                             100). Shards     │
+│                                                             exceeding this   │
+│                                                             limit are        │
+│                                                             skipped; their   │
+│                                                             call edges are   │
+│                                                             omitted from the │
+│                                                             call graph (Jedi │
+│                                                             edges for those  │
+│                                                             packages are     │
+│                                                             still included). │
+│                                                             Lower values are │
+│                                                             safer for        │
+│                                                             packages with    │
+│                                                             deep class       │
+│                                                             hierarchies or   │
+│                                                             heavy import     │
+│                                                             graphs.          │
+│                                                             [default: 100]   │
+│ --pycg-shard-tim…                         INTEGER RANGE     Per-shard        │
+│                                           [x>=0]            wall-clock       │
+│                                                             timeout in       │
+│                                                             seconds when     │
+│                                                             --pycg-shard is  │
+│                                                             active (default  │
+│                                                             120). A shard    │
+│                                                             that exceeds     │
+│                                                             this limit is    │
+│                                                             skipped          │
+│                                                             gracefully.      │
+│                                                             PyCG's fixpoint  │
+│                                                             is bimodal: it   │
+│                                                             either converges │
+│                                                             quickly or       │
+│                                                             diverges         │
+│                                                             indefinitely, so │
+│                                                             the timeout acts │
+│                                                             as a final       │
+│                                                             safety net after │
+│                                                             the file-count   │
+│                                                             ceiling. Set to  │
+│                                                             0 to disable.    │
+│                                                             POSIX only       │
+│                                                             (macOS / Linux); │
+│                                                             ignored on       │
+│                                                             Windows.         │
+│                                                             [default: 120]   │
+│ --pycg-shard-str…                         [jedi|package]    How --pycg-shard │
+│                                                             groups files     │
+│                                                             (level 2 only).  │
+│                                                             'jedi' (default) │
+│                                                             partitions the   │
+│                                                             Jedi             │
+│                                                             module-dependen… │
+│                                                             graph (SCC +     │
+│                                                             Louvain) so      │
+│                                                             tightly-coupled  │
+│                                                             modules          │
+│                                                             co-compute and   │
+│                                                             few call edges   │
+│                                                             are severed      │
+│                                                             between shards;  │
+│                                                             import cycles    │
+│                                                             are never split. │
+│                                                             'package' uses   │
+│                                                             the legacy       │
+│                                                             one-shard-per-p… │
+│                                                             grouping.        │
+│                                                             [default: jedi]  │
+│ --pycg-max-iter                           INTEGER RANGE     Cap on PyCG's    │
+│                                           [x>=-1]           fixpoint passes  │
+│                                                             per              │
+│                                                             shard/project    │
+│                                                             (level 2;        │
+│                                                             default 50).     │
+│                                                             PyCG iterates    │
+│                                                             until its        │
+│                                                             points-to state  │
+│                                                             stops changing,  │
+│                                                             but its          │
+│                                                             access-path      │
+│                                                             domain has no    │
+│                                                             convergence      │
+│                                                             bound, so heavy  │
+│                                                             metaclass/mixin  │
+│                                                             code (e.g. an    │
+│                                                             ORM) can loop    │
+│                                                             with each pass   │
+│                                                             costing seconds. │
+│                                                             The cap returns  │
+│                                                             a                │
+│                                                             sound-but-incom… │
+│                                                             call graph       │
+│                                                             instead of       │
+│                                                             looping until    │
+│                                                             the timeout      │
+│                                                             kills it. Set to │
+│                                                             -1 for PyCG's    │
+│                                                             unbounded        │
+│                                                             run-to-converge… │
+│                                                             behaviour.       │
+│                                                             [default: 50]    │
+│ --help                                                      Show this        │
+│                                                             message and      │
+│                                                             exit.            │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ```
 
