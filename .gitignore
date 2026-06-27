@@ -184,3 +184,6 @@ uv.lock
 # Node / Astro docs-site build artifacts (never commit these)
 node_modules/
 .astro/
+
+# Track this repo's CLAUDE.md even though a global gitignore excludes CLAUDE.md
+!CLAUDE.md
