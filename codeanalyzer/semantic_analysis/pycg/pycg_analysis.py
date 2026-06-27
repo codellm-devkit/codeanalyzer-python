@@ -81,7 +81,7 @@ def _shard_timeout(seconds: int) -> Generator[None, None, None]:
 from codeanalyzer.schema.py_schema import PyCallEdge, PyModule
 from codeanalyzer.semantic_analysis.call_graph import iter_callables_in_symbol_table
 from codeanalyzer.semantic_analysis.pycg.pycg_exceptions import PyCGExceptions
-from codeanalyzer.semantic_analysis.pycg.shard_planner import ShardPlan, plan_shards
+from codeanalyzer.semantic_analysis.pycg.shard_planner import plan_shards
 from codeanalyzer.utils import ProgressBar, logger
 
 
@@ -379,6 +379,13 @@ class PyCG:
     # -1 restores PyCG's unbounded run-to-convergence behaviour.
     _PYCG_MAX_ITER: int = 50
 
+    # Iterative decomposition of runaway (timed-out) shards: a shard that the
+    # wall-clock timeout kills is re-partitioned at half the budget and re-run,
+    # down to this file-count floor.  Below the floor — or for an atomic import
+    # cycle that won't split — the residue falls back to Jedi-only coverage.
+    _PYCG_DECOMP_FLOOR: int = 10
+    _PYCG_MAX_DECOMP_ROUNDS: int = 6
+
     # Directory names that should never be fed to PyCG as entry points, nor
     # followed into during import resolution (an in-tree .codeanalyzer venv /
     # site-packages lives under project_dir and would otherwise be pulled into
@@ -417,6 +424,7 @@ class PyCG:
         self.shard_strategy = shard_strategy
         self.using_ray = using_ray
         self._CallGraphGenerator: Optional[Any] = None
+        self._resolver: Optional["_PyCGCallableResolver"] = None
 
     @staticmethod
     def _coalesce_edges(edges: List[PyCallEdge]) -> List[PyCallEdge]:
@@ -570,20 +578,26 @@ class PyCG:
         symbol_table: Dict[str, PyModule],
         resolver: "_PyCGCallableResolver",
     ) -> List[PyCallEdge]:
-        """Coupling-aware sharding driven by the Jedi module graph.
+        """Coupling-aware sharding with iterative decomposition of runaways.
 
-        Unlike :meth:`_build_sharded` (one shard per package directory), the
-        shards here are chosen to *minimise the call edges severed between
-        shards*: :func:`shard_planner.plan_shards` condenses the Jedi call
-        graph by strongly-connected component (so import cycles never split)
-        and clusters it with Louvain so tightly-coupled modules land together.
-        Each shard — an arbitrary set of files — is run through PyCG via a
-        symlinked mini-project (:func:`_shard_symlink_root`) that bounds PyCG
-        to exactly those files.
+        Shards are chosen to *minimise the call edges severed between shards*:
+        :func:`shard_planner.plan_shards` condenses the Jedi call graph by
+        strongly-connected component (so import cycles never split) and clusters
+        it with Louvain so tightly-coupled modules land together.  Each shard is
+        run through PyCG via a symlinked mini-project that bounds analysis to its
+        files.
 
-        Reported ``cut_ratio`` is the fraction of Jedi edge weight crossing
-        shard boundaries — an upper bound on the PyCG edges lost to sharding.
+        PyCG's fixpoint diverges on heavy metaclass/mixin clusters, and a uniform
+        ceiling would force *every* shard small (severing many edges) just to tame
+        the few that run away.  Instead we start coarse (low cut, high recall on
+        healthy code) and **only re-decompose the shards that time out**: each
+        runaway's files are re-partitioned at half the budget and re-run, down to
+        a floor.  A runaway shard contributes zero edges, so splitting it recovers
+        almost all of them while paying cut on its internal seams alone.  The
+        residue that still diverges at the floor (or is an atomic cycle that won't
+        split) falls back to Jedi-only coverage.
         """
+        self._resolver = resolver
         plan = plan_shards(
             symbol_table, jedi_edges, budget=self.shard_ceiling, merge_small=True
         )
@@ -594,64 +608,107 @@ class PyCG:
             int(m["num_shards"]), m["cut_ratio"],
             int(m["max_shard_files"]), int(m["modules"]),
         )
-        if m["oversized_shards"]:
-            logger.warning(
-                "PyCG: %d shard(s) exceed the %d-file ceiling — skipped "
-                "(atomic import cycles larger than the budget)",
-                int(m["oversized_shards"]), self.shard_ceiling,
+
+        runner = (
+            self._run_fileset_shards_ray if self.using_ray
+            else self._run_fileset_shards_seq
+        )
+        all_edges: List[PyCallEdge] = []
+        shards = plan.shards
+        budget = self.shard_ceiling
+        converged_total = 0
+        irreducible_files = 0
+        round_no = 0
+
+        while shards:
+            label = "decomposition round %d (budget %d, %d shard(s))" % (
+                round_no, budget, len(shards),
+            )
+            logger.info("PyCG: %s", label)
+            edges, runaways = runner(shards)
+            all_edges.extend(edges)
+            converged_total += len(shards) - len(runaways)
+            if not runaways:
+                break
+
+            next_budget = max(self._PYCG_DECOMP_FLOOR, budget // 2)
+            stop_decomposing = (
+                round_no >= self._PYCG_MAX_DECOMP_ROUNDS or next_budget >= budget
             )
 
-        if self.using_ray:
-            return self._build_sharded_planned_ray(plan)
-
-        all_edges: List[PyCallEdge] = []
-        skipped = 0
-        with ProgressBar(len(plan.shards), "Building call graph shards", item_label="shards") as progress:
-            for idx, files in enumerate(plan.shards):
-                n = len(files)
-                if n > self.shard_ceiling:
-                    skipped += 1
-                    progress.advance()
+            next_shards: List[List[str]] = []
+            for rf in runaways:
+                # Re-partition this runaway's files alone, at a tighter budget.
+                # An atomic cycle (or a lone file) that won't shrink is
+                # irreducible — accept Jedi-only rather than loop forever.
+                sub_st = {f: symbol_table[f] for f in rf if f in symbol_table}
+                if stop_decomposing or len(rf) <= 1:
+                    irreducible_files += len(rf)
                     continue
-                try:
-                    with _shard_symlink_root(files, self.project_dir) as (root, eps):
-                        with _shard_timeout(self.shard_timeout):
-                            edges = self._run_pycg_batch(eps, root, resolver, prefix="")
-                    all_edges.extend(edges)
-                    logger.debug("PyCG shard %d: %d edges from %d files", idx, len(edges), n)
-                except TimeoutError:
-                    logger.warning(
-                        "PyCG shard %d timed out after %ds — skipped",
-                        idx, self.shard_timeout,
-                    )
-                    skipped += 1
-                except PyCGExceptions.PyCGAnalysisError as exc:
-                    logger.warning("PyCG shard %d failed — skipped: %s", idx, exc)
-                    skipped += 1
-                progress.advance()
+                sub_plan = plan_shards(sub_st, jedi_edges, budget=next_budget)
+                if len(sub_plan.shards) <= 1:
+                    # did not actually split (one atomic SCC) — give up on it
+                    irreducible_files += len(rf)
+                    continue
+                next_shards.extend(sub_plan.shards)
 
-        if skipped:
+            if not next_shards:
+                break
+            logger.info(
+                "PyCG: %d shard(s) ran away — decomposing into %d sub-shard(s) "
+                "at budget %d", len(runaways), len(next_shards), next_budget,
+            )
+            shards, budget = next_shards, next_budget
+            round_no += 1
+
+        if irreducible_files:
             logger.warning(
-                "PyCG: %d/%d shard(s) skipped (ceiling, %ds timeout, or failure)",
-                skipped, len(plan.shards), self.shard_timeout,
+                "PyCG: %d file(s) in irreducibly-divergent shards fall back to "
+                "Jedi-only coverage", irreducible_files,
             )
 
         result = self._coalesce_edges(all_edges)
         logger.info(
-            "PyCG: %d edges from %d/%d shard(s) (%d before dedup, Jedi-planned)",
-            len(result), len(plan.shards) - skipped, len(plan.shards), len(all_edges),
+            "PyCG: %d edges from %d converged shard(s) over %d round(s) "
+            "(%d before dedup, Jedi-planned%s)",
+            len(result), converged_total, round_no + 1, len(all_edges),
+            ", Ray-parallel" if self.using_ray else "",
         )
         return result
 
-    def _build_sharded_planned_ray(self, plan: "ShardPlan") -> List[PyCallEdge]:
-        """Ray-parallel execution of Jedi-planned file-set shards.
+    def _run_fileset_shards_seq(
+        self, shards: List[List[str]],
+    ) -> Tuple[List[PyCallEdge], List[List[str]]]:
+        """Run each file-set shard sequentially; return ``(edges, runaways)``.
 
-        Each shard is materialised as a symlink mini-project up front (the
-        trees must outlive their remote tasks), submitted as a Ray task, and
-        collected against a single wall-clock deadline — Ray workers cannot use
-        SIGALRM, so the timeout is enforced at the orchestrator level (mirroring
-        :meth:`_build_sharded_ray`).  All symlink trees are removed once the
-        batch completes.
+        A shard that times out or raises is returned in *runaways* (its file
+        list) for the caller to re-decompose; it contributes no edges.
+        """
+        resolver = self._resolver
+        edges_all: List[PyCallEdge] = []
+        runaways: List[List[str]] = []
+        with ProgressBar(len(shards), "Building call graph shards", item_label="shards") as progress:
+            for files in shards:
+                try:
+                    with _shard_symlink_root(files, self.project_dir) as (root, eps):
+                        with _shard_timeout(self.shard_timeout):
+                            edges = self._run_pycg_batch(eps, root, resolver, prefix="")
+                    edges_all.extend(edges)
+                except (TimeoutError, PyCGExceptions.PyCGAnalysisError):
+                    runaways.append(files)
+                progress.advance()
+        return edges_all, runaways
+
+    def _run_fileset_shards_ray(
+        self, shards: List[List[str]],
+    ) -> Tuple[List[PyCallEdge], List[List[str]]]:
+        """Ray-parallel variant of :meth:`_run_fileset_shards_seq`.
+
+        Each shard is materialised as a symlink mini-project up front (the trees
+        must outlive their remote tasks), submitted as a Ray task, and collected
+        against one wall-clock deadline — Ray workers cannot use SIGALRM, so the
+        timeout is enforced orchestrator-side.  Timed-out/failed shards become
+        runaways; symlink trees are removed once the batch completes.
         """
         import os
         import ray
@@ -661,22 +718,17 @@ class PyCG:
 
         roots: List[Path] = []
         futures: List[Any] = []
-        meta: Dict[Any, tuple] = {}  # ObjectRef -> (shard_idx, n_files)
-        skipped = 0
-        all_edges: List[PyCallEdge] = []
+        meta: Dict[Any, List[str]] = {}  # ObjectRef -> shard file list
+        edges_all: List[PyCallEdge] = []
+        runaways: List[List[str]] = []
         try:
-            with ProgressBar(len(plan.shards), "Building call graph shards (parallel)", item_label="shards") as progress:
-                for idx, files in enumerate(plan.shards):
-                    n = len(files)
-                    if n > self.shard_ceiling:
-                        skipped += 1
-                        progress.advance()
-                        continue
+            with ProgressBar(len(shards), "Building call graph shards (parallel)", item_label="shards") as progress:
+                for files in shards:
                     root, eps = _materialize_shard_root(files, self.project_dir)
                     roots.append(root)
                     fut = remote_fn.remote(eps, str(root), "", self.max_iter)
                     futures.append(fut)
-                    meta[fut] = (idx, n)
+                    meta[fut] = files
 
                 deadline = (
                     time.perf_counter() + float(self.shard_timeout)
@@ -696,44 +748,24 @@ class PyCG:
                         break
 
                     fut = ready[0]
-                    idx, n = meta[fut]
                     try:
                         triples = ray.get(fut)
-                        all_edges.extend(
+                        edges_all.extend(
                             PyCallEdge(source=s, target=t, weight=w, provenance=["pycg"])
                             for s, t, w in triples
                         )
-                        logger.debug("PyCG shard %d: %d edges from %d files (Ray)", idx, len(triples), n)
-                    except Exception as exc:
-                        logger.warning("PyCG shard %d failed — skipped: %s", idx, exc)
-                        skipped += 1
+                    except Exception:
+                        runaways.append(meta[fut])
                     progress.advance()
 
-                for fut in pending:
-                    idx, _ = meta[fut]
-                    logger.warning(
-                        "PyCG shard %d timed out after %ds — skipped",
-                        idx, self.shard_timeout,
-                    )
+                for fut in pending:  # exceeded the deadline
                     ray.cancel(fut, force=True)
-                    skipped += 1
+                    runaways.append(meta[fut])
                     progress.advance()
         finally:
             for root in roots:
                 shutil.rmtree(root, ignore_errors=True)
-
-        if skipped:
-            logger.warning(
-                "PyCG: %d/%d shard(s) skipped (ceiling, %ds timeout, or failure)",
-                skipped, len(plan.shards), self.shard_timeout,
-            )
-
-        result = self._coalesce_edges(all_edges)
-        logger.info(
-            "PyCG: %d edges from %d/%d shard(s) (%d before dedup, Jedi-planned, Ray-parallel)",
-            len(result), len(plan.shards) - skipped, len(plan.shards), len(all_edges),
-        )
-        return result
+        return edges_all, runaways
 
     def _build_sharded(
         self,
