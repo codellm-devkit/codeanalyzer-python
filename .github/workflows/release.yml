@@ -181,3 +181,47 @@ jobs:
           git add Formula/codeanalyzer-python.rb
           git commit -m "codeanalyzer-python ${VERSION}" || { echo "no formula change"; exit 0; }
           git push
+
+  # Open a tracking issue on the python-sdk (CLDK) consumer so its
+  # codeanalyzer-python pin and integration can be brought up to this release.
+  # The issue body is the CHANGELOG section for this version. Split into its own
+  # job (needs: release) so a failure here -- e.g. a missing SDK_ISSUE_TOKEN --
+  # is isolated from the PyPI and GitHub Release steps above. Issues are
+  # repository-scoped (not branch-scoped), so this opens one on python-sdk.
+  notify-python-sdk:
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      # Pull the lines under "## [VERSION]" up to the next "## [" heading.
+      - name: Extract changelog section for this release
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          {
+            echo "A new \`codeanalyzer-python\` release (\`v${VERSION}\`) is published."
+            echo "Update the \`codeanalyzer-python\` pin in this repo and adapt the"
+            echo "integration to the changes below (see \`PyCodeanalyzer._run_analyzer\`)."
+            echo
+            awk -v ver="$VERSION" '
+              $0 ~ ("^## \\[" ver "\\]") { f = 1; print; next }
+              f && /^## \[/ { exit }
+              f { print }
+            ' CHANGELOG.md
+          } > "$RUNNER_TEMP/sdk_issue.md"
+          echo "----- issue body -----"; cat "$RUNNER_TEMP/sdk_issue.md"
+
+      - name: Create incorporation issue in python-sdk
+        env:
+          # PAT (or fine-grained token) with Issues:write on codellm-devkit/python-sdk.
+          # The default GITHUB_TOKEN is scoped to this repo only and cannot open
+          # issues cross-repo, mirroring HOMEBREW_TAP_TOKEN above.
+          GH_TOKEN: ${{ secrets.SDK_ISSUE_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          gh issue create \
+            --repo codellm-devkit/python-sdk \
+            --title "Incorporate codeanalyzer-python v${VERSION}" \
+            --body-file "$RUNNER_TEMP/sdk_issue.md"
