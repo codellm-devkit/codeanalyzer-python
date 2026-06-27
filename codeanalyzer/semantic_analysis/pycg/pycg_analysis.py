@@ -43,12 +43,14 @@ import importlib.metadata  # noqa: F401
 import importlib.util  # noqa: F401
 import contextlib
 import json  # noqa: F401
+import shutil
 import signal
+import tempfile
 import time
 
 from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Optional, Set, Union
+from typing import Any, Dict, Generator, List, Optional, Set, Tuple, Union
 
 
 @contextlib.contextmanager
@@ -79,7 +81,62 @@ def _shard_timeout(seconds: int) -> Generator[None, None, None]:
 from codeanalyzer.schema.py_schema import PyCallEdge, PyModule
 from codeanalyzer.semantic_analysis.call_graph import iter_callables_in_symbol_table
 from codeanalyzer.semantic_analysis.pycg.pycg_exceptions import PyCGExceptions
+from codeanalyzer.semantic_analysis.pycg.shard_planner import plan_shards
 from codeanalyzer.utils import ProgressBar, logger
+
+
+@contextlib.contextmanager
+def _shard_symlink_root(
+    files: List[str],
+    project_dir: Path,
+) -> Generator[Tuple[Path, List[str]], None, None]:
+    """Materialise a shard's files as a temporary mini-project.
+
+    PyCG bounds its import-following to the ``package`` directory — only
+    modules whose resolved file lives under that root are followed; everything
+    else becomes a ghost node (``ImportManager``: ``if self.mod_dir not in
+    mod.__file__: return``).  A coupling-derived shard is an arbitrary set of
+    files that need not form a directory, so we mirror the project layout into
+    a temp dir holding symlinks to exactly the shard's files plus the
+    ``__init__.py`` chain each needs for package resolution.  Running PyCG with
+    this mirror as the package root confines analysis to the shard while
+    emitting project-relative edge names (so ``prefix=""`` — no rename needed).
+
+    Yields ``(root, entry_points)`` where *entry_points* are the symlinked
+    paths inside *root*.  The temp tree is removed on exit.
+    """
+    root = Path(tempfile.mkdtemp(prefix="canpy_pycg_shard_"))
+    entry_points: List[str] = []
+    linked_inits: Set[Path] = set()
+    try:
+        for f in files:
+            src = Path(f).resolve()
+            try:
+                rel = src.relative_to(project_dir)
+            except ValueError:
+                continue  # defensively skip files outside the project
+            dst = root / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            if not dst.exists():
+                dst.symlink_to(src)
+            entry_points.append(str(dst))
+
+            # Symlink the __init__.py chain from project root down to this
+            # file's package so PyCG/importlib can resolve the dotted module
+            # name.  These add ~0 analysis cost (usually empty) and keep
+            # out-of-shard siblings unresolved → ghost nodes.
+            for i in range(len(rel.parent.parts) + 1):
+                pkg_rel = Path(*rel.parent.parts[:i])
+                real_init = project_dir / pkg_rel / "__init__.py"
+                link_init = root / pkg_rel / "__init__.py"
+                if real_init.exists() and link_init not in linked_inits:
+                    link_init.parent.mkdir(parents=True, exist_ok=True)
+                    if not link_init.exists():
+                        link_init.symlink_to(real_init.resolve())
+                    linked_inits.add(link_init)
+        yield root, entry_points
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
 
 
 def _pycg_shard_worker(
@@ -313,6 +370,7 @@ class PyCG:
         shard: bool = False,
         shard_ceiling: Optional[int] = None,
         shard_timeout: Optional[int] = None,
+        shard_strategy: str = "jedi",
         using_ray: bool = False,
     ) -> None:
         self.project_dir = Path(project_dir).resolve()
@@ -324,8 +382,30 @@ class PyCG:
         self.shard_timeout = (
             shard_timeout if shard_timeout is not None else self._PYCG_SHARD_TIMEOUT
         )
+        # "jedi": partition the Jedi module graph (SCC + Louvain) so coupled
+        # modules co-compute and few edges are severed (see shard_planner).
+        # "package": legacy one-shard-per-package-directory grouping.
+        self.shard_strategy = shard_strategy
         self.using_ray = using_ray
         self._CallGraphGenerator: Optional[Any] = None
+
+    @staticmethod
+    def _coalesce_edges(edges: List[PyCallEdge]) -> List[PyCallEdge]:
+        """Sum weights of duplicate ``(source, target)`` pairs across shards."""
+        merged: Dict[tuple, PyCallEdge] = {}
+        for edge in edges:
+            key = (edge.source, edge.target)
+            if key in merged:
+                existing = merged[key]
+                merged[key] = PyCallEdge(
+                    source=existing.source,
+                    target=existing.target,
+                    weight=existing.weight + edge.weight,
+                    provenance=existing.provenance,
+                )
+            else:
+                merged[key] = edge
+        return list(merged.values())
 
     # ------------------------------------------------------------------
     # Entry-point collection
@@ -454,6 +534,88 @@ class PyCG:
     # ------------------------------------------------------------------
     # Sharded analysis
     # ------------------------------------------------------------------
+
+    def _build_sharded_planned(
+        self,
+        jedi_edges: List[PyCallEdge],
+        symbol_table: Dict[str, PyModule],
+        resolver: "_PyCGCallableResolver",
+    ) -> List[PyCallEdge]:
+        """Coupling-aware sharding driven by the Jedi module graph.
+
+        Unlike :meth:`_build_sharded` (one shard per package directory), the
+        shards here are chosen to *minimise the call edges severed between
+        shards*: :func:`shard_planner.plan_shards` condenses the Jedi call
+        graph by strongly-connected component (so import cycles never split)
+        and clusters it with Louvain so tightly-coupled modules land together.
+        Each shard — an arbitrary set of files — is run through PyCG via a
+        symlinked mini-project (:func:`_shard_symlink_root`) that bounds PyCG
+        to exactly those files.
+
+        Reported ``cut_ratio`` is the fraction of Jedi edge weight crossing
+        shard boundaries — an upper bound on the PyCG edges lost to sharding.
+        """
+        plan = plan_shards(
+            symbol_table, jedi_edges, budget=self.shard_ceiling, merge_small=True
+        )
+        m = plan.metrics
+        logger.info(
+            "PyCG: planned %d shard(s) from Jedi module graph "
+            "(cut_ratio=%.3f, max_shard=%d files, %d modules)",
+            int(m["num_shards"]), m["cut_ratio"],
+            int(m["max_shard_files"]), int(m["modules"]),
+        )
+        if m["oversized_shards"]:
+            logger.warning(
+                "PyCG: %d shard(s) exceed the %d-file ceiling — skipped "
+                "(atomic import cycles larger than the budget)",
+                int(m["oversized_shards"]), self.shard_ceiling,
+            )
+
+        if self.using_ray:
+            logger.info(
+                "PyCG: Ray parallelism is not yet wired for the 'jedi' shard "
+                "strategy — running shards sequentially."
+            )
+
+        all_edges: List[PyCallEdge] = []
+        skipped = 0
+        with ProgressBar(len(plan.shards), "Building call graph shards", item_label="shards") as progress:
+            for idx, files in enumerate(plan.shards):
+                n = len(files)
+                if n > self.shard_ceiling:
+                    skipped += 1
+                    progress.advance()
+                    continue
+                try:
+                    with _shard_symlink_root(files, self.project_dir) as (root, eps):
+                        with _shard_timeout(self.shard_timeout):
+                            edges = self._run_pycg_batch(eps, root, resolver, prefix="")
+                    all_edges.extend(edges)
+                    logger.debug("PyCG shard %d: %d edges from %d files", idx, len(edges), n)
+                except TimeoutError:
+                    logger.warning(
+                        "PyCG shard %d timed out after %ds — skipped",
+                        idx, self.shard_timeout,
+                    )
+                    skipped += 1
+                except PyCGExceptions.PyCGAnalysisError as exc:
+                    logger.warning("PyCG shard %d failed — skipped: %s", idx, exc)
+                    skipped += 1
+                progress.advance()
+
+        if skipped:
+            logger.warning(
+                "PyCG: %d/%d shard(s) skipped (ceiling, %ds timeout, or failure)",
+                skipped, len(plan.shards), self.shard_timeout,
+            )
+
+        result = self._coalesce_edges(all_edges)
+        logger.info(
+            "PyCG: %d edges from %d/%d shard(s) (%d before dedup, Jedi-planned)",
+            len(result), len(plan.shards) - skipped, len(plan.shards), len(all_edges),
+        )
+        return result
 
     def _build_sharded(
         self,
@@ -668,7 +830,9 @@ class PyCG:
     # ------------------------------------------------------------------
 
     def build_call_graph_edges(
-        self, symbol_table: Dict[str, PyModule]
+        self,
+        symbol_table: Dict[str, PyModule],
+        jedi_edges: Optional[List[PyCallEdge]] = None,
     ) -> List[PyCallEdge]:
         """Run PyCG and return ``PyCallEdge`` entries with ``provenance=["pycg"]``.
 
@@ -701,12 +865,21 @@ class PyCG:
 
         if n_files > self._PYCG_FILE_CEILING:
             if self.shard:
-                mode = "Ray-parallel" if self.using_ray else "sequential"
-                logger.info(
-                    "PyCG: starting sharded call graph analysis (%d files, %s)",
-                    n_files, mode,
-                )
-                edges = self._build_sharded(entry_points, resolver)
+                if self.shard_strategy == "jedi" and jedi_edges is not None:
+                    logger.info(
+                        "PyCG: starting Jedi-planned sharded analysis (%d files)",
+                        n_files,
+                    )
+                    edges = self._build_sharded_planned(
+                        jedi_edges, symbol_table, resolver
+                    )
+                else:
+                    mode = "Ray-parallel" if self.using_ray else "sequential"
+                    logger.info(
+                        "PyCG: starting per-package sharded analysis (%d files, %s)",
+                        n_files, mode,
+                    )
+                    edges = self._build_sharded(entry_points, resolver)
             else:
                 logger.warning(
                     "PyCG: %d entry points exceeds ceiling of %d — "

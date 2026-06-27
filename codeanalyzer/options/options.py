@@ -23,6 +23,20 @@ class EmitTarget(str, Enum):
     SCHEMA = "schema"
 
 
+class ShardStrategy(str, Enum):
+    """How ``--pycg-shard`` groups files into shards (level 2 only).
+
+    - ``jedi``    : partition the Jedi module-dependency graph (strongly-
+                    connected-component condensation + Louvain) so tightly-
+                    coupled modules co-compute and few call edges are severed
+                    between shards. Import cycles are never split.
+    - ``package`` : legacy one-shard-per-package-directory grouping.
+    """
+
+    JEDI = "jedi"
+    PACKAGE = "package"
+
+
 @dataclass
 class AnalysisOptions:
     input: Path
@@ -46,3 +60,4 @@ class AnalysisOptions:
     pycg_shard: bool = False
     pycg_shard_ceiling: int = 100
     pycg_shard_timeout: int = 120
+    pycg_shard_strategy: ShardStrategy = ShardStrategy.JEDI

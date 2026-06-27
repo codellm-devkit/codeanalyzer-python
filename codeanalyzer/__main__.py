@@ -7,7 +7,7 @@ from codeanalyzer.core import Codeanalyzer
 from codeanalyzer.utils import _set_log_level, logger
 from codeanalyzer.config import OutputFormat
 from codeanalyzer.schema import model_dump_json
-from codeanalyzer.options import AnalysisOptions, EmitTarget
+from codeanalyzer.options import AnalysisOptions, EmitTarget, ShardStrategy
 
 
 def main(
@@ -186,6 +186,20 @@ def main(
             min=0,
         ),
     ] = 120,
+    pycg_shard_strategy: Annotated[
+        ShardStrategy,
+        typer.Option(
+            "--pycg-shard-strategy",
+            help=(
+                "How --pycg-shard groups files (level 2 only). 'jedi' (default) "
+                "partitions the Jedi module-dependency graph (SCC + Louvain) so "
+                "tightly-coupled modules co-compute and few call edges are "
+                "severed between shards; import cycles are never split. "
+                "'package' uses the legacy one-shard-per-package-directory "
+                "grouping."
+            ),
+        ),
+    ] = ShardStrategy.JEDI,
 ):
     options = AnalysisOptions(
         input=input,
@@ -209,6 +223,7 @@ def main(
         pycg_shard=pycg_shard,
         pycg_shard_ceiling=pycg_shard_ceiling,
         pycg_shard_timeout=pycg_shard_timeout,
+        pycg_shard_strategy=pycg_shard_strategy,
     )
 
     _set_log_level(options.verbosity)
