@@ -1,0 +1,54 @@
+name: Announce release (agent)
+
+# When a release is published (the same v*.*.* tag the Python uv Release workflow
+# cuts), run a Claude Code agent that reads the auto-posted announcement Discussion
+# and rewrites it into a clear, user-facing message. The agent follows the playbook
+# in .github/release-announcer/CLAUDE.md.
+#
+# Requires two secrets:
+#   ANTHROPIC_API_KEY  - for the Claude Code action.
+#   CLDK_AUTH_TOKEN    - PAT with repo + discussions scope (also used by the release
+#                        workflow), so the agent can edit the repo and org Discussions.
+#
+# Runs after the release workflow has already published the release and seeded the
+# Discussion, so this only needs to improve an existing post.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to (re)announce, e.g. v0.3.0"
+        required: true
+
+permissions:
+  contents: read
+  discussions: write
+
+concurrency:
+  group: announce-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  announce:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Rewrite the release announcement
+        uses: anthropics/claude-code-action@v1
+        env:
+          # gh (used by the agent) authenticates from GH_TOKEN; CLDK_AUTH_TOKEN can
+          # write Discussions in this repo and in codellm-devkit/.github.
+          GH_TOKEN: ${{ secrets.CLDK_AUTH_TOKEN }}
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            A new release was just published: ${{ github.event.release.tag_name || inputs.tag }}
+            for the ${{ github.repository }} repository.
+
+            Read .github/release-announcer/CLAUDE.md and follow it exactly to rewrite
+            the announcement Discussion (both the repo and the codellm-devkit/.github
+            org Discussion) for this release into a clear, user-facing message.
