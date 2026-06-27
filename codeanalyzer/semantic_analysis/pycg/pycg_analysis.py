@@ -81,16 +81,15 @@ def _shard_timeout(seconds: int) -> Generator[None, None, None]:
 from codeanalyzer.schema.py_schema import PyCallEdge, PyModule
 from codeanalyzer.semantic_analysis.call_graph import iter_callables_in_symbol_table
 from codeanalyzer.semantic_analysis.pycg.pycg_exceptions import PyCGExceptions
-from codeanalyzer.semantic_analysis.pycg.shard_planner import plan_shards
+from codeanalyzer.semantic_analysis.pycg.shard_planner import ShardPlan, plan_shards
 from codeanalyzer.utils import ProgressBar, logger
 
 
-@contextlib.contextmanager
-def _shard_symlink_root(
+def _materialize_shard_root(
     files: List[str],
     project_dir: Path,
-) -> Generator[Tuple[Path, List[str]], None, None]:
-    """Materialise a shard's files as a temporary mini-project.
+) -> Tuple[Path, List[str]]:
+    """Build a temporary symlink mini-project for a shard; return ``(root, eps)``.
 
     PyCG bounds its import-following to the ``package`` directory — only
     modules whose resolved file lives under that root are followed; everything
@@ -102,38 +101,50 @@ def _shard_symlink_root(
     this mirror as the package root confines analysis to the shard while
     emitting project-relative edge names (so ``prefix=""`` — no rename needed).
 
-    Yields ``(root, entry_points)`` where *entry_points* are the symlinked
-    paths inside *root*.  The temp tree is removed on exit.
+    The caller owns the returned *root* and must ``shutil.rmtree`` it.
     """
     root = Path(tempfile.mkdtemp(prefix="canpy_pycg_shard_"))
     entry_points: List[str] = []
     linked_inits: Set[Path] = set()
-    try:
-        for f in files:
-            src = Path(f).resolve()
-            try:
-                rel = src.relative_to(project_dir)
-            except ValueError:
-                continue  # defensively skip files outside the project
-            dst = root / rel
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            if not dst.exists():
-                dst.symlink_to(src)
-            entry_points.append(str(dst))
+    for f in files:
+        src = Path(f).resolve()
+        try:
+            rel = src.relative_to(project_dir)
+        except ValueError:
+            continue  # defensively skip files outside the project
+        dst = root / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if not dst.exists():
+            dst.symlink_to(src)
+        entry_points.append(str(dst))
 
-            # Symlink the __init__.py chain from project root down to this
-            # file's package so PyCG/importlib can resolve the dotted module
-            # name.  These add ~0 analysis cost (usually empty) and keep
-            # out-of-shard siblings unresolved → ghost nodes.
-            for i in range(len(rel.parent.parts) + 1):
-                pkg_rel = Path(*rel.parent.parts[:i])
-                real_init = project_dir / pkg_rel / "__init__.py"
-                link_init = root / pkg_rel / "__init__.py"
-                if real_init.exists() and link_init not in linked_inits:
-                    link_init.parent.mkdir(parents=True, exist_ok=True)
-                    if not link_init.exists():
-                        link_init.symlink_to(real_init.resolve())
-                    linked_inits.add(link_init)
+        # Symlink the __init__.py chain from project root down to this file's
+        # package so PyCG/importlib can resolve the dotted module name.  These
+        # add ~0 analysis cost (usually empty) and keep out-of-shard siblings
+        # unresolved → ghost nodes.
+        for i in range(len(rel.parent.parts) + 1):
+            pkg_rel = Path(*rel.parent.parts[:i])
+            real_init = project_dir / pkg_rel / "__init__.py"
+            link_init = root / pkg_rel / "__init__.py"
+            if real_init.exists() and link_init not in linked_inits:
+                link_init.parent.mkdir(parents=True, exist_ok=True)
+                if not link_init.exists():
+                    link_init.symlink_to(real_init.resolve())
+                linked_inits.add(link_init)
+    return root, entry_points
+
+
+@contextlib.contextmanager
+def _shard_symlink_root(
+    files: List[str],
+    project_dir: Path,
+) -> Generator[Tuple[Path, List[str]], None, None]:
+    """Context-manager wrapper around :func:`_materialize_shard_root`.
+
+    Yields ``(root, entry_points)`` and removes the temp tree on exit.
+    """
+    root, entry_points = _materialize_shard_root(files, project_dir)
+    try:
         yield root, entry_points
     finally:
         shutil.rmtree(root, ignore_errors=True)
@@ -573,10 +584,7 @@ class PyCG:
             )
 
         if self.using_ray:
-            logger.info(
-                "PyCG: Ray parallelism is not yet wired for the 'jedi' shard "
-                "strategy — running shards sequentially."
-            )
+            return self._build_sharded_planned_ray(plan)
 
         all_edges: List[PyCallEdge] = []
         skipped = 0
@@ -613,6 +621,98 @@ class PyCG:
         result = self._coalesce_edges(all_edges)
         logger.info(
             "PyCG: %d edges from %d/%d shard(s) (%d before dedup, Jedi-planned)",
+            len(result), len(plan.shards) - skipped, len(plan.shards), len(all_edges),
+        )
+        return result
+
+    def _build_sharded_planned_ray(self, plan: "ShardPlan") -> List[PyCallEdge]:
+        """Ray-parallel execution of Jedi-planned file-set shards.
+
+        Each shard is materialised as a symlink mini-project up front (the
+        trees must outlive their remote tasks), submitted as a Ray task, and
+        collected against a single wall-clock deadline — Ray workers cannot use
+        SIGALRM, so the timeout is enforced at the orchestrator level (mirroring
+        :meth:`_build_sharded_ray`).  All symlink trees are removed once the
+        batch completes.
+        """
+        import os
+        import ray
+
+        os.environ.setdefault("RAY_IGNORE_UNHANDLED_ERRORS", "1")
+        remote_fn = ray.remote(_pycg_shard_worker)
+
+        roots: List[Path] = []
+        futures: List[Any] = []
+        meta: Dict[Any, tuple] = {}  # ObjectRef -> (shard_idx, n_files)
+        skipped = 0
+        all_edges: List[PyCallEdge] = []
+        try:
+            with ProgressBar(len(plan.shards), "Building call graph shards (parallel)", item_label="shards") as progress:
+                for idx, files in enumerate(plan.shards):
+                    n = len(files)
+                    if n > self.shard_ceiling:
+                        skipped += 1
+                        progress.advance()
+                        continue
+                    root, eps = _materialize_shard_root(files, self.project_dir)
+                    roots.append(root)
+                    fut = remote_fn.remote(eps, str(root), "")
+                    futures.append(fut)
+                    meta[fut] = (idx, n)
+
+                deadline = (
+                    time.perf_counter() + float(self.shard_timeout)
+                    if self.shard_timeout > 0 else None
+                )
+                pending = list(futures)
+                while pending:
+                    if deadline is not None:
+                        remaining = deadline - time.perf_counter()
+                        if remaining <= 0:
+                            break
+                    else:
+                        remaining = None
+
+                    ready, pending = ray.wait(pending, num_returns=1, timeout=remaining)
+                    if not ready:
+                        break
+
+                    fut = ready[0]
+                    idx, n = meta[fut]
+                    try:
+                        triples = ray.get(fut)
+                        all_edges.extend(
+                            PyCallEdge(source=s, target=t, weight=w, provenance=["pycg"])
+                            for s, t, w in triples
+                        )
+                        logger.debug("PyCG shard %d: %d edges from %d files (Ray)", idx, len(triples), n)
+                    except Exception as exc:
+                        logger.warning("PyCG shard %d failed — skipped: %s", idx, exc)
+                        skipped += 1
+                    progress.advance()
+
+                for fut in pending:
+                    idx, _ = meta[fut]
+                    logger.warning(
+                        "PyCG shard %d timed out after %ds — skipped",
+                        idx, self.shard_timeout,
+                    )
+                    ray.cancel(fut, force=True)
+                    skipped += 1
+                    progress.advance()
+        finally:
+            for root in roots:
+                shutil.rmtree(root, ignore_errors=True)
+
+        if skipped:
+            logger.warning(
+                "PyCG: %d/%d shard(s) skipped (ceiling, %ds timeout, or failure)",
+                skipped, len(plan.shards), self.shard_timeout,
+            )
+
+        result = self._coalesce_edges(all_edges)
+        logger.info(
+            "PyCG: %d edges from %d/%d shard(s) (%d before dedup, Jedi-planned, Ray-parallel)",
             len(result), len(plan.shards) - skipped, len(plan.shards), len(all_edges),
         )
         return result
