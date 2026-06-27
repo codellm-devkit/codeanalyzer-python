@@ -61,7 +61,7 @@ logger = logging.getLogger(__name__)
 
 
 # ----------------------------------------------------------------------------
-# Symbol-table walking: callable / class signature -> owning module
+# Symbol-table walking: callable / class signature -> defining file
 # ----------------------------------------------------------------------------
 
 def _walk_callable_sigs(c: PyCallable) -> Iterator[str]:
@@ -80,22 +80,25 @@ def _walk_class_sigs(cls: PyClass) -> Iterator[str]:
         yield from _walk_class_sigs(inner)
 
 
-def _signature_to_module(symbol_table: Dict[str, PyModule]) -> Dict[str, str]:
-    """Map every callable/class signature in the project to its module name.
+def _signature_to_file(symbol_table: Dict[str, PyModule]) -> Dict[str, str]:
+    """Map every callable/class signature in the project to its defining file.
 
-    Built by walking each module's full nesting tree, so the mapping is exact
-    rather than relying on longest-prefix matching against module names (which
-    is ambiguous when one module name is a prefix of another).
+    Built by walking each module's full nesting tree, recording the file that
+    actually defines each callable.  Files are the partition unit because
+    ``PyModule.module_name`` is only the file *stem* (``py_file.stem``), which
+    collides heavily across a real project (every ``__init__.py``, ``models.py``
+    …) — keying the module graph by name would collapse unrelated files into
+    one node and silently drop files from shards.  ``file_path`` is unique.
     """
-    sig_to_mod: Dict[str, str] = {}
+    sig_to_file: Dict[str, str] = {}
     for module in symbol_table.values():
         for fn in module.functions.values():
             for sig in _walk_callable_sigs(fn):
-                sig_to_mod[sig] = module.module_name
+                sig_to_file[sig] = module.file_path
         for cls in module.classes.values():
             for sig in _walk_class_sigs(cls):
-                sig_to_mod[sig] = module.module_name
-    return sig_to_mod
+                sig_to_file[sig] = module.file_path
+    return sig_to_file
 
 
 # ----------------------------------------------------------------------------
@@ -133,22 +136,24 @@ def build_module_graph(
     symbol_table: Dict[str, PyModule],
     jedi_edges: List[PyCallEdge],
 ) -> nx.DiGraph:
-    """Project Jedi callable→callable edges onto a weighted module DiGraph.
+    """Project Jedi callable→callable edges onto a weighted file DiGraph.
 
-    Every project module is a node (isolated modules included).  Edge weight is
-    the summed Jedi weight of cross-module call sites; intra-module edges and
-    edges touching external/library symbols (no symbol-table entry) are
-    dropped — they cannot influence how the project is partitioned.
+    Nodes are file paths (the unique, collision-free partition unit — see
+    :func:`_signature_to_file`); each carries a ``module_name`` attribute for
+    readable reporting.  Every project file is a node (isolated files
+    included).  Edge weight is the summed Jedi weight of cross-file call sites;
+    intra-file edges and edges touching external/library symbols (no
+    symbol-table entry) are dropped — they cannot influence the partition.
     """
-    sig_to_mod = _signature_to_module(symbol_table)
+    sig_to_file = _signature_to_file(symbol_table)
 
     g = nx.DiGraph()
     for module in symbol_table.values():
-        g.add_node(module.module_name, file_path=module.file_path)
+        g.add_node(module.file_path, module_name=module.module_name)
 
     for edge in jedi_edges:
-        src = sig_to_mod.get(edge.source)
-        dst = sig_to_mod.get(edge.target)
+        src = sig_to_file.get(edge.source)
+        dst = sig_to_file.get(edge.target)
         if src is None or dst is None or src == dst:
             continue
         if g.has_edge(src, dst):
@@ -355,23 +360,25 @@ def plan_shards(
     if merge_small:
         unit_shards = _merge_small(unit_shards, hu, unit_size, budget)
 
-    # Expand SCC units back to modules, then to file paths.
-    module_shards: List[List[str]] = []
+    # Expand SCC units back to file paths (graph nodes are files).
+    file_shards: List[List[str]] = []
     for units in unit_shards:
-        mods: Set[str] = set()
+        files: Set[str] = set()
         for scc in units:
-            mods |= unit_members[scc]
-        if mods:
-            module_shards.append(sorted(mods))
+            files |= unit_members[scc]
+        if files:
+            file_shards.append(sorted(files))
 
-    mod_to_file = {n: g.nodes[n]["file_path"] for n in g.nodes}
-    file_shards = [[mod_to_file[m] for m in mods] for mods in module_shards]
+    # Parallel view in module names (file stems) for human-readable reporting.
+    module_shards = [
+        [g.nodes[f].get("module_name", f) for f in files] for files in file_shards
+    ]
 
     # Metrics: how much Jedi edge weight does this partition sever?
     shard_of: Dict[str, int] = {}
-    for idx, mods in enumerate(module_shards):
-        for m in mods:
-            shard_of[m] = idx
+    for idx, files in enumerate(file_shards):
+        for f in files:
+            shard_of[f] = idx
     cut_weight = 0.0
     for u, v, w in g.edges(data="weight", default=1):
         if shard_of.get(u) != shard_of.get(v):

@@ -31,8 +31,9 @@ def _edge(src: str, dst: str, w: int = 1) -> PyCallEdge:
     return PyCallEdge(source=src, target=dst, weight=w, provenance=["jedi"])
 
 
-def _cut_ratio(g: nx.DiGraph, module_shards: List[List[str]]) -> float:
-    shard_of = {m: i for i, mods in enumerate(module_shards) for m in mods}
+def _cut_ratio(g: nx.DiGraph, file_shards: List[List[str]]) -> float:
+    # Graph nodes are file paths; partitions are lists of file paths.
+    shard_of = {f: i for i, files in enumerate(file_shards) for f in files}
     total = cut = 0.0
     for u, v, w in g.edges(data="weight", default=1):
         total += w
@@ -45,27 +46,41 @@ def _cut_ratio(g: nx.DiGraph, module_shards: List[List[str]]) -> float:
 # build_module_graph
 # ----------------------------------------------------------------------------
 
-def test_module_graph_projects_callables_to_modules():
+def test_module_graph_keys_nodes_by_file_not_name():
+    # Two distinct files share the stem "models" (module_name collision); the
+    # graph must keep them as separate nodes keyed by path, not collapse them.
+    st = {
+        "/pkg_a/models.py": _module("models", "/pkg_a/models.py", ["f"]),
+        "/pkg_b/models.py": _module("models", "/pkg_b/models.py", ["h"]),
+    }
+    edges = [
+        _edge("models.f", "models.h", 3),  # but which file? mapped by definition
+    ]
+    g = build_module_graph(st, edges)
+    assert set(g.nodes) == {"/pkg_a/models.py", "/pkg_b/models.py"}
+    assert g.nodes["/pkg_a/models.py"]["module_name"] == "models"
+
+
+def test_module_graph_projects_callables_to_files():
     st = {
         "/a.py": _module("a", "/a.py", ["f", "g"]),
         "/b.py": _module("b", "/b.py", ["h"]),
     }
     edges = [
-        _edge("a.f", "b.h", 3),   # cross-module -> kept
-        _edge("a.f", "a.g", 5),   # intra-module -> dropped
+        _edge("a.f", "b.h", 3),   # cross-file -> kept
+        _edge("a.f", "a.g", 5),   # intra-file -> dropped
         _edge("a.g", "ext.lib.x"),  # external target -> dropped
     ]
     g = build_module_graph(st, edges)
-    assert set(g.nodes) == {"a", "b"}
-    assert g.has_edge("a", "b") and g["a"]["b"]["weight"] == 3
-    assert not g.has_edge("a", "a")
+    assert set(g.nodes) == {"/a.py", "/b.py"}
+    assert g.has_edge("/a.py", "/b.py") and g["/a.py"]["/b.py"]["weight"] == 3
     assert g.number_of_edges() == 1
 
 
-def test_isolated_modules_are_nodes():
+def test_isolated_files_are_nodes():
     st = {"/a.py": _module("a", "/a.py", ["f"]), "/b.py": _module("b", "/b.py", ["g"])}
     g = build_module_graph(st, [])  # no edges
-    assert set(g.nodes) == {"a", "b"}
+    assert set(g.nodes) == {"/a.py", "/b.py"}
     assert g.number_of_edges() == 0
 
 
@@ -105,9 +120,11 @@ def test_every_module_assigned_exactly_once():
 def test_beats_naive_per_package_cut_ratio():
     st, edges = _coupled_clusters_project()
     g = build_module_graph(st, edges)
+    # Naive baseline: one shard per top-level directory (e.g. /pkg_a/...).
     naive = {}
     for m in st.values():
-        naive.setdefault(m.module_name.split(".")[0], []).append(m.module_name)
+        top = m.file_path.split("/")[1]
+        naive.setdefault(top, []).append(m.file_path)
     naive_ratio = _cut_ratio(g, list(naive.values()))
 
     plan = plan_shards(st, edges, budget=4)
@@ -148,6 +165,21 @@ def test_determinism():
     b = plan_shards(st, edges, budget=4)
     norm = lambda p: sorted(sorted(s) for s in p.module_shards)
     assert norm(a) == norm(b)
+
+
+def test_no_file_dropped_on_stem_collision():
+    # Regression: module_name is only the file stem, so many files collide on
+    # name (every __init__.py, models.py, ...). Keying by name would drop all
+    # but one per stem. Every FILE must land in exactly one shard.
+    st, edges = {}, []
+    for pkg in ("a", "b", "c", "d"):
+        for stem in ("__init__", "models", "views"):
+            path = f"/{pkg}/{stem}.py"
+            st[path] = _module(stem, path, ["f"])
+    plan = plan_shards(st, edges, budget=5)
+    assigned = sorted(f for shard in plan.shards for f in shard)
+    assert assigned == sorted(st.keys())          # all 12 files present
+    assert len(assigned) == len(set(assigned))    # none duplicated
 
 
 def test_empty_project():
