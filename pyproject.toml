@@ -1,6 +1,6 @@
 [project]
 name = "codeanalyzer-python"
-version = "0.3.0"
+version = "0.3.1"
 description = "Static Analysis on Python source code using Jedi, CodeQL and Treesitter — emits analysis.json or a Neo4j property graph."
 readme = "README.md"
 authors = [
