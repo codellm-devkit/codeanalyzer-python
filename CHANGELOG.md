@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-06-27
+
+### Added
+- **`--analysis-level {1,2}`** (reintroduced): 1 is symbol table + Jedi call graph, 2 adds the PyCG call graph.
+- **Coupling-aware PyCG sharding** (`--pycg-shard`) so level 2 scales to large apps. Shards are chosen by Jedi module coupling (strongly-connected-component condensation, so import cycles never split, plus Louvain community detection) instead of a flat file count, so few call edges are severed between shards. PyCG runs on each shard inside a symlink mini-project that bounds it to that shard's files. Ray-parallel.
+- **Iterative decomposition of runaway shards.** PyCG's fixpoint can diverge on heavy metaclass / mixin code. A shard that hits the wall-clock timeout is re-sharded at half the budget and re-run, down to a floor (10 files). The residue that still diverges, or an atomic cycle that will not split, falls back to Jedi-only coverage. On the Odoo benchmark (1028 modules) this recovered 22210 PyCG edges versus 17149 for the best uniform ceiling, losing only 20 of 1028 files instead of a whole shard.
+- **New flags**: `--pycg-shard-strategy {jedi,package}` (default `jedi`), `--pycg-shard-ceiling` (default 100, the starting per-shard budget), `--pycg-shard-timeout` (default 120, per-shard wall clock), `--pycg-max-iter` (default 50, caps PyCG fixpoint passes so a divergent shard returns a partial graph instead of hanging).
+
+### Changed
+- **BREAKING: CodeQL is replaced by PyCG as the level 2 call graph backend.** `--codeql/--no-codeql` is removed in favor of `--analysis-level`. Edge `provenance` literal `codeql` becomes `pycg`. New dependency: `pycg` (Apache 2.0). The `codeanalyzer.semantic_analysis.codeql` package is removed.
+
+### Fixed
+- The shard planner keys its module graph by file path. `PyModule.module_name` is only the file stem (every `__init__.py`, `models.py`, ...), so keying by name collided and silently dropped files from shards.
+- PyCG no longer follows imports into an in-tree dependency venv (e.g. `.codeanalyzer/`) during the whole-project level 2 run: it runs in a symlink mini-project whose root holds project source only, so dependencies resolve outside the bound and stay ghost nodes.
+- `_uv_bin` uses only the vendored `uv` from the `uv` PyPI dependency and no longer falls back to a `uv` on `PATH`, so the analyzer always uses the pinned binary. Returns `None` only if the package is missing, in which case callers fall back to pip.
+
 ## [0.2.1] - 2026-06-22
 
 ### Added
