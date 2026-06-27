@@ -433,8 +433,9 @@ class Codeanalyzer:
         logger.info("✅ Jedi: %d edges in %.1fs", len(call_graph), time.perf_counter() - t0_jedi)
 
         if self.analysis_level >= 2:
-            # Level 2: also add PyCG edges.
-            pycg_edges = self._get_pycg_call_graph(symbol_table)
+            # Level 2: also add PyCG edges. The Jedi edges double as the
+            # coupling graph that drives coupling-aware PyCG sharding.
+            pycg_edges = self._get_pycg_call_graph(symbol_table, jedi_edges)
             call_graph = merge_edges(call_graph, pycg_edges)
 
         call_graph = filter_external_edges(call_graph, symbol_table)
@@ -661,6 +662,7 @@ class Codeanalyzer:
     def _get_pycg_call_graph(
         self,
         symbol_table: Dict[str, PyModule],
+        jedi_edges: List[PyCallEdge],
     ) -> List[PyCallEdge]:
         """Build PyCG-resolved call edges.
 
@@ -668,6 +670,10 @@ class Codeanalyzer:
         and returns edges with ``provenance=["pycg"]``.  Falls back to an
         empty list and logs a warning on any failure so the caller can
         continue with Jedi-only edges.
+
+        *jedi_edges* are the level-1 call edges; under the ``jedi`` shard
+        strategy they drive coupling-aware partitioning (see
+        :func:`shard_planner.plan_shards`).
         """
         try:
             pycg = PyCG(
@@ -676,9 +682,11 @@ class Codeanalyzer:
                 shard=self.options.pycg_shard,
                 shard_ceiling=self.options.pycg_shard_ceiling,
                 shard_timeout=self.options.pycg_shard_timeout,
+                shard_strategy=self.options.pycg_shard_strategy,
+                max_iter=self.options.pycg_max_iter,
                 using_ray=self.using_ray,
             )
-            return pycg.build_call_graph_edges(symbol_table)
+            return pycg.build_call_graph_edges(symbol_table, jedi_edges=jedi_edges)
         except PyCGExceptions.PyCGImportError as exc:
             logger.warning(f"PyCG not installed — level 2 edges will be Jedi-only: {exc}")
             return []
