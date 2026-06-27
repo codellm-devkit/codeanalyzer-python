@@ -238,15 +238,16 @@ class Codeanalyzer:
 
     @staticmethod
     def _uv_bin() -> Optional[str]:
-        """Path to a uv binary: the one bundled with the ``uv`` PyPI package (a
-        dependency, so normally always present -- including inside a Docker image),
-        else a uv on PATH, else ``None`` (callers fall back to pip)."""
+        """Path to the uv binary bundled with the ``uv`` PyPI package (a declared
+        dependency, so always present in our install -- including inside a Docker
+        image). We deliberately ignore any uv on PATH so the analyzer always uses
+        the pinned, vendored uv. Returns ``None`` only if the package is somehow
+        missing (callers fall back to pip)."""
         try:
             from uv import find_uv_bin
-
             return str(find_uv_bin())
         except Exception:
-            return shutil.which("uv")
+            return None
 
     def _install_into_venv(self, venv_python: Path, args: List[str]) -> None:
         """Install packages into the target venv, preferring uv for speed (parallel
