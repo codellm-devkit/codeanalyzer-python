@@ -173,7 +173,7 @@ def jedi_call_graph_edges(
 
     Edges are coalesced on ``(source, target)``: ``weight`` is the count of
     matching sites. Provenance is always ``["jedi"]``; combine with
-    CodeQL-derived edges via ``merge_edges``.
+    PyCG-derived edges via ``merge_edges``.
     """
     counts: Counter = Counter()
     for caller in iter_callables_in_symbol_table(symbol_table):
@@ -191,7 +191,7 @@ def jedi_call_graph_edges(
 def resolve_unresolved_constructors(symbol_table: Dict[str, PyModule]) -> int:
     """Fill in ``PyCallsite.callee_signature`` for unresolved constructor sites.
 
-    When both Jedi and CodeQL fail to resolve a constructor call (commonly
+    When Jedi fails to resolve a constructor call (commonly
     for classes nested inside functions or methods, where static-analysis
     points-to is weakest), Jedi still flags the site as
     ``is_constructor_call=True`` with ``method_name`` set to the class's
@@ -246,12 +246,33 @@ def resolve_unresolved_constructors(symbol_table: Dict[str, PyModule]) -> int:
     return resolved
 
 
+def filter_external_edges(
+    edges: List[PyCallEdge],
+    symbol_table: Dict[str, PyModule],
+) -> List[PyCallEdge]:
+    """Remove edges where both source and target are outside the app namespace.
+
+    Edges where an app callable calls a library function (or vice-versa) are
+    retained; only lib→lib edges are dropped.  The app symbol set is built by
+    walking every callable in the symbol table recursively (including nested
+    functions and closures via ``inner_callables``) plus every class, so
+    PyCG-discovered closure nodes are correctly recognised as app symbols.
+    """
+    app_symbols: set = {c.signature for c in iter_callables_in_symbol_table(symbol_table)}
+    app_symbols.update(cls.signature for cls in iter_classes_in_symbol_table(symbol_table))
+
+    return [
+        e for e in edges
+        if e.source in app_symbols or e.target in app_symbols
+    ]
+
+
 def merge_edges(*edge_lists: list) -> list:
     """Merge multiple ``List[PyCallEdge]`` into one.
 
     Edges with the same ``(source, target)`` are coalesced: weights sum,
     provenance is the sorted union. Useful for combining edges produced
-    by different backends (e.g. Jedi + CodeQL).
+    by different backends (e.g. Jedi + PyCG).
     """
     by_key: Dict[Tuple[str, str], PyCallEdge] = {}
     for edges in edge_lists:

@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional, Union, List
 
+import time
+
 import ray
 from codeanalyzer.utils import logger
 from codeanalyzer.schema import (
@@ -17,13 +19,12 @@ from codeanalyzer.schema import (
 )
 from codeanalyzer.schema.py_schema import PyCallEdge
 from codeanalyzer.semantic_analysis.call_graph import (
+    filter_external_edges,
     jedi_call_graph_edges,
     merge_edges,
     resolve_unresolved_constructors,
 )
-from codeanalyzer.semantic_analysis.codeql import CodeQLLoader
-from codeanalyzer.semantic_analysis.codeql.codeql_analysis import CodeQL
-from codeanalyzer.semantic_analysis.codeql.codeql_exceptions import CodeQLExceptions
+from codeanalyzer.semantic_analysis.pycg import PyCG, PyCGExceptions
 from codeanalyzer.syntactic_analysis.exceptions import SymbolTableBuilderRayError
 from codeanalyzer.syntactic_analysis.symbol_table_builder import SymbolTableBuilder
 from codeanalyzer.utils import ProgressBar
@@ -54,7 +55,7 @@ def _process_file_with_ray(py_file: Union[Path, str], project_dir: Union[Path, s
 
 
 class Codeanalyzer:
-    """Core functionality for CodeQL analysis.
+    """Core static analysis engine for Python projects.
 
     Args:
         options (AnalysisOptions): Analysis configuration options containing all necessary parameters.
@@ -64,16 +65,13 @@ class Codeanalyzer:
         self.options = options
         self.project_dir = Path(options.input).resolve()
         self.skip_tests = options.skip_tests
-        self.using_codeql = options.using_codeql
+        self.analysis_level = options.analysis_level
         self.rebuild_analysis = options.rebuild_analysis
         self.no_venv = options.no_venv
         self.cache_dir = (
             options.cache_dir.resolve() if options.cache_dir is not None else self.project_dir
         ) / ".codeanalyzer"
         self.clear_cache = options.clear_cache
-        self.db_path: Optional[Path] = None
-        self.codeql_bin: Optional[Path] = None
-        self.codeql_packs_dir: Optional[Path] = None
         self.virtualenv: Optional[Path] = None
         self.using_ray: bool = options.using_ray
         self.file_name: Optional[Path] = options.file_name
@@ -85,6 +83,7 @@ class Codeanalyzer:
         capture_output: bool = True,
         check: bool = True,
         suppress_output: bool = False,
+        log_on_failure: bool = True,
     ) -> subprocess.CompletedProcess:
         """
         Runs a subprocess with real-time output streaming to the logger.
@@ -94,7 +93,10 @@ class Codeanalyzer:
             cwd: Working directory to run the command in.
             capture_output: If True, retains and returns the output.
             check: If True, raises CalledProcessError on non-zero exit.
-            suppress_output: If True, silences log output.
+            suppress_output: If True, silences per-line debug output.
+            log_on_failure: If False, suppresses the error-level log on
+                non-zero exit (use when the caller handles the exception and
+                will emit its own diagnostic).
 
         Returns:
             subprocess.CompletedProcess
@@ -125,9 +127,10 @@ class Codeanalyzer:
 
         if check and returncode != 0:
             error_output = "\n".join(output_lines)
-            logger.error(f"Command failed with exit code {returncode}: {' '.join(cmd)}")
-            if error_output:
-                logger.error(f"Command output:\n{error_output}")
+            if log_on_failure:
+                logger.error(f"Command failed with exit code {returncode}: {' '.join(cmd)}")
+                if error_output:
+                    logger.error(f"Command output:\n{error_output}")
             raise subprocess.CalledProcessError(returncode, cmd, output=error_output)
 
         return subprocess.CompletedProcess(
@@ -248,13 +251,22 @@ class Codeanalyzer:
     def _install_into_venv(self, venv_python: Path, args: List[str]) -> None:
         """Install packages into the target venv, preferring uv for speed (parallel
         downloads + a shared global cache) and falling back to the venv's own pip
-        when uv is unavailable."""
+        when uv is unavailable.
+
+        Raises ``subprocess.CalledProcessError`` on failure; callers in
+        ``__enter__`` catch this and warn-and-continue so a single failing
+        package (e.g. a C extension that needs system libs) does not abort the
+        entire analysis.
+        """
         uv = self._uv_bin()
         if uv:
             cmd = [uv, "pip", "install", "--python", str(venv_python), *args]
         else:
             cmd = [str(venv_python), "-m", "pip", "install", *args]
-        self._cmd_exec_helper(cmd, cwd=self.project_dir, check=True)
+        self._cmd_exec_helper(
+            cmd, cwd=self.project_dir, check=True,
+            suppress_output=True, log_on_failure=False,
+        )
 
     def __enter__(self) -> "Codeanalyzer":
         # If no virtualenv is provided, try to create one using requirements.txt or pyproject.toml
@@ -287,21 +299,32 @@ class Codeanalyzer:
             for dep_file, _ in dependency_files:
                 if (self.project_dir / dep_file).exists():
                     logger.info(f"Installing dependencies from {dep_file}")
-                    self._install_into_venv(
-                        venv_python,
-                        ["--upgrade", "-r", str(self.project_dir / dep_file)],
-                    )
+                    try:
+                        self._install_into_venv(
+                            venv_python,
+                            ["--upgrade", "-r", str(self.project_dir / dep_file)],
+                        )
+                    except subprocess.CalledProcessError as exc:
+                        logger.warning(
+                            f"Dependency installation from {dep_file} failed "
+                            f"(exit {exc.returncode}) — continuing without it. "
+                            "Jedi type resolution may be incomplete."
+                        )
 
             # Handle Pipenv files
             if (self.project_dir / "Pipfile").exists():
                 logger.info("Installing dependencies from Pipfile")
-                # Note: This would require pipenv to be installed
-                self._install_into_venv(venv_python, ["pipenv"])
-                self._cmd_exec_helper(
-                    ["pipenv", "install", "--dev"],
-                    cwd=self.project_dir,
-                    check=True,
-                )
+                try:
+                    self._install_into_venv(venv_python, ["pipenv"])
+                    self._cmd_exec_helper(
+                        ["pipenv", "install", "--dev"],
+                        cwd=self.project_dir,
+                        check=True,
+                    )
+                except subprocess.CalledProcessError as exc:
+                    logger.warning(
+                        f"Pipenv installation failed (exit {exc.returncode}) — continuing without it."
+                    )
 
             # Handle conda environment files
             conda_files = ["conda.yml", "environment.yml"]
@@ -319,7 +342,13 @@ class Codeanalyzer:
 
             if any((self.project_dir / file).exists() for file in package_definition_files):
                 logger.info("Installing project in editable mode")
-                self._install_into_venv(venv_python, ["-e", str(self.project_dir)])
+                try:
+                    self._install_into_venv(venv_python, ["-e", str(self.project_dir)])
+                except subprocess.CalledProcessError as exc:
+                    logger.warning(
+                        f"Editable install failed (exit {exc.returncode}) — "
+                        "continuing without it. Jedi type resolution may be incomplete."
+                    )
             else:
                 logger.warning("No package definition files found, skipping editable installation")
 
@@ -330,60 +359,6 @@ class Codeanalyzer:
         # it None so Jedi resolves against the ambient interpreter instead.
         if not self.no_venv and venv_path.exists():
             self.virtualenv = venv_path
-
-        if self.using_codeql:
-            logger.info(f"(Re-)initializing CodeQL analysis for {self.project_dir}")
-
-            # Resolve the CLI binary before anything else uses it: DB build
-            # below needs it, and so does every subsequent query run.
-            self.codeql_bin = self._ensure_codeql_bin()
-            # Download the standard query library pack (idempotent). The
-            # CLI install ships only the language extractors; the
-            # ``codeql/python-all`` library pack must be fetched separately.
-            self.codeql_packs_dir = self._ensure_codeql_packs(self.codeql_bin)
-
-            cache_root = self.cache_dir / "codeql"
-            cache_root.mkdir(parents=True, exist_ok=True)
-            self.db_path = cache_root / f"{self.project_dir.name}-db"
-            self.db_path.mkdir(exist_ok=True)
-
-            checksum_file = self.db_path / ".checksum"
-            current_checksum = self._compute_checksum(self.project_dir)
-
-            def is_cache_valid() -> bool:
-                if not (self.db_path / "db-python").exists():
-                    return False
-                if not checksum_file.exists():
-                    return False
-                return checksum_file.read_text().strip() == current_checksum
-
-            if self.rebuild_analysis or not is_cache_valid():
-                logger.info("Creating new CodeQL database...")
-
-                cmd = [
-                    str(self.codeql_bin),
-                    "database",
-                    "create",
-                    str(self.db_path),
-                    f"--source-root={self.project_dir}",
-                    "--language=python",
-                    "--overwrite",
-                ]
-
-                proc = subprocess.Popen(
-                    cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
-                )
-                _, err = proc.communicate()
-
-                if proc.returncode != 0:
-                    raise CodeQLExceptions.CodeQLDatabaseBuildException(
-                        f"Error building CodeQL database:\n{err.decode()}"
-                    )
-
-                checksum_file.write_text(current_checksum)
-
-            else:
-                logger.info(f"Reusing cached CodeQL DB at {self.db_path}")
 
         return self
 
@@ -449,24 +424,21 @@ class Codeanalyzer:
         # Build symbol table from cached application if available (if no available, the build a new one)
         symbol_table = self._build_symbol_table(cached_pyapplication.symbol_table if cached_pyapplication else {})
 
-        # Build the call graph in four steps:
-        #   1. Run CodeQL (when enabled). Produces resolved edges with
-        #      ``provenance=["codeql"]`` and augments ``PyCallsite``s
-        #      in-place — filling ``callee_signature`` for sites Jedi
-        #      couldn't resolve.
-        #   2. Heuristic fallback for constructor calls neither Jedi nor
-        #      CodeQL could resolve (commonly classes nested inside
-        #      functions). Walks the symbol table by class short-name +
-        #      scope and writes ``<class>.__init__`` into the site.
-        #   3. Derive Jedi edges from the now-fully-augmented symbol
-        #      table — these reflect every resolution the symbol table
-        #      contains, regardless of which pass put it there.
-        #   4. Merge with CodeQL edges; provenance unions for edges both
-        #      backends saw.
-        codeql_edges = self._get_call_graph(symbol_table, augment_sites=True)
         resolve_unresolved_constructors(symbol_table)
+
+        # Level 1: Jedi call graph.
+        t0_jedi = time.perf_counter()
         jedi_edges = jedi_call_graph_edges(symbol_table)
-        call_graph = merge_edges(jedi_edges, codeql_edges)
+        call_graph = list(jedi_edges)
+        logger.info("✅ Jedi: %d edges in %.1fs", len(call_graph), time.perf_counter() - t0_jedi)
+
+        if self.analysis_level >= 2:
+            # Level 2: also add PyCG edges. The Jedi edges double as the
+            # coupling graph that drives coupling-aware PyCG sharding.
+            pycg_edges = self._get_pycg_call_graph(symbol_table, jedi_edges)
+            call_graph = merge_edges(call_graph, pycg_edges)
+
+        call_graph = filter_external_edges(call_graph, symbol_table)
 
         # Classify call-graph endpoints that are not declared in the symbol table
         # (imported library / builtin members) once, so the JSON and Neo4j backends
@@ -573,7 +545,8 @@ class Codeanalyzer:
             Dict[str, PyModule]: A dictionary mapping file paths to PyModule objects.
         """
         symbol_table: Dict[str, PyModule] = {}
-        
+        t0_st = time.perf_counter()
+
         # Handle single file analysis
         if self.file_name is not None:
             single_file = self.project_dir / self.file_name
@@ -680,123 +653,44 @@ class Codeanalyzer:
             if files_from_cache > 0:
                 logger.info(f"Reused {files_from_cache} files from cache, processed {files_processed} new/changed files")
 
-        logger.info("✅ Symbol table generation complete.")
+        logger.info(
+            "✅ Symbol table: %d modules in %.1fs",
+            len(symbol_table), time.perf_counter() - t0_st,
+        )
         return symbol_table
 
-    def _ensure_codeql_packs(self, codeql_bin: Path) -> Path:
-        """Materialize a qlpack that depends on ``codeql/python-all``.
-
-        The CodeQL CLI install ships only the language extractors — query
-        library packs (and their transitive dependencies like
-        ``codeql/concepts``) must be resolved separately. The canonical
-        way is to declare the dependency in a ``qlpack.yml`` and run
-        ``codeql pack install`` in that directory; CodeQL writes a
-        ``codeql-pack.lock.yml`` and downloads everything needed.
-
-        We do this once per project under ``<cache_dir>/codeql/qlpack/``
-        and return that directory. The query runner then writes its
-        temporary ``.ql`` file inside this pack — colocation makes
-        ``import python`` resolve without any ``--additional-packs`` or
-        ``--search-path`` gymnastics.
-        """
-        pack_dir = self.cache_dir / "codeql" / "qlpack"
-        pack_dir.mkdir(parents=True, exist_ok=True)
-        qlpack_yml = pack_dir / "qlpack.yml"
-        lock_file = pack_dir / "codeql-pack.lock.yml"
-
-        if not qlpack_yml.exists():
-            qlpack_yml.write_text(
-                "name: codeanalyzer-deps\n"
-                "version: 1.0.0\n"
-                "dependencies:\n"
-                '  codeql/python-all: "*"\n'
-            )
-
-        if lock_file.exists():
-            logger.debug(f"CodeQL pack dependencies already installed in {pack_dir}")
-            return pack_dir
-
-        logger.info(f"Installing CodeQL pack dependencies in {pack_dir}.")
-        proc = subprocess.Popen(
-            [str(codeql_bin), "pack", "install", str(pack_dir)],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        _, err = proc.communicate()
-        if proc.returncode != 0:
-            raise CodeQLExceptions.CodeQLDatabaseBuildException(
-                f"Failed to install CodeQL pack dependencies:\n"
-                f"{(err or b'').decode(errors='replace')}"
-            )
-        return pack_dir
-
-    def _ensure_codeql_bin(self) -> Path:
-        """Locate (or download) the CodeQL CLI binary into the project cache.
-
-        Resolution order:
-          1. An existing binary inside ``<cache_dir>/codeql/bin/`` —
-             reused across runs on the same project.
-          2. ``codeql`` already on the user's PATH — picked up verbatim.
-          3. Otherwise, download into ``<cache_dir>/codeql/bin/``.
-
-        The project-local cache is preferred over PATH so the version we
-        installed earlier wins over whatever the OS ships — keeps behavior
-        deterministic when the user has both.
-        """
-        bin_root = self.cache_dir / "codeql" / "bin"
-        bin_root.mkdir(parents=True, exist_ok=True)
-
-        existing = next(
-            (p for p in bin_root.rglob("codeql") if p.is_file()),
-            None,
-        )
-        if existing and os.access(existing, os.X_OK):
-            logger.debug(f"Reusing cached CodeQL CLI at {existing}")
-            return existing.resolve()
-
-        on_path = shutil.which("codeql")
-        if on_path:
-            logger.debug(f"Using CodeQL CLI from PATH at {on_path}")
-            return Path(on_path)
-
-        logger.info(f"CodeQL CLI not found; downloading into {bin_root}.")
-        downloaded = CodeQLLoader.download_and_extract_codeql(bin_root)
-        if not downloaded.exists() or not os.access(downloaded, os.X_OK):
-            raise FileNotFoundError(
-                f"CodeQL binary not executable after download: {downloaded}"
-            )
-        return downloaded
-
-    def _get_call_graph(
+    def _get_pycg_call_graph(
         self,
         symbol_table: Dict[str, PyModule],
-        augment_sites: bool = False,
+        jedi_edges: List[PyCallEdge],
     ) -> List[PyCallEdge]:
-        """Build CodeQL-resolved call edges and optionally augment sites.
+        """Build PyCG-resolved call edges.
 
-        Returns an empty list when CodeQL isn't enabled or the database
-        isn't available. Edges carry ``provenance=["codeql"]`` — merge
-        with Jedi-derived edges via ``call_graph.merge_edges``.
+        Runs PyCG's iterative name-pointer analysis over the whole project
+        and returns edges with ``provenance=["pycg"]``.  Falls back to an
+        empty list and logs a warning on any failure so the caller can
+        continue with Jedi-only edges.
 
-        When ``augment_sites`` is True, also mutates
-        ``PyCallable.call_sites`` in the symbol table to backfill
-        ``callee_signature`` for sites Jedi couldn't resolve. The single
-        CodeQL query is shared (cached on the ``CodeQL`` instance) so
-        this costs no extra DB work.
+        *jedi_edges* are the level-1 call edges; under the ``jedi`` shard
+        strategy they drive coupling-aware partitioning (see
+        :func:`shard_planner.plan_shards`).
         """
-        if not self.using_codeql or self.db_path is None:
-            return []
         try:
-            cq = CodeQL(
+            pycg = PyCG(
                 self.project_dir,
-                self.db_path,
-                codeql_bin=self.codeql_bin,
-                codeql_packs_dir=self.codeql_packs_dir,
+                skip_tests=self.skip_tests,
+                shard=self.options.pycg_shard,
+                shard_ceiling=self.options.pycg_shard_ceiling,
+                shard_timeout=self.options.pycg_shard_timeout,
+                shard_strategy=self.options.pycg_shard_strategy,
+                max_iter=self.options.pycg_max_iter,
+                using_ray=self.using_ray,
             )
-            edges = cq.build_call_graph_edges(symbol_table)
-            if augment_sites:
-                cq.augment_call_sites(symbol_table)
-            return edges
-        except Exception as exc:
-            logger.warning(f"CodeQL call-graph extraction failed: {exc}")
+            return pycg.build_call_graph_edges(symbol_table, jedi_edges=jedi_edges)
+        except PyCGExceptions.PyCGImportError as exc:
+            logger.warning(f"PyCG not installed — level 2 edges will be Jedi-only: {exc}")
+            return []
+        except PyCGExceptions.PyCGAnalysisError as exc:
+            logger.warning(f"PyCG analysis failed — level 2 edges will be Jedi-only: {exc}")
+            logger.debug("PyCG full traceback:", exc_info=True)
             return []

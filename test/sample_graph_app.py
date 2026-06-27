@@ -143,7 +143,7 @@ def make_sample_app() -> PyApplication:
             source="src.service.helper",
             target="requests.get",
             weight=2,
-            provenance=["jedi", "codeql"],
+            provenance=["jedi", "pycg"],
         ),
     ]
 

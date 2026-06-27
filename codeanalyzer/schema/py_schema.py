@@ -355,7 +355,7 @@ class PyCallEdge(BaseModel):
     target: str  # callee's PyCallable.signature
     type: Literal["CALL_DEP"] = "CALL_DEP"
     weight: int = 1
-    provenance: List[Literal["jedi", "codeql", "joern"]] = []
+    provenance: List[Literal["jedi", "pycg", "joern"]] = []
 
 
 @builder
