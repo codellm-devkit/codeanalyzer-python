@@ -250,10 +250,10 @@ jobs:
 
       - name: Create incorporation issue in python-sdk
         env:
-          # PAT (or fine-grained token) with Issues:write on codellm-devkit/python-sdk.
-          # The default GITHUB_TOKEN is scoped to this repo only and cannot open
-          # issues cross-repo, mirroring HOMEBREW_TAP_TOKEN above.
-          GH_TOKEN: ${{ secrets.SDK_ISSUE_TOKEN }}
+          # CLDK_AUTH_TOKEN is a PAT with repo + discussions scope, reused here for the
+          # cross-repo issue write. The default GITHUB_TOKEN is scoped to this repo only
+          # and cannot open issues cross-repo, mirroring HOMEBREW_TAP_TOKEN above.
+          GH_TOKEN: ${{ secrets.CLDK_AUTH_TOKEN }}
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
           gh issue create \
