@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Optional
 
 from codeanalyzer.neo4j.bolt import BoltConfig, bolt_writer
-from codeanalyzer.neo4j.catalog import build_schema_document
+from codeanalyzer.neo4j.schema import build_schema_document
 from codeanalyzer.neo4j.cypher import render_cypher
 from codeanalyzer.neo4j.project import project
 from codeanalyzer.options import AnalysisOptions
@@ -38,7 +38,7 @@ from codeanalyzer.utils import logger
 
 def emit_schema(output: Optional[Path]) -> None:
     """Emit the Neo4j schema contract (``schema.json``) — a static artifact derived
-    from the in-repo catalog, independent of any analyzed project. With no
+    from the in-repo schema, independent of any analyzed project. With no
     ``output`` it prints to stdout."""
     doc = json.dumps(build_schema_document(), indent=2) + "\n"
     if output is None:

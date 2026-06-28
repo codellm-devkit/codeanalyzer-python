@@ -19,7 +19,7 @@ plus the two writers (cypher snapshot / bolt incremental). Nothing here runs
 unless ``--emit neo4j`` (or ``--emit schema``) is selected.
 """
 from codeanalyzer.neo4j.bolt import BoltConfig, bolt_writer
-from codeanalyzer.neo4j.catalog import (
+from codeanalyzer.neo4j.schema import (
     MARKER_LABELS,
     NODE_LABELS,
     REL_TYPES,
