@@ -1,3 +1,4 @@
+from importlib.metadata import version as _pkg_version, PackageNotFoundError
 from pathlib import Path
 from typing import Optional, Annotated
 
@@ -10,7 +11,32 @@ from codeanalyzer.schema import model_dump_json
 from codeanalyzer.options import AnalysisOptions, EmitTarget, ShardStrategy
 
 
+def _version_callback(value: bool) -> None:
+    """Print the installed ``codeanalyzer-python`` version and exit.
+
+    Eager so it fires before the rest of the CLI callback (no -i/--input
+    required). Reads the version from package metadata so it always reflects
+    what is actually installed rather than a hardcoded string."""
+    if not value:
+        return
+    try:
+        installed = _pkg_version("codeanalyzer-python")
+    except PackageNotFoundError:
+        installed = "unknown"
+    typer.echo(f"canpy {installed}")
+    raise typer.Exit()
+
+
 def main(
+    version: Annotated[
+        Optional[bool],
+        typer.Option(
+            "--version",
+            help="Show the canpy version and exit.",
+            callback=_version_callback,
+            is_eager=True,
+        ),
+    ] = None,
     input: Annotated[
         Optional[Path],
         typer.Option(

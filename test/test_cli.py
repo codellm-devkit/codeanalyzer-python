@@ -1,4 +1,5 @@
 import json
+from importlib.metadata import version
 from pathlib import Path
 from codeanalyzer.__main__ import app
 from codeanalyzer.utils import logger
@@ -8,6 +9,14 @@ def test_cli_help(cli_runner):
     """Must be able to run the CLI and see help output."""
     result = cli_runner.invoke(app, ["--help"], env={"NO_COLOR": "1", "TERM": "dumb"})
     assert result.exit_code == 0
+
+
+def test_cli_version(cli_runner):
+    """`canpy --version` prints the installed version and exits 0 without -i/--input."""
+    result = cli_runner.invoke(app, ["--version"], env={"NO_COLOR": "1", "TERM": "dumb"})
+    assert result.exit_code == 0, result.output
+    assert version("codeanalyzer-python") in result.output
+    assert "canpy" in result.output
 
 def test_cli_call_symbol_table_with_json(cli_runner, whole_applications__xarray):
     """Must be able to run the CLI with symbol table analysis."""
