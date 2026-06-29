@@ -263,14 +263,14 @@
     }
   ],
   "constraints": [
-    "CREATE CONSTRAINT py_symbol_sig IF NOT EXISTS FOR (s:PySymbol) REQUIRE s.signature IS UNIQUE",
-    "CREATE CONSTRAINT py_app_name IF NOT EXISTS FOR (a:PyApplication) REQUIRE a.name IS UNIQUE",
-    "CREATE CONSTRAINT py_module_key IF NOT EXISTS FOR (m:PyModule) REQUIRE m.file_key IS UNIQUE",
-    "CREATE CONSTRAINT py_package_name IF NOT EXISTS FOR (p:PyPackage) REQUIRE p.name IS UNIQUE",
-    "CREATE CONSTRAINT py_decorator_name IF NOT EXISTS FOR (d:PyDecorator) REQUIRE d.name IS UNIQUE",
-    "CREATE CONSTRAINT py_callsite_id IF NOT EXISTS FOR (c:PyCallSite) REQUIRE c.id IS UNIQUE",
-    "CREATE CONSTRAINT py_attribute_id IF NOT EXISTS FOR (a:PyAttribute) REQUIRE a.id IS UNIQUE",
-    "CREATE CONSTRAINT py_variable_id IF NOT EXISTS FOR (v:PyVariable) REQUIRE v.id IS UNIQUE"
+    "CREATE CONSTRAINT pyapplication_name IF NOT EXISTS FOR (x:PyApplication) REQUIRE x.name IS UNIQUE",
+    "CREATE CONSTRAINT pymodule_file_key IF NOT EXISTS FOR (x:PyModule) REQUIRE x.file_key IS UNIQUE",
+    "CREATE CONSTRAINT pysymbol_signature IF NOT EXISTS FOR (x:PySymbol) REQUIRE x.signature IS UNIQUE",
+    "CREATE CONSTRAINT pypackage_name IF NOT EXISTS FOR (x:PyPackage) REQUIRE x.name IS UNIQUE",
+    "CREATE CONSTRAINT pydecorator_name IF NOT EXISTS FOR (x:PyDecorator) REQUIRE x.name IS UNIQUE",
+    "CREATE CONSTRAINT pycallsite_id IF NOT EXISTS FOR (x:PyCallSite) REQUIRE x.id IS UNIQUE",
+    "CREATE CONSTRAINT pyattribute_id IF NOT EXISTS FOR (x:PyAttribute) REQUIRE x.id IS UNIQUE",
+    "CREATE CONSTRAINT pyvariable_id IF NOT EXISTS FOR (x:PyVariable) REQUIRE x.id IS UNIQUE"
   ],
   "indexes": [
     "CREATE INDEX py_callable_name IF NOT EXISTS FOR (c:PyCallable) ON (c.name)",

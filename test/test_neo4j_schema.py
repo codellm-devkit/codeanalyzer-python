@@ -1,8 +1,8 @@
 """Schema conformance test (no container needed). Projects the sample app and
 asserts that the real emitter only ever produces node labels, relationship types
-and properties that the catalog (``codeanalyzer/neo4j/catalog.py``) declares.
+and properties that the schema (``codeanalyzer/neo4j/schema.py``) declares.
 This is the anti-drift guard: if ``project.py`` grows a label or property that
-``catalog.py`` doesn't declare, this fails — keeping the published
+``schema.py`` doesn't declare, this fails — keeping the published
 ``schema.neo4j.json`` honest. It also checks the checked-in ``schema.neo4j.json``
 is regenerated (run ``canpy --emit schema > schema.neo4j.json``).
 """
@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 
 from codeanalyzer.neo4j import NODE_LABELS, REL_TYPES, build_schema_document, project
-from codeanalyzer.neo4j.catalog import MARKER_LABELS
+from codeanalyzer.neo4j.schema import MARKER_LABELS
 from codeanalyzer.neo4j.cypher import render_cypher
 from codeanalyzer.schema import PyApplication, PyCallable, PyImport, PyModule
 from codeanalyzer.schema.py_schema import PyCallEdge
@@ -24,7 +24,7 @@ _MARKERS = set(MARKER_LABELS)
 
 
 def _specific_label(labels):
-    """The specific (catalog) label for a node row: the non-merge, non-marker label."""
+    """The specific (schema) label for a node row: the non-merge, non-marker label."""
     merge = labels[0]
     if merge != "PySymbol":
         return merge
@@ -59,18 +59,18 @@ def test_every_emitted_relationship_type_property_and_endpoint_is_declared():
     for edge in rows.edges:
         decl = _REL_BY_TYPE.get(edge.type)
         assert decl is not None, f"undeclared relationship type: {edge.type}"
-        assert edge.from_ref.label in _merge_labels_for(decl.from_labels), (
-            f"bad source {edge.from_ref.label} for {edge.type}"
-        )
-        assert edge.to_ref.label in _merge_labels_for(decl.to_labels), (
-            f"bad target {edge.to_ref.label} for {edge.type}"
-        )
+        assert edge.from_ref.label in _merge_labels_for(
+            decl.from_labels
+        ), f"bad source {edge.from_ref.label} for {edge.type}"
+        assert edge.to_ref.label in _merge_labels_for(
+            decl.to_labels
+        ), f"bad target {edge.to_ref.label} for {edge.type}"
         for key in edge.props:
             assert key in decl.properties, f"undeclared property on {edge.type}.{key}"
 
 
 def test_all_catalog_node_kinds_and_relationships_are_exercised():
-    """Guards the fixture itself: every catalog label/rel should appear at least
+    """Guards the fixture itself: every schema label/rel should appear at least
     once, so the conformance asserts above actually cover the whole schema."""
     rows = project(make_sample_app(), "sample-app")
     seen_labels = {_specific_label(n.labels) for n in rows.nodes}
@@ -94,31 +94,48 @@ def test_call_edge_to_imported_module_name_is_not_dropped():
     imported (e.g. ``os``) must not be dropped. The import creates a :PyPackage
     named ``os``; that must not shadow the call target's :PySymbol signature."""
     caller = PyCallable(
-        name="caller", path="m.py", signature="m.caller", return_type="None",
-        code="def caller():\n    os.getcwd()", start_line=1, end_line=2,
-        code_start_line=1, cyclomatic_complexity=1,
+        name="caller",
+        path="m.py",
+        signature="m.caller",
+        return_type="None",
+        code="def caller():\n    os.getcwd()",
+        start_line=1,
+        end_line=2,
+        code_start_line=1,
+        cyclomatic_complexity=1,
     )
     mod = PyModule(
-        file_path="m.py", module_name="m",
+        file_path="m.py",
+        module_name="m",
         imports=[PyImport(module="os", name="getcwd")],
         functions={"caller": caller},
-        content_hash="h", last_modified=1.0, file_size=10,
+        content_hash="h",
+        last_modified=1.0,
+        file_size=10,
     )
     app = PyApplication(
         symbol_table={"m.py": mod},
-        call_graph=[PyCallEdge(source="m.caller", target="os", weight=1, provenance=["jedi"])],
+        call_graph=[
+            PyCallEdge(source="m.caller", target="os", weight=1, provenance=["jedi"])
+        ],
     )
     rows = project(app, "app")
 
-    calls_to_os = [e for e in rows.edges if e.type == "PY_CALLS" and e.to_ref.value == "os"]
-    assert len(calls_to_os) == 1, "PY_CALLS edge to imported module name 'os' was dropped"
+    calls_to_os = [
+        e for e in rows.edges if e.type == "PY_CALLS" and e.to_ref.value == "os"
+    ]
+    assert (
+        len(calls_to_os) == 1
+    ), "PY_CALLS edge to imported module name 'os' was dropped"
 
     # 'os' is materialized as a :PyExternal symbol (the call target) ...
-    assert any(n.value == "os" and "PyExternal" in n.labels for n in rows.nodes), \
-        ":PyExternal ghost for the call target 'os' is missing"
+    assert any(
+        n.value == "os" and "PyExternal" in n.labels for n in rows.nodes
+    ), ":PyExternal ghost for the call target 'os' is missing"
     # ... distinct from the :PyPackage 'os' created by the import.
-    assert any(n.value == "os" and "PyPackage" in n.labels for n in rows.nodes), \
-        ":PyPackage for the import 'os' is missing"
+    assert any(
+        n.value == "os" and "PyPackage" in n.labels for n in rows.nodes
+    ), ":PyPackage for the import 'os' is missing"
 
 
 def test_checked_in_schema_matches_catalog():
