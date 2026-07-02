@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.1.0",
+  "schema_version": "1.2.0",
   "generator": "codeanalyzer-python",
   "marker_labels": [],
   "node_labels": [
@@ -135,6 +135,20 @@
         "end_line": "integer",
         "_module": "string"
       }
+    },
+    {
+      "label": "CFGNode",
+      "merge_label": "CFGNode",
+      "key": "id",
+      "properties": {
+        "id": "string",
+        "kind": "string",
+        "var": "string",
+        "call_node": "integer",
+        "start_line": "integer",
+        "end_line": "integer",
+        "_module": "string"
+      }
     }
   ],
   "relationship_types": [
@@ -260,6 +274,84 @@
         "PyDecorator"
       ],
       "properties": {}
+    },
+    {
+      "type": "HAS_CFG_NODE",
+      "from": [
+        "PyCallable"
+      ],
+      "to": [
+        "CFGNode"
+      ],
+      "properties": {}
+    },
+    {
+      "type": "CFG_NEXT",
+      "from": [
+        "CFGNode"
+      ],
+      "to": [
+        "CFGNode"
+      ],
+      "properties": {
+        "kind": "string"
+      }
+    },
+    {
+      "type": "CDG",
+      "from": [
+        "CFGNode"
+      ],
+      "to": [
+        "CFGNode"
+      ],
+      "properties": {}
+    },
+    {
+      "type": "DDG",
+      "from": [
+        "CFGNode"
+      ],
+      "to": [
+        "CFGNode"
+      ],
+      "properties": {
+        "var": "string"
+      }
+    },
+    {
+      "type": "PARAM_IN",
+      "from": [
+        "CFGNode"
+      ],
+      "to": [
+        "CFGNode"
+      ],
+      "properties": {
+        "var": "string"
+      }
+    },
+    {
+      "type": "PARAM_OUT",
+      "from": [
+        "CFGNode"
+      ],
+      "to": [
+        "CFGNode"
+      ],
+      "properties": {
+        "var": "string"
+      }
+    },
+    {
+      "type": "SUMMARY",
+      "from": [
+        "CFGNode"
+      ],
+      "to": [
+        "CFGNode"
+      ],
+      "properties": {}
     }
   ],
   "constraints": [
@@ -270,7 +362,8 @@
     "CREATE CONSTRAINT pydecorator_name IF NOT EXISTS FOR (x:PyDecorator) REQUIRE x.name IS UNIQUE",
     "CREATE CONSTRAINT pycallsite_id IF NOT EXISTS FOR (x:PyCallSite) REQUIRE x.id IS UNIQUE",
     "CREATE CONSTRAINT pyattribute_id IF NOT EXISTS FOR (x:PyAttribute) REQUIRE x.id IS UNIQUE",
-    "CREATE CONSTRAINT pyvariable_id IF NOT EXISTS FOR (x:PyVariable) REQUIRE x.id IS UNIQUE"
+    "CREATE CONSTRAINT pyvariable_id IF NOT EXISTS FOR (x:PyVariable) REQUIRE x.id IS UNIQUE",
+    "CREATE CONSTRAINT cfgnode_id IF NOT EXISTS FOR (x:CFGNode) REQUIRE x.id IS UNIQUE"
   ],
   "indexes": [
     "CREATE INDEX py_callable_name IF NOT EXISTS FOR (c:PyCallable) ON (c.name)",

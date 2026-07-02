@@ -35,7 +35,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List
 
-SCHEMA_VERSION = "1.1.0"
+SCHEMA_VERSION = "1.2.0"
 
 # PropType ∈ {"string", "integer", "float", "boolean", "string[]", "integer[]"}.
 
@@ -176,6 +176,23 @@ NODE_LABELS: List[NodeLabel] = [
             "_module": "string",
         },
     ),
+    # Level-3 CPG overlay (present only at -a 3). The label and edge types
+    # below are the shared cross-language dataflow vocabulary — deliberately
+    # NOT PY_-prefixed. `id` = "<signature>#<node_id>"; parameter-passing
+    # nodes (formal/actual in/out) ride the same label with `var`/`call_node`.
+    NodeLabel(
+        "CFGNode",
+        "CFGNode",
+        "id",
+        {
+            "id": "string",
+            "kind": "string",
+            "var": "string",
+            "call_node": "integer",
+            **_SPAN,
+            "_module": "string",
+        },
+    ),
 ]
 
 _DECL_TARGETS = ["PyClass", "PyCallable"]
@@ -203,6 +220,14 @@ REL_TYPES: List[RelType] = [
         {"imported_names": "string[]", "aliases": "string[]"},
     ),
     RelType("PY_DECORATED_BY", ["PyCallable"], ["PyDecorator"]),
+    # Level-3 CPG overlay (shared cross-language vocabulary, -a 3 only).
+    RelType("HAS_CFG_NODE", ["PyCallable"], ["CFGNode"]),
+    RelType("CFG_NEXT", ["CFGNode"], ["CFGNode"], {"kind": "string"}),
+    RelType("CDG", ["CFGNode"], ["CFGNode"]),
+    RelType("DDG", ["CFGNode"], ["CFGNode"], {"var": "string"}),
+    RelType("PARAM_IN", ["CFGNode"], ["CFGNode"], {"var": "string"}),
+    RelType("PARAM_OUT", ["CFGNode"], ["CFGNode"], {"var": "string"}),
+    RelType("SUMMARY", ["CFGNode"], ["CFGNode"]),
 ]
 
 

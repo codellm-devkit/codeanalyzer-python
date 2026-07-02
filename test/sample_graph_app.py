@@ -11,12 +11,22 @@ from __future__ import annotations
 from codeanalyzer.schema import (
     PyApplication,
     PyCallable,
+    PyCFG,
+    PyCFGEdge,
     PyClass,
     PyClassAttribute,
     PyComment,
     PyExternalSymbol,
+    PyFunctionGraphs,
+    PyGraphNode,
     PyImport,
     PyModule,
+    PyParamNode,
+    PyPDG,
+    PyPDGEdge,
+    PyProgramGraphs,
+    PySDGEdge,
+    PySDGEndpoint,
     PyVariableDeclaration,
 )
 from codeanalyzer.schema.py_schema import PyCallEdge, PyCallsite
@@ -147,10 +157,90 @@ def make_sample_app() -> PyApplication:
         ),
     ]
 
+    # A miniature level-3 section exercising every CPG row family:
+    # helper's CFG (entry → callsite stmt → exit), a CDG/DDG pair, its HRB
+    # parameter nodes, and PARAM_IN/PARAM_OUT/SUMMARY edges into announce.
+    helper_graphs = PyFunctionGraphs(
+        cfg=PyCFG(
+            nodes=[
+                PyGraphNode(id=0, kind="entry", start_line=17, end_line=17),
+                PyGraphNode(id=1, kind="statement", start_line=18, end_line=18),
+                PyGraphNode(id=2, kind="exit", start_line=20, end_line=20),
+            ],
+            edges=[
+                PyCFGEdge(source=0, target=1, kind="fallthrough"),
+                PyCFGEdge(source=1, target=2, kind="return"),
+                PyCFGEdge(source=1, target=2, kind="exception"),
+            ],
+        ),
+        pdg=PyPDG(
+            edges=[
+                PyPDGEdge(source=0, target=1, type="CDG"),
+                PyPDGEdge(source=0, target=1, type="DDG", var="url"),
+            ]
+        ),
+        param_nodes=[
+            PyParamNode(id=3, kind="formal_out", var="<return>", start_line=20, end_line=20),
+            PyParamNode(id=4, kind="actual_in", var="self", call_node=1, start_line=18, end_line=18),
+            PyParamNode(id=5, kind="actual_out", var="<return>", call_node=1, start_line=18, end_line=18),
+        ],
+    )
+    announce_graphs = PyFunctionGraphs(
+        cfg=PyCFG(
+            nodes=[
+                PyGraphNode(id=0, kind="entry", start_line=10, end_line=10),
+                PyGraphNode(id=1, kind="return", start_line=11, end_line=11),
+                PyGraphNode(id=2, kind="exit", start_line=12, end_line=12),
+            ],
+            edges=[
+                PyCFGEdge(source=0, target=1, kind="fallthrough"),
+                PyCFGEdge(source=1, target=2, kind="return"),
+            ],
+        ),
+        pdg=PyPDG(edges=[PyPDGEdge(source=0, target=1, type="CDG")]),
+        param_nodes=[
+            PyParamNode(id=3, kind="formal_in", var="self", start_line=10, end_line=10),
+            PyParamNode(id=4, kind="formal_out", var="<return>", start_line=12, end_line=12),
+        ],
+    )
+    program_graphs = PyProgramGraphs(
+        schema_version="1.0.0",
+        k_limit=3,
+        functions={
+            "src.service.helper": helper_graphs,
+            "src.service.Service.announce": announce_graphs,
+        },
+        sdg_edges=[
+            PySDGEdge(
+                source=PySDGEndpoint(signature="src.service.helper", node=1),
+                target=PySDGEndpoint(signature="src.service.Service.announce", node=0),
+                type="CALL",
+            ),
+            PySDGEdge(
+                source=PySDGEndpoint(signature="src.service.helper", node=4),
+                target=PySDGEndpoint(signature="src.service.Service.announce", node=3),
+                type="PARAM_IN",
+                var="self",
+            ),
+            PySDGEdge(
+                source=PySDGEndpoint(signature="src.service.Service.announce", node=4),
+                target=PySDGEndpoint(signature="src.service.helper", node=5),
+                type="PARAM_OUT",
+                var="<return>",
+            ),
+            PySDGEdge(
+                source=PySDGEndpoint(signature="src.service.helper", node=4),
+                target=PySDGEndpoint(signature="src.service.helper", node=5),
+                type="SUMMARY",
+            ),
+        ],
+    )
+
     return PyApplication(
         symbol_table={"src/service.py": service_mod, "src/util.py": util_mod},
         call_graph=call_graph,
         # The ghost edge's target (requests.get) is a library member, recorded as a
         # first-class external symbol so the projection emits a :PyExternal for it.
         external_symbols={"requests.get": PyExternalSymbol(name="get", module="requests")},
+        program_graphs=program_graphs,
     )
