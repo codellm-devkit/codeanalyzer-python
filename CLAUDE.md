@@ -17,7 +17,7 @@ cleanup, and if so, fix it:
 1. **Find it.** `gh release view --json tagName,publishedAt`; then list recent discussions via
    `gh api graphql` (repository → discussions), match category `Announcements` whose title carries
    this release's version (the auto-post titles it `vX.Y.Z`; a cleaned-up one is
-   `📣 New Release: codeanalyzer-python X.Y.Z`). Keep the discussion node `id` and read its `body`.
+   "📣 `codeanalyzer-python` vX.Y.Z released"). Keep the discussion node `id` and read its `body`.
 2. **Skip if already done.** If the body starts with `<!-- cleaned-up -->` (or already reads as a
    clear, human-written announcement), do nothing.
 3. **Otherwise rewrite it** into a clear, user-facing announcement, grounded in `CHANGELOG.md` and
