@@ -253,3 +253,101 @@ def build_program_graphs(
 
     summaries = compute_summaries(infos, sorted(set(call_edges)))
     return assemble_sdg(infos, summaries, k)
+
+
+VALID_GRAPHS = ("cfg", "dfg", "pdg", "sdg")
+
+
+def to_program_graphs(ir: ProgramGraphsIR, graphs: Set[str]):
+    """Project the IR onto the ``program_graphs`` schema section, scoped by
+    the ``--graphs`` selector. ``dfg`` emits the PDG's DDG edges only;
+    ``sdg`` implies the dependence edges it is stitched over."""
+    from codeanalyzer.schema.py_schema import (
+        PyCFG,
+        PyCFGEdge,
+        PyFunctionGraphs,
+        PyGraphNode,
+        PyParamNode,
+        PyPDG,
+        PyPDGEdge,
+        PyProgramGraphs,
+        PySDGEdge,
+        PySDGEndpoint,
+    )
+
+    want_pdg = bool({"pdg", "sdg"} & graphs)
+    want_dfg = want_pdg or "dfg" in graphs
+    functions: Dict[str, "PyFunctionGraphs"] = {}
+    for sig in sorted(ir.functions):
+        fg = ir.functions[sig]
+        out = PyFunctionGraphs()
+        if "cfg" in graphs:
+            out.cfg = PyCFG(
+                nodes=[
+                    PyGraphNode(
+                        id=n.id,
+                        kind=n.kind,
+                        start_line=n.start_line,
+                        end_line=n.end_line,
+                        start_column=n.start_column,
+                        end_column=n.end_column,
+                    )
+                    for n in fg.pdg.cfg.nodes
+                ],
+                edges=[
+                    PyCFGEdge(source=e.source, target=e.target, kind=e.kind)
+                    for e in fg.pdg.cfg.edges
+                ],
+            )
+        edges: List["PyPDGEdge"] = []
+        if want_pdg:
+            edges.extend(
+                PyPDGEdge(source=e.source, target=e.target, type="CDG")
+                for e in fg.pdg.edges
+                if e.type == "CDG"
+            )
+        if want_dfg:
+            edges.extend(
+                PyPDGEdge(source=e.source, target=e.target, type="DDG", var=e.var)
+                for e in fg.ddg
+            )
+            edges.extend(
+                PyPDGEdge(source=e.source, target=e.target, type=e.type, var=e.var)
+                for e in fg.extra_edges
+                if e.type == "DDG" or want_pdg
+            )
+        if edges:
+            edges.sort(key=lambda e: (e.source, e.target, e.type, e.var or ""))
+            out.pdg = PyPDG(edges=edges)
+        if "sdg" in graphs:
+            out.param_nodes = [
+                PyParamNode(
+                    id=p.id,
+                    kind=p.kind,
+                    var=p.var,
+                    call_node=p.call_node,
+                    start_line=p.start_line,
+                    end_line=p.end_line,
+                )
+                for p in fg.param_nodes
+            ]
+        functions[sig] = out
+
+    sdg_edges = []
+    if "sdg" in graphs:
+        sdg_edges = [
+            PySDGEdge(
+                source=PySDGEndpoint(signature=e.source_sig, node=e.source_node),
+                target=PySDGEndpoint(signature=e.target_sig, node=e.target_node),
+                type=e.type,
+                var=e.var,
+            )
+            for e in ir.sdg_edges
+        ]
+
+    return PyProgramGraphs(
+        schema_version="1.0.0",
+        k_limit=ir.k_limit,
+        functions=functions,
+        sdg_edges=sdg_edges,
+    )

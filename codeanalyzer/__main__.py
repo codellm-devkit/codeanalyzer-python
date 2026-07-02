@@ -114,11 +114,31 @@ def main(
         typer.Option(
             "-a",
             "--analysis-level",
-            help="Analysis depth: 1=symbol table+Jedi call graph, 2=+PyCG call graph.",
+            help="Analysis depth: 1=symbol table+Jedi call graph, 2=+PyCG call "
+            "graph, 3=+native dataflow graphs (CFG/PDG/SDG).",
             min=1,
-            max=2,
+            max=3,
         ),
     ] = 1,
+    graphs: Annotated[
+        str,
+        typer.Option(
+            "--graphs",
+            help="Level 3 only: comma-separated program-graph sections to emit "
+            "(cfg, dfg, pdg, sdg). Default: all. `dfg` emits the PDG's data "
+            "edges only; `sdg` implies the dependence edges it stitches.",
+        ),
+    ] = "cfg,dfg,pdg,sdg",
+    graph_field_depth: Annotated[
+        int,
+        typer.Option(
+            "--graph-field-depth",
+            help="Level 3 only: k-limit on access-path depth (x.f.g.h with "
+            "k=3 becomes x.f.g.*). Mandatory bound — it is what guarantees "
+            "the interprocedural fixpoint terminates.",
+            min=1,
+        ),
+    ] = 3,
     using_ray: Annotated[
         bool,
         typer.Option("--ray/--no-ray", help="Enable Ray for distributed analysis."),
@@ -243,6 +263,27 @@ def main(
         ),
     ] = 50,
 ):
+    # Flag validation (strict: unrecognized values error out, never fall back).
+    selected_graphs = [g.strip() for g in graphs.split(",") if g.strip()]
+    from codeanalyzer.dataflow.builder import VALID_GRAPHS
+
+    unknown_graphs = [g for g in selected_graphs if g not in VALID_GRAPHS]
+    if unknown_graphs:
+        logger.error(
+            f"Unrecognized --graphs value(s): {', '.join(unknown_graphs)} "
+            f"(valid: {', '.join(VALID_GRAPHS)})."
+        )
+        raise typer.Exit(code=2)
+    if not selected_graphs:
+        logger.error("--graphs requires at least one of: " + ", ".join(VALID_GRAPHS))
+        raise typer.Exit(code=2)
+    if analysis_level < 3 and graphs != "cfg,dfg,pdg,sdg":
+        logger.error("--graphs is a level-3 option; pass -a 3 to emit program graphs.")
+        raise typer.Exit(code=2)
+    if analysis_level < 3 and graph_field_depth != 3:
+        logger.error("--graph-field-depth is a level-3 option; pass -a 3.")
+        raise typer.Exit(code=2)
+
     options = AnalysisOptions(
         input=input,
         output=output,
@@ -254,6 +295,8 @@ def main(
         neo4j_password=neo4j_password,
         neo4j_database=neo4j_database,
         analysis_level=analysis_level,
+        graphs=",".join(selected_graphs),
+        graph_field_depth=graph_field_depth,
         using_ray=using_ray,
         rebuild_analysis=rebuild_analysis,
         skip_tests=skip_tests,

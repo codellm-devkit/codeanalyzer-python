@@ -371,6 +371,135 @@ class PyExternalSymbol(BaseModel):
 
 @builder
 @msgpk
+class PyGraphNode(BaseModel):
+    """A CFG node of one callable's level-3 graphs. ``id`` is the source-span
+    order index within the callable (synthetic ENTRY = 0, EXIT = last CFG id);
+    ``(signature, id)`` is the cross-section join key."""
+
+    id: int
+    kind: Literal[
+        "entry", "exit", "statement", "branch", "loop", "return", "raise", "handler"
+    ] = "statement"
+    start_line: int = -1
+    end_line: int = -1
+    start_column: int = -1
+    end_column: int = -1
+
+
+@builder
+@msgpk
+class PyCFGEdge(BaseModel):
+    """Control-flow successor edge (shared cross-language kind vocabulary)."""
+
+    source: int
+    target: int
+    kind: Literal[
+        "fallthrough",
+        "true",
+        "false",
+        "switch_case",
+        "loop_back",
+        "exception",
+        "return",
+        "break",
+        "continue",
+        "yield",
+        "await_resume",
+    ] = "fallthrough"
+
+
+@builder
+@msgpk
+class PyPDGEdge(BaseModel):
+    """Dependence edge: control (``CDG``) or data (``DDG``, labeled with the
+    k-limited access path being read)."""
+
+    source: int
+    target: int
+    type: Literal["CDG", "DDG"] = "DDG"
+    var: Optional[str] = None
+
+
+@builder
+@msgpk
+class PyParamNode(BaseModel):
+    """HRB parameter-passing node, sharing the owning callable's id space
+    (allocated after EXIT). ``call_node`` is the owning callsite statement for
+    actuals; ``var`` is the parameter name, ``<return>``, ``<capture>:name``,
+    or ``<global>:module::name``."""
+
+    id: int
+    kind: Literal["formal_in", "formal_out", "actual_in", "actual_out"]
+    var: str
+    call_node: Optional[int] = None
+    start_line: int = -1
+    end_line: int = -1
+
+
+@builder
+@msgpk
+class PyCFG(BaseModel):
+    """One callable's control-flow graph."""
+
+    nodes: List[PyGraphNode] = []
+    edges: List[PyCFGEdge] = []
+
+
+@builder
+@msgpk
+class PyPDG(BaseModel):
+    """One callable's dependence edges (over the same node ids as the CFG
+    plus its parameter nodes)."""
+
+    edges: List[PyPDGEdge] = []
+
+
+@builder
+@msgpk
+class PyFunctionGraphs(BaseModel):
+    """The per-callable level-3 sections, keyed by signature."""
+
+    cfg: Optional[PyCFG] = None
+    pdg: Optional[PyPDG] = None
+    param_nodes: List[PyParamNode] = []
+
+
+@builder
+@msgpk
+class PySDGEndpoint(BaseModel):
+    """A ``(signature, node)`` reference into a function's emitted graphs."""
+
+    signature: str
+    node: int
+
+
+@builder
+@msgpk
+class PySDGEdge(BaseModel):
+    """Interprocedural dependence edge. ``CALL``/``PARAM_IN``/``PARAM_OUT``
+    cross functions; ``SUMMARY`` connects a callsite's actual_in to its
+    actual_out within the caller (the callee's transitive flow)."""
+
+    source: PySDGEndpoint
+    target: PySDGEndpoint
+    type: Literal["CALL", "PARAM_IN", "PARAM_OUT", "SUMMARY"]
+    var: Optional[str] = None
+
+
+@builder
+@msgpk
+class PyProgramGraphs(BaseModel):
+    """The optional level-3 top-level section of ``analysis.json`` (present
+    only at ``-a 3``), versioned independently of the application schema."""
+
+    schema_version: str = "1.0.0"
+    k_limit: int = 3
+    functions: Dict[str, PyFunctionGraphs] = {}
+    sdg_edges: List[PySDGEdge] = []
+
+
+@builder
+@msgpk
 class PyApplication(BaseModel):
     """Represents a Python application."""
 
@@ -380,3 +509,5 @@ class PyApplication(BaseModel):
     # builtin members), keyed by signature. Populated by the analyzer so every
     # backend (JSON and Neo4j) shares one authoritative external-symbol set.
     external_symbols: Dict[str, PyExternalSymbol] = {}
+    # Level-3 native dataflow graphs (CFG/PDG/SDG); None below -a 3.
+    program_graphs: Optional[PyProgramGraphs] = None
