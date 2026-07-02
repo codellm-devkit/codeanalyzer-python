@@ -60,6 +60,7 @@ def reaching_definitions(
 ) -> Dict[int, Set[Tuple[str, int]]]:
     """IN sets: ``{node: {(path, def_node), ...}}`` via worklist iteration."""
     preds = cfg.predecessors()
+    succs = cfg.successors()
     node_ids = [n.id for n in cfg.nodes]
 
     gen: Dict[int, Set[Tuple[str, int]]] = {}
@@ -80,8 +81,7 @@ def reaching_definitions(
         if new_in != in_sets[nid] or new_out != out_sets[nid]:
             in_sets[nid] = new_in
             out_sets[nid] = new_out
-            succ = cfg.successors()[nid]
-            for s, _ in succ:
+            for s, _ in succs[nid]:
                 if s not in worklist:
                     worklist.append(s)
     return in_sets
