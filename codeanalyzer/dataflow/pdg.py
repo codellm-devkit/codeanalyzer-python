@@ -65,11 +65,12 @@ def build_pdg(
     enclosing_locals: Set[str],
     oracle: TypeBasedAliasOracle,
     k: int = 3,
+    global_qualifier: Optional[str] = None,
 ) -> FunctionPDG:
     """CFG → dominance → def-use → PDG for one callable."""
     cfg = build_cfg(func)
     scope = build_scope(func, enclosing_locals)
-    facts = statement_facts(cfg, func, scope, k)
+    facts = statement_facts(cfg, func, scope, k, global_qualifier)
 
     edges: List[PDGEdge] = [
         PDGEdge(source=a, target=b, type="CDG") for a, b in control_dependence(cfg)

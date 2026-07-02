@@ -372,16 +372,19 @@ class _PathExtractor:
     # -- call mutation (documented over-approximation) -----------------------
 
     def mutation_defs(self, expr: ast.expr) -> Set[str]:
+        """Weak defs of the *contents* of receiver/argument objects (``xs.*``
+        — suffixed, so a call mutation is never confused with a local
+        rebinding, which is not caller-visible)."""
         defs: Set[str] = set()
         for call in _calls_in(expr):
             if isinstance(call.func, ast.Attribute):
                 receiver = self.path_of(call.func.value)
                 if receiver is not None:
-                    defs.add(receiver)
+                    defs.add(k_limit(receiver + ".*", self.k))
             for arg in list(call.args) + [kw.value for kw in call.keywords]:
                 p = self.path_of(arg)
                 if p is not None:
-                    defs.add(p)
+                    defs.add(k_limit(p + ".*", self.k))
         return defs
 
     def receiver_uses(self, expr: ast.expr) -> Set[str]:
@@ -419,12 +422,38 @@ def _calls_in(expr: ast.expr) -> List[ast.Call]:
     return calls
 
 
+def qualify_globals(paths: Set[str], scope: FunctionScope, qualifier: str) -> Set[str]:
+    """Rewrite global bases to their module-qualified form ``module::name``
+    (``::`` keeps the qualifier out of the field-path grammar). Builtins stay
+    bare — they carry no cross-module dataflow worth modeling."""
+    import builtins as _builtins
+
+    out: Set[str] = set()
+    for p in paths:
+        b = base_of(p)
+        if (
+            "::" not in b
+            and b != RETURN_PATH
+            and scope.kind_of(b) == "global"
+            and not hasattr(_builtins, b)
+        ):
+            out.add(f"{qualifier}::{b}" + p[len(b):])
+        else:
+            out.add(p)
+    return out
+
+
 def statement_facts(
-    cfg: ControlFlowGraph, func: ast.AST, scope: FunctionScope, k: int
+    cfg: ControlFlowGraph,
+    func: ast.AST,
+    scope: FunctionScope,
+    k: int,
+    global_qualifier: Optional[str] = None,
 ) -> Dict[int, StatementFacts]:
     """Defs/uses per CFG node id. Compound statements contribute only their
     header expressions; ENTRY defines every param/self/global/capture base
-    the function touches (the incoming state)."""
+    the function touches (the incoming state). With ``global_qualifier`` set
+    (the interprocedural build), global bases become ``module::name``."""
     ex = _PathExtractor(scope, k)
     facts: Dict[int, StatementFacts] = {}
 
@@ -526,6 +555,9 @@ def statement_facts(
 
         f.defs = {k_limit(p, k) for p in f.defs}
         f.uses = {k_limit(p, k) for p in f.uses}
+        if global_qualifier is not None:
+            f.defs = qualify_globals(f.defs, scope, global_qualifier)
+            f.uses = qualify_globals(f.uses, scope, global_qualifier)
         facts[node.id] = f
 
     return facts
