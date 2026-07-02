@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`--analysis-level 3`: native dataflow graphs** (#67). Whole-program dependence graphs built
+  in-process from the stdlib `ast` — per-callable exceptional **CFG**s (statement-level, synthetic
+  ENTRY/EXIT, first-class exception/yield/await edges), **PDG**s (Ferrante–Ottenstein–Warren
+  control dependence + reaching-definitions data dependence over k-limited access paths), and a
+  Horwitz–Reps–Binkley **SDG** (formal/actual parameter nodes, CALL/PARAM_IN/PARAM_OUT edges,
+  SUMMARY edges from bottom-up relational function summaries over the Tarjan SCC condensation;
+  globals as extra formals, closure captures bound at definition sites). Emitted as the
+  `program_graphs` section of `analysis.json` (own `schema_version` 1.0.0), keyed by the same
+  callable signatures as the symbol table and call graph.
+- **Context-sensitive backward slicing** as an SDG query (`codeanalyzer.dataflow.slicing`, HRB
+  two-phase traversal). Taint is deliberately left to the CLDK SDK — post-SDG it is
+  language-independent labeled reachability.
+- **CPG overlay in the Neo4j projection** at level 3: `CFGNode` nodes plus the shared
+  cross-language `HAS_CFG_NODE`/`CFG_NEXT`/`CDG`/`DDG`/`PARAM_IN`/`PARAM_OUT`/`SUMMARY` edge
+  vocabulary. `schema.neo4j.json` bumped additively to **1.2.0**.
+- **New flags**: `--graphs cfg,dfg,pdg,sdg` (scopes the emitted sections; strict validation —
+  unknown values or use below `-a 3` exit non-zero) and `--graph-field-depth` (access-path
+  k-limit, default 3 — the bound that guarantees the interprocedural fixpoint terminates).
+- **Alias oracle (MVP)**: type-based may-alias using Jedi-inferred types (unknown types
+  conservatively alias); frozen behind `may_alias()` for a later points-to upgrade.
+
+### Changed
+- `-a/--analysis-level` now accepts `3`; levels stay cumulative (level 3 includes PyCG
+  enrichment). `-a 1`/`-a 2` output and timings are unchanged.
+
 ## [0.3.0] - 2026-06-27
 
 ### Added

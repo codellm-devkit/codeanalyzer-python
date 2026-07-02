@@ -187,3 +187,8 @@ node_modules/
 
 # Track this repo's CLAUDE.md even though a global gitignore excludes CLAUDE.md
 !CLAUDE.md
+
+# Track the schema decision log (SDK-model input) past a global .claude ignore
+!.claude/
+.claude/*
+!.claude/SCHEMA_DECISIONS.md
