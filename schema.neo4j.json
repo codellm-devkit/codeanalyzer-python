@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.1.0",
+  "schema_version": "1.2.0",
   "generator": "codeanalyzer-python",
   "marker_labels": [],
   "node_labels": [
@@ -135,6 +135,20 @@
         "end_line": "integer",
         "_module": "string"
       }
+    },
+    {
+      "label": "PyCFGNode",
+      "merge_label": "PyCFGNode",
+      "key": "id",
+      "properties": {
+        "id": "string",
+        "kind": "string",
+        "var": "string",
+        "call_node": "integer",
+        "start_line": "integer",
+        "end_line": "integer",
+        "_module": "string"
+      }
     }
   ],
   "relationship_types": [
@@ -260,6 +274,84 @@
         "PyDecorator"
       ],
       "properties": {}
+    },
+    {
+      "type": "PY_HAS_CFG_NODE",
+      "from": [
+        "PyCallable"
+      ],
+      "to": [
+        "PyCFGNode"
+      ],
+      "properties": {}
+    },
+    {
+      "type": "PY_CFG_NEXT",
+      "from": [
+        "PyCFGNode"
+      ],
+      "to": [
+        "PyCFGNode"
+      ],
+      "properties": {
+        "kind": "string"
+      }
+    },
+    {
+      "type": "PY_CDG",
+      "from": [
+        "PyCFGNode"
+      ],
+      "to": [
+        "PyCFGNode"
+      ],
+      "properties": {}
+    },
+    {
+      "type": "PY_DDG",
+      "from": [
+        "PyCFGNode"
+      ],
+      "to": [
+        "PyCFGNode"
+      ],
+      "properties": {
+        "var": "string"
+      }
+    },
+    {
+      "type": "PY_PARAM_IN",
+      "from": [
+        "PyCFGNode"
+      ],
+      "to": [
+        "PyCFGNode"
+      ],
+      "properties": {
+        "var": "string"
+      }
+    },
+    {
+      "type": "PY_PARAM_OUT",
+      "from": [
+        "PyCFGNode"
+      ],
+      "to": [
+        "PyCFGNode"
+      ],
+      "properties": {
+        "var": "string"
+      }
+    },
+    {
+      "type": "PY_SUMMARY",
+      "from": [
+        "PyCFGNode"
+      ],
+      "to": [
+        "PyCFGNode"
+      ],
+      "properties": {}
     }
   ],
   "constraints": [
@@ -270,7 +362,8 @@
     "CREATE CONSTRAINT pydecorator_name IF NOT EXISTS FOR (x:PyDecorator) REQUIRE x.name IS UNIQUE",
     "CREATE CONSTRAINT pycallsite_id IF NOT EXISTS FOR (x:PyCallSite) REQUIRE x.id IS UNIQUE",
     "CREATE CONSTRAINT pyattribute_id IF NOT EXISTS FOR (x:PyAttribute) REQUIRE x.id IS UNIQUE",
-    "CREATE CONSTRAINT pyvariable_id IF NOT EXISTS FOR (x:PyVariable) REQUIRE x.id IS UNIQUE"
+    "CREATE CONSTRAINT pyvariable_id IF NOT EXISTS FOR (x:PyVariable) REQUIRE x.id IS UNIQUE",
+    "CREATE CONSTRAINT pycfgnode_id IF NOT EXISTS FOR (x:PyCFGNode) REQUIRE x.id IS UNIQUE"
   ],
   "indexes": [
     "CREATE INDEX py_callable_name IF NOT EXISTS FOR (c:PyCallable) ON (c.name)",
