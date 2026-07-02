@@ -20,9 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Context-sensitive backward slicing** as an SDG query (`codeanalyzer.dataflow.slicing`, HRB
   two-phase traversal). Taint is deliberately left to the CLDK SDK — post-SDG it is
   language-independent labeled reachability.
-- **CPG overlay in the Neo4j projection** at level 3: `CFGNode` nodes plus the shared
-  cross-language `HAS_CFG_NODE`/`CFG_NEXT`/`CDG`/`DDG`/`PARAM_IN`/`PARAM_OUT`/`SUMMARY` edge
-  vocabulary. `schema.neo4j.json` bumped additively to **1.2.0**.
+- **CPG overlay in the Neo4j projection** at level 3: `PyCFGNode` nodes plus the
+  `PY_HAS_CFG_NODE`/`PY_CFG_NEXT`/`PY_CDG`/`PY_DDG`/`PY_PARAM_IN`/`PY_PARAM_OUT`/`PY_SUMMARY`
+  edge vocabulary — cross-language in shape, PY_-namespaced like every other row family so a
+  multi-language database never mingles analyzers' dependence edges. `schema.neo4j.json`
+  bumped additively to **1.2.0**.
 - **New flags**: `--graphs cfg,dfg,pdg,sdg` (scopes the emitted sections; strict validation —
   unknown values or use below `-a 3` exit non-zero) and `--graph-field-depth` (access-path
   k-limit, default 3 — the bound that guarantees the interprocedural fixpoint terminates).

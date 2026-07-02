@@ -381,7 +381,9 @@ $ canpy --help
    canpy --input ./my-python-project -a 3 --graph-field-depth 2   # tighter access-path k-limit
    ```
    Level 3 also enriches the Neo4j projection (`--emit neo4j`) with the CPG overlay
-   (`:CFGNode` nodes and `CFG_NEXT`/`CDG`/`DDG`/`PARAM_IN`/`PARAM_OUT`/`SUMMARY` edges).
+   (`:PyCFGNode` nodes and `PY_CFG_NEXT`/`PY_CDG`/`PY_DDG`/`PY_PARAM_IN`/`PY_PARAM_OUT`/
+   `PY_SUMMARY` edges — the cross-language dataflow vocabulary, PY_-namespaced like every
+   other row family so multi-language databases never mingle analyzers' edges).
 
 ## Analysis levels
 

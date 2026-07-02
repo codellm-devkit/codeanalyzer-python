@@ -137,8 +137,8 @@
       }
     },
     {
-      "label": "CFGNode",
-      "merge_label": "CFGNode",
+      "label": "PyCFGNode",
+      "merge_label": "PyCFGNode",
       "key": "id",
       "properties": {
         "id": "string",
@@ -276,80 +276,80 @@
       "properties": {}
     },
     {
-      "type": "HAS_CFG_NODE",
+      "type": "PY_HAS_CFG_NODE",
       "from": [
         "PyCallable"
       ],
       "to": [
-        "CFGNode"
+        "PyCFGNode"
       ],
       "properties": {}
     },
     {
-      "type": "CFG_NEXT",
+      "type": "PY_CFG_NEXT",
       "from": [
-        "CFGNode"
+        "PyCFGNode"
       ],
       "to": [
-        "CFGNode"
+        "PyCFGNode"
       ],
       "properties": {
         "kind": "string"
       }
     },
     {
-      "type": "CDG",
+      "type": "PY_CDG",
       "from": [
-        "CFGNode"
+        "PyCFGNode"
       ],
       "to": [
-        "CFGNode"
+        "PyCFGNode"
       ],
       "properties": {}
     },
     {
-      "type": "DDG",
+      "type": "PY_DDG",
       "from": [
-        "CFGNode"
+        "PyCFGNode"
       ],
       "to": [
-        "CFGNode"
+        "PyCFGNode"
       ],
       "properties": {
         "var": "string"
       }
     },
     {
-      "type": "PARAM_IN",
+      "type": "PY_PARAM_IN",
       "from": [
-        "CFGNode"
+        "PyCFGNode"
       ],
       "to": [
-        "CFGNode"
+        "PyCFGNode"
       ],
       "properties": {
         "var": "string"
       }
     },
     {
-      "type": "PARAM_OUT",
+      "type": "PY_PARAM_OUT",
       "from": [
-        "CFGNode"
+        "PyCFGNode"
       ],
       "to": [
-        "CFGNode"
+        "PyCFGNode"
       ],
       "properties": {
         "var": "string"
       }
     },
     {
-      "type": "SUMMARY",
+      "type": "PY_SUMMARY",
       "from": [
-        "CFGNode"
+        "PyCFGNode"
       ],
       "to": [
-        "CFGNode"
+        "PyCFGNode"
       ],
       "properties": {}
     }
@@ -363,7 +363,7 @@
     "CREATE CONSTRAINT pycallsite_id IF NOT EXISTS FOR (x:PyCallSite) REQUIRE x.id IS UNIQUE",
     "CREATE CONSTRAINT pyattribute_id IF NOT EXISTS FOR (x:PyAttribute) REQUIRE x.id IS UNIQUE",
     "CREATE CONSTRAINT pyvariable_id IF NOT EXISTS FOR (x:PyVariable) REQUIRE x.id IS UNIQUE",
-    "CREATE CONSTRAINT cfgnode_id IF NOT EXISTS FOR (x:CFGNode) REQUIRE x.id IS UNIQUE"
+    "CREATE CONSTRAINT pycfgnode_id IF NOT EXISTS FOR (x:PyCFGNode) REQUIRE x.id IS UNIQUE"
   ],
   "indexes": [
     "CREATE INDEX py_callable_name IF NOT EXISTS FOR (c:PyCallable) ON (c.name)",

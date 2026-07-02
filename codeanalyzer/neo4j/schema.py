@@ -176,13 +176,15 @@ NODE_LABELS: List[NodeLabel] = [
             "_module": "string",
         },
     ),
-    # Level-3 CPG overlay (present only at -a 3). The label and edge types
-    # below are the shared cross-language dataflow vocabulary — deliberately
-    # NOT PY_-prefixed. `id` = "<signature>#<node_id>"; parameter-passing
-    # nodes (formal/actual in/out) ride the same label with `var`/`call_node`.
+    # Level-3 CPG overlay (present only at -a 3). The dataflow vocabulary is
+    # shared cross-language in *shape* (same suffixes, props, semantics) but
+    # namespaced per language like every other row family — a multi-language
+    # Neo4j database must never mingle one analyzer's dependence edges with
+    # another's. `id` = "<signature>#<node_id>"; parameter-passing nodes
+    # (formal/actual in/out) ride the same label with `var`/`call_node`.
     NodeLabel(
-        "CFGNode",
-        "CFGNode",
+        "PyCFGNode",
+        "PyCFGNode",
         "id",
         {
             "id": "string",
@@ -220,14 +222,15 @@ REL_TYPES: List[RelType] = [
         {"imported_names": "string[]", "aliases": "string[]"},
     ),
     RelType("PY_DECORATED_BY", ["PyCallable"], ["PyDecorator"]),
-    # Level-3 CPG overlay (shared cross-language vocabulary, -a 3 only).
-    RelType("HAS_CFG_NODE", ["PyCallable"], ["CFGNode"]),
-    RelType("CFG_NEXT", ["CFGNode"], ["CFGNode"], {"kind": "string"}),
-    RelType("CDG", ["CFGNode"], ["CFGNode"]),
-    RelType("DDG", ["CFGNode"], ["CFGNode"], {"var": "string"}),
-    RelType("PARAM_IN", ["CFGNode"], ["CFGNode"], {"var": "string"}),
-    RelType("PARAM_OUT", ["CFGNode"], ["CFGNode"], {"var": "string"}),
-    RelType("SUMMARY", ["CFGNode"], ["CFGNode"]),
+    # Level-3 CPG overlay (-a 3 only): the cross-language dataflow vocabulary,
+    # PY_-namespaced so per-language SDK backends can scope their queries.
+    RelType("PY_HAS_CFG_NODE", ["PyCallable"], ["PyCFGNode"]),
+    RelType("PY_CFG_NEXT", ["PyCFGNode"], ["PyCFGNode"], {"kind": "string"}),
+    RelType("PY_CDG", ["PyCFGNode"], ["PyCFGNode"]),
+    RelType("PY_DDG", ["PyCFGNode"], ["PyCFGNode"], {"var": "string"}),
+    RelType("PY_PARAM_IN", ["PyCFGNode"], ["PyCFGNode"], {"var": "string"}),
+    RelType("PY_PARAM_OUT", ["PyCFGNode"], ["PyCFGNode"], {"var": "string"}),
+    RelType("PY_SUMMARY", ["PyCFGNode"], ["PyCFGNode"]),
 ]
 
 

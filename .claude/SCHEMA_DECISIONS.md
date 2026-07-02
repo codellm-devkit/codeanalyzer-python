@@ -48,14 +48,24 @@ additions, all additive:
 
 ## Level-3 CPG (Neo4j) — schema.neo4j.json 1.2.0 (additive)
 
-- New label `CFGNode` (merge key `id` = `<signature>#<node_id>`; props
+- New label `PyCFGNode` (merge key `id` = `<signature>#<node_id>`; props
   `kind`, `var`, `call_node`, `start_line`, `end_line`, `_module`). Both CFG
   statements and parameter nodes ride this one label, distinguished by
   `kind` — the parity clause's label set stays minimal.
-- New edge types `HAS_CFG_NODE` (PyCallable → CFGNode), `CFG_NEXT` (prop
-  `kind`), `CDG`, `DDG` (prop `var`), `PARAM_IN`, `PARAM_OUT`, `SUMMARY` —
-  deliberately **not** `PY_`-prefixed: this vocabulary is the shared
-  cross-language CPG contract.
+- New edge types `PY_HAS_CFG_NODE` (PyCallable → PyCFGNode), `PY_CFG_NEXT`
+  (prop `kind`), `PY_CDG`, `PY_DDG` (prop `var`), `PY_PARAM_IN`,
+  `PY_PARAM_OUT`, `PY_SUMMARY`.
+- **Namespacing decision (maintainer, 2026-07-02):** the CPG vocabulary is
+  cross-language in *shape* (same suffix names, properties, semantics) but
+  **per-language-prefixed in the Neo4j projection**, like every other row
+  family (`PySymbol`, `PY_CALLS`, …). Rationale: SDK Neo4j backends scope
+  queries by label/type prefix; unprefixed `DDG`/`CFGNode` in a database
+  holding multiple languages' graphs would mingle analyzers' dependence
+  edges with no way to separate them. Each analyzer uses its language tag
+  (`TS_`/`TSCFGNode` for TypeScript, etc.). The **JSON** `program_graphs`
+  section keeps the unprefixed shared vocabulary — it lives inside each
+  analyzer's own `analysis.json`, so there is no shared namespace to
+  collide in; the SDK strips/adds the prefix at the projection boundary.
 - `CALL` SDG edges are not projected: the callable-level `PY_CALLS` twin
   already carries calls; callsite-statement granularity is recoverable via
   `PY_HAS_CALLSITE`/`PY_RESOLVES_TO`.

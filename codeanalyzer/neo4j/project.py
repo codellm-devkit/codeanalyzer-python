@@ -75,7 +75,7 @@ def project(app: PyApplication, app_name: str) -> GraphRows:
         )
 
     # Level-3 CPG overlay (present only at -a 3): the same program_graphs IR
-    # projected as :CFGNode nodes and the shared cross-language edge types.
+    # projected as :PyCFGNode nodes and PY_-namespaced dependence edge types.
     if app.program_graphs is not None:
         _project_program_graphs(b, app)
 
@@ -99,16 +99,18 @@ def _signature_modules(app: PyApplication) -> dict:
 
 
 def _cfg_node_ref(b: RowBuilder, sig: str, node_id: int) -> NodeRef:
-    return NodeRef("CFGNode", "id", f"{sig}#{node_id}")
+    return NodeRef("PyCFGNode", "id", f"{sig}#{node_id}")
 
 
 def _project_program_graphs(b: RowBuilder, app: PyApplication) -> None:
-    """CFG/PDG/SDG rows: node label ``CFGNode`` (merge key ``id`` =
-    ``<signature>#<node_id>``) and edge types ``HAS_CFG_NODE`` / ``CFG_NEXT``
-    (prop ``kind``) / ``CDG`` / ``DDG`` (prop ``var``) / ``PARAM_IN`` /
-    ``PARAM_OUT`` / ``SUMMARY`` — the shared cross-language vocabulary, so no
-    ``PY_`` prefix. Parameter nodes ride the same label with their HRB kinds
-    plus ``var``/``call_node`` props (an additive, recorded extension)."""
+    """CFG/PDG/SDG rows: node label ``PyCFGNode`` (merge key ``id`` =
+    ``<signature>#<node_id>``) and edge types ``PY_HAS_CFG_NODE`` /
+    ``PY_CFG_NEXT`` (prop ``kind``) / ``PY_CDG`` / ``PY_DDG`` (prop ``var``) /
+    ``PY_PARAM_IN`` / ``PY_PARAM_OUT`` / ``PY_SUMMARY``. The vocabulary is
+    cross-language in shape but PY_-namespaced like every other row family, so
+    a multi-language database never mingles analyzers' dependence edges.
+    Parameter nodes ride the same label with their HRB kinds plus
+    ``var``/``call_node`` props (an additive, recorded extension)."""
     pg = app.program_graphs
     sig_module = _signature_modules(app)
 
@@ -117,7 +119,7 @@ def _project_program_graphs(b: RowBuilder, app: PyApplication) -> None:
         module = sig_module.get(sig)
         for n in (fg.cfg.nodes if fg.cfg else []):
             ref = b.node(
-                ["CFGNode"],
+                ["PyCFGNode"],
                 "id",
                 f"{sig}#{n.id}",
                 prune(
@@ -129,10 +131,10 @@ def _project_program_graphs(b: RowBuilder, app: PyApplication) -> None:
                     }
                 ),
             )
-            b.edge("HAS_CFG_NODE", owner, ref)
+            b.edge("PY_HAS_CFG_NODE", owner, ref)
         for p in fg.param_nodes or []:
             ref = b.node(
-                ["CFGNode"],
+                ["PyCFGNode"],
                 "id",
                 f"{sig}#{p.id}",
                 prune(
@@ -146,17 +148,17 @@ def _project_program_graphs(b: RowBuilder, app: PyApplication) -> None:
                     }
                 ),
             )
-            b.edge("HAS_CFG_NODE", owner, ref)
+            b.edge("PY_HAS_CFG_NODE", owner, ref)
         for e in (fg.cfg.edges if fg.cfg else []):
             b.edge(
-                "CFG_NEXT",
+                "PY_CFG_NEXT",
                 _cfg_node_ref(b, sig, e.source),
                 _cfg_node_ref(b, sig, e.target),
                 {"kind": e.kind},
             )
         for e in (fg.pdg.edges if fg.pdg else []):
             b.edge(
-                e.type,  # CDG | DDG
+                f"PY_{e.type}",  # PY_CDG | PY_DDG
                 _cfg_node_ref(b, sig, e.source),
                 _cfg_node_ref(b, sig, e.target),
                 prune({"var": e.var}),
@@ -166,7 +168,7 @@ def _project_program_graphs(b: RowBuilder, app: PyApplication) -> None:
         if e.type == "CALL":
             continue  # the callable-level PY_CALLS twin already carries calls
         b.edge(
-            e.type,  # PARAM_IN | PARAM_OUT | SUMMARY
+            f"PY_{e.type}",  # PY_PARAM_IN | PY_PARAM_OUT | PY_SUMMARY
             _cfg_node_ref(b, e.source.signature, e.source.node),
             _cfg_node_ref(b, e.target.signature, e.target.node),
             prune({"var": e.var}),
