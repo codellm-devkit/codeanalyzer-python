@@ -557,10 +557,18 @@ class PyCG:
             ) from exc
 
         edge_counts: Counter = Counter()
+        known = resolver._known
         for src, dst in cg.output_edges():
             if prefix:
                 src = f"{prefix}.{src}"
-                dst = f"{prefix}.{dst}"
+                prefixed_dst = f"{prefix}.{dst}"
+                # Only prefix the target when the result is a known internal
+                # symbol.  External / cross-shard callees carry their own
+                # absolute dotted path (e.g. "odoo.fields.Char"); prepending
+                # the shard prefix would produce a phantom namespaced copy
+                # (e.g. "addons.foo.odoo.fields.Char") that can never be
+                # merged with the canonical node used by other shards.
+                dst = prefixed_dst if prefixed_dst in known else dst
             edge_counts[(resolver.resolve(src), resolver.resolve(dst))] += 1
 
         return [
@@ -795,7 +803,7 @@ class PyCG:
         )
 
         if self.using_ray:
-            return self._build_sharded_ray(shards)
+            return self._build_sharded_ray(shards, resolver)
 
         all_edges: List[PyCallEdge] = []
         skipped = 0
@@ -860,7 +868,7 @@ class PyCG:
         )
         return result
 
-    def _build_sharded_ray(self, shards: Dict[Path, List[str]]) -> List[PyCallEdge]:
+    def _build_sharded_ray(self, shards: Dict[Path, List[str]], resolver: "_PyCGCallableResolver") -> List[PyCallEdge]:
         """Ray-parallel variant of the sequential shard loop.
 
         All eligible shards are submitted as Ray remote tasks simultaneously.
@@ -896,7 +904,7 @@ class PyCG:
                 prefix = self._package_prefix(pkg_root, self.project_dir)
                 fut = remote_fn.remote(files, str(pkg_root), prefix, self.max_iter)
                 futures.append(fut)
-                meta[fut] = (pkg_label, n)
+                meta[fut] = (pkg_label, n, prefix)
 
             # Collect results one shard at a time so the progress bar ticks per
             # completed shard.  A single deadline governs the whole batch: tasks
@@ -919,13 +927,23 @@ class PyCG:
                     break  # deadline reached before any new result
 
                 fut = ready[0]
-                pkg_label, n = meta[fut]
+                pkg_label, n, prefix = meta[fut]
                 try:
                     triples = ray.get(fut)
-                    edges = [
-                        PyCallEdge(source=s, target=t, weight=w, provenance=["pycg"])
-                        for s, t, w in triples
-                    ]
+                    known = resolver._known
+                    edges = []
+                    for s, t, w in triples:
+                        # Mirror the sequential-path fix: the worker already
+                        # prepended the shard prefix to every target.  Strip it
+                        # back from targets that are not known internal symbols
+                        # so external / cross-shard callees keep their
+                        # canonical dotted path rather than a phantom
+                        # shard-namespaced copy.
+                        if prefix and t not in known and t.startswith(f"{prefix}."):
+                            t = t[len(prefix) + 1:]
+                        edges.append(
+                            PyCallEdge(source=s, target=t, weight=w, provenance=["pycg"])
+                        )
                     all_edges.extend(edges)
                     logger.debug(
                         "PyCG shard '%s': %d edges from %d files (Ray)",
@@ -938,7 +956,7 @@ class PyCG:
 
             # Cancel any shards that did not complete before the deadline.
             for fut in pending:
-                pkg_label, _ = meta[fut]
+                pkg_label, _, _prefix = meta[fut]
                 logger.warning(
                     "PyCG shard '%s' timed out after %ds — skipped",
                     pkg_label, self.shard_timeout,
