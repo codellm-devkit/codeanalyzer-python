@@ -80,7 +80,8 @@ Jedi at column 8 infers the receiver — returning the owning class — so `call
 becomes the class name instead of the method. This produces spurious `Caller → OwningClass`
 edges for every `self.method()` call.
 
-**Scope.** 93 % of the 15,083 wrong class-target edges follow this pattern.
+**Scope.** The bulk of the ~14,800 wrong class-target edges (the "→ class node (wrong)" row
+above) follow this pattern.
 
 **Fix.** In `_call_sites`, split on call type before calling `_infer_callee`:
 
@@ -94,8 +95,16 @@ else:
     callee_signature, is_constructor = self._infer_callee(script, node.lineno, node.col_offset)
 ```
 
-`func_expr` is already computed a few lines later (line 598) — merge both blocks to share
-the `attr_line`/`attr_col` computation.
+`func_expr = node.func` is **already computed at line 588**, before the current
+`_infer_callee` call at 591–593 (not "a few lines later") — so this block only needs to
+reuse it, no re-derivation. The `isinstance(func_expr, ast.Attribute)` branch at line 598
+that sets `receiver_type` / `method_name` can be merged with it.
+
+Note on cursor position: `end_col_offset - len(attr)` points at the *start* of the
+attribute name, which resolves correctly, but Jedi's canonical position is on/at the end of
+the identifier. Pointing at `func_expr.end_col_offset` directly is more robust and drops the
+`len()` arithmetic. Verified independently: inferring at the callee-*name* position returns
+the definition (`function`/`class`), which is why J2's constructor rewrite already works.
 
 **Example.**
 
@@ -104,31 +113,53 @@ the `attr_line`/`attr_col` computation.
 | `self._buffer.seek(0)` | `ExceptionLogger` | `io.BytesIO.seek` |
 | `self.flush()` | `ExceptionLogger` | `ExceptionLogger.flush` |
 
-**Effort:** ~10 lines. **Impact:** removes ~15,083 wrong edges, replaces with correct callable links.
+**Effort:** ~10 lines. **Impact:** removes ~14,800 wrong edges, replaces with correct
+callable links.
 
 ---
 
-### J2. Use `goto()` Instead of `infer()` for Callee Definitions
+### J2. Improve `infer()` Result Filtering
 
-**Motivation.** `script.infer()` returns the *runtime type* of the expression. `script.goto()`
-returns the *definition site* — what we actually want for a call graph.
+**Motivation.** `infer()` is the right tool for call graph construction: it answers "what
+callable object is invoked here?" rather than "where is this name bound?", which is what
+`goto()` answers. The real issue is not *which* API to call but how to handle `infer()`'s
+results correctly.
 
-The difference surfaces for:
-- **Decorated functions** — `@property`, `@staticmethod`. `infer()` returns the descriptor;
-  `goto()` returns the `def` site.
-- **Aliases** — `helper = self._do_work`. `goto()` follows to `_do_work`'s definition.
-- **Stub-only packages** — `goto()` goes to the stub `def`; `infer()` returns the return annotation.
+`goto()` is unsuitable for call graphs because it stops at the nearest *binding* site:
 
-**Fix.**
+| Call pattern | goto() returns | infer() returns |
+|---|---|---|
+| `handler = process; handler()` | assignment line | `process` definition |
+| `from utils import run; run()` | import line | `run` in utils |
+| `obj.method()` (after J1 column fix) | needs type inference first | obj type → method def |
+
+The current code already uses `infer()` correctly. The improvements are downstream:
+
+**Fix A — follow aliases.** When `infer()` returns a `Name` whose type is a variable
+(not a function/class), follow one level: re-invoke `infer()` on that definition site.
+This handles `helper = self._do_work; helper()` correctly.
+
+**Fix B — filter non-callable results.** `infer()` may return module objects, instances,
+or decorator wrappers. Filter to `d.type in ("function", "class")` before using
+`d.full_name` as the callee. (Dropping `"instance"` also drops callable instances — objects
+with `__call__`, `functools.partial` results — which is an acceptable trade-off here but
+worth noting; keep `"class"` so the existing constructor→`__init__` rewrite still fires.)
+
+**Fix C — prefer stubs, don't pass `follow_imports`.** To follow stub-only packages (type
+stubs without runtime `.py`), use `prefer_stubs=True`. **`infer()` does not accept
+`follow_imports`** — that keyword exists only on `goto()`
+(`jedi/api/__init__.py`: `infer(self, line, column, *, only_stubs=False, prefer_stubs=False)`),
+so passing it raises `TypeError`. `infer()` already resolves through import chains during
+type inference.
 
 ```python
-# _infer_callee: replace infer() with goto(), fall back for builtins
-definitions = script.goto(line=line, column=column)
-if not definitions:
-    definitions = script.infer(line=line, column=column)  # fallback for builtins/C-extensions
+# _infer_callee: prefer stubs and filter result types
+definitions = script.infer(line=line, column=column, prefer_stubs=True)
+definitions = [d for d in definitions if d.type in ("function", "class")]
 ```
 
-**Effort:** 2 lines. **Impact:** precision improvement for decorated functions and aliases.
+**Effort:** 3–5 lines. **Impact:** reduces spurious `None` callee signatures for aliases
+and improves resolution through import chains.
 
 ---
 
@@ -143,7 +174,9 @@ definitions. In a codebase with deep inheritance (Odoo has hundreds of classes o
 ```python
 @staticmethod
 def _infer_callee_all(script, line, column):
-    definitions = script.goto(line=line, column=column) or script.infer(line=line, column=column)
+    # Use infer() for consistency with J2 — goto() stops at the binding site
+    # (import/assignment line) rather than the callable definition.
+    definitions = script.infer(line=line, column=column)
     results = []
     for d in definitions:
         is_class = (d.type == "class")
@@ -189,6 +222,13 @@ def _resolve_by_receiver_type(receiver_type, method_name, by_name):
 
 Only works for unambiguous class names (one class in the symbol table with that name).
 Common names like `str`, `dict`, `BaseModel` map to many candidates and are skipped.
+
+**Reuse existing code.** `resolve_unresolved_constructors` (`call_graph.py:191`) already
+builds the exact `short_name -> [PyClass]` index this needs, plus a `scope_score` tiebreaker
+that approximates LEGB scoping. Implement J4 as an extension of that pass (feeding it
+non-constructor sites keyed on `receiver_type` + `method_name`) rather than a standalone
+`_resolve_by_receiver_type` with a fresh single-candidate lookup — the scope tiebreaker also
+lets it resolve some ambiguous names the sketch above skips.
 
 **Example.**
 ```
@@ -237,42 +277,42 @@ c) Expose a `--jedi-sys-path` CLI option for non-standard import roots.
 These improvements add coverage for call patterns that neither Jedi nor PyCG currently
 captures at all.
 
----
+> **Shared prerequisite (P1).** Every proposal below emits edges tagged with a new
+> `provenance` value (`field_ref`, `orm_registry`, `inherit_delegation`, `inherit_super`,
+> `framework_trigger`, `super_heuristic`). The schema currently constrains this field:
+>
+> ```python
+> # py_schema.py:358
+> provenance: List[Literal["jedi", "pycg", "joern"]] = []
+> ```
+>
+> Constructing a `PyCallEdge` with any other string raises a Pydantic `ValidationError`.
+> **Before implementing any Part II item, extend this `Literal`** with the new tags and
+> update any serializer/consumer that switches on provenance (Neo4j writer, JSON backend).
 
-### C1. Sub-Shard Retry for Timed-Out PyCG Shards
-
-Seven shards exceeded the 300 s budget: `addons/mail`, `addons/mrp`, `addons/account`,
-`addons/stock`, `odoo/tools`, `odoo/orm`, `odoo/addons/base`. Their internal topology
-is Jedi-only and often orphaned.
-
-**Approach.** When a shard times out, retry at the next directory depth:
-
-```
-addons/account/           ← timed out (120 files)
-├── models/               ← ~40 files — retry PyCG here
-├── report/               ← ~15 files — retry PyCG here
-└── wizard/               ← ~20 files — retry PyCG here
-```
-
-```python
-# In _build_sharded after catching TimeoutError:
-sub_shards = _split_to_subdirs(pkg_root, files, project_dir)
-if sub_shards and retry_depth > 0:
-    for sub_root, sub_files in sub_shards.items():
-        retry_queue[sub_root] = sub_files
-```
-
-**Example.** `addons/account/report/ReportAccountReport_Invoice._get_report_values` is an
-isolated 2-node stub. After retry, PyCG runs on `addons/account/report` (~15 files) and
-`_get_report_values` gains outgoing edges that merge it into the main component.
-
-**Effort:** medium. **Impact:** ~160 orphaned nodes reconnected.
+> **Framework-specificity.** C2–C6 target Odoo patterns (`fields.*`, `env['model']`,
+> `_inherit`, `@api.*`). Implement them as framework profiles gated behind detection (an
+> `odoo` import or a `__manifest__.py`) behind a shared plugin seam. The language-level parts
+> — Python MRO in C6, C7's constructor rewrite — stay in the core unconditionally. Keep
+> provenance tags framework-neutral (`string_ref`, `orm_registry`, `inherit_delegation`,
+> `framework_trigger`), not `odoo_*`.
 
 ---
 
-### C2. String-Referenced Field Methods (`compute=`, `inverse=`, `search=`)
+### C1. Sub-Shard Retry for Timed-Out PyCG Shards — *done, removed*
 
-Odoo field declarations name their compute/inverse methods as string constants:
+Already shipped as *iterative decomposition of runaway shards* in `pycg_analysis.py`
+(`_PYCG_DECOMP_FLOOR`, `_PYCG_MAX_DECOMP_ROUNDS`, `_build_sharded`). Label retained so
+`C2`–`C8` references stay stable; see the Implementation Order for the one unbuilt refinement
+(depth-aligned splitting).
+
+---
+
+### C2. String-Referenced Callables (framework-specific)
+
+Many frameworks reference methods by *string name* instead of calling them, so neither Jedi
+nor PyCG ever sees a call site and the referenced method looks like an unreachable leaf. Odoo
+field declarations are one instance:
 
 ```python
 amount_total = fields.Monetary(
@@ -281,21 +321,38 @@ amount_total = fields.Monetary(
 )
 ```
 
-Neither Jedi nor PyCG sees these as call sites. The methods appear as unreachable leaf nodes.
+but the pattern is generic — Django (`clean_<field>`, admin `actions`, `ordering`),
+marshmallow, Celery task names, signal handlers, pytest fixtures, etc. all do the same.
 
-**Approach.** Add an AST post-pass walking `fields.*` constructor calls and extracting
-string-valued keyword arguments for `compute`, `inverse`, `search`, `default`:
+**Approach.** A config-/plugin-driven rule registry of `(callee-pattern,
+method-valued-kwargs)` tuples, with the Odoo rules as one built-in profile gated behind
+framework detection (an `odoo` import or a `__manifest__.py`). An AST post-pass matches calls
+against registered callee patterns and extracts string-*constant* method-valued kwargs, using
+a framework-neutral `string_ref` provenance tag:
 
 ```python
-FIELD_STRING_KWARGS = {"compute", "inverse", "search", "default"}
+# Odoo profile (loaded only when Odoo is detected)
+STRING_REF_RULES = [
+    # callee-pattern (attr chain suffix), method-valued kwargs
+    ("fields.*", {"compute", "inverse", "search"}),
+]
 
-for kw in field_call.keywords:
-    if kw.arg in FIELD_STRING_KWARGS and isinstance(kw.value, ast.Constant):
+for kw in call.keywords:
+    if kw.arg in rule.method_kwargs and isinstance(kw.value, ast.Constant) \
+            and isinstance(kw.value.value, str):
         emit_edge(f"{cls.signature}.__field_init__", f"{cls.signature}.{kw.value.value}",
-                  provenance=["field_ref"])
+                  provenance=["string_ref"])
 ```
 
-**Effort:** low. **Impact:** hundreds of `compute`/`inverse` edges in ORM-heavy codebases.
+**Note — `default` is not method-valued.** Earlier drafts included `default` in the kwarg
+set, but in Odoo a *string* `default=` is a **literal default value** (`default='draft'`),
+not a method name — only a callable/lambda default references code. Including it emits edges
+to non-existent methods (ghost nodes) or coincidentally-named ones. Restrict to
+`compute`/`inverse`/`search`.
+
+**Effort:** low for the Odoo profile; medium once generalized into the rule registry +
+framework detection. **Impact:** hundreds of `compute`/`inverse` edges in ORM-heavy
+codebases; extensible to other frameworks.
 
 ---
 
@@ -440,8 +497,13 @@ def rewrite_constructor_targets(edges, symbol_table):
     ]
 ```
 
-Jedi already does this rewrite in `_infer_callee` — this pass applies the same treatment
-to PyCG-originated edges.
+Jedi already does this rewrite in `_infer_callee` (`symbol_table_builder.py:94–95`) — this
+pass applies the same treatment to PyCG-originated edges. Verified: `filter_external_edges`
+(`call_graph.py:262`) adds class signatures to the app-symbol set, so these class-targeted
+edges survive filtering but land on non-callable nodes (they become *ghost* nodes in
+`to_digraph`, whose node index is callables-only). Caveat: if the class defines no explicit
+`__init__`, the rewritten `Class.__init__` target is still a ghost — acceptable, but it means
+C7 doesn't fully "eliminate" ambiguity for implicit-constructor classes.
 
 **Before:** `StockPutInPack.action_put_in_pack → StockPutInPack` (class ghost node)
 **After:** `StockPutInPack.action_put_in_pack → StockPutInPack.__init__` (callable node)
@@ -479,12 +541,15 @@ outweigh gains. Improvements C3 and C4 cover the dominant dynamic patterns in Od
 ```
 P0  ✅  PyCG shard prefix canonicalization    (done — pycg_analysis.py)
 P0  ✅  Shard planner ZeroDivisionError guard  (done — shard_planner.py)
+--  ✅  C1  Sub-shard retry for timeouts      (done — iterative decomposition, pycg_analysis.py;
+                                              optional: depth-aligned vs budget-halving split — measure first)
 
 P1      J1  Attribute call column fix         — ~10 lines, removes ~37 % wrong Jedi edges
 P1      C7  Constructor target rewrite        — ~5 lines post-pass, zero risk
+P1      *   Extend provenance Literal         — prerequisite for ALL Part II edges (C2–C8)
 
-P2      J2  goto() over infer()               — 2 lines, precision improvement
-P2      J3  All definitions (polymorphic)     — refactor return type
+P2      J2  infer() result filtering          — precision (alias/type filter, prefer_stubs)
+P2      J3  All definitions (polymorphic)     — refactor return type; use infer(), not goto()
 P2      C2  Field string references           — AST pass, high recall for ORM code
 P2      C5  Decorator entry edges             — post-processing on existing decorator data
 
@@ -493,8 +558,7 @@ P3      C4  _inherit chain + delegation       — needs model registry
 P3      C6  super() MRO resolution            — needs model registry
 P3      C3  ORM env[] registry resolution     — needs model registry
 
-P4      J4  Receiver-type fallback            — medium effort, lower marginal gain after J1–J3
-P4      C1  Sub-shard retry for timeouts      — pure PyCG infrastructure
+P4      J4  Receiver-type fallback            — extend resolve_unresolved_constructors; low marginal gain after J1–J3
 P4      J5  Jedi project path config          — config/env change
 P4      C8  getattr heuristics                — lower precision, framework-specific
 ```
