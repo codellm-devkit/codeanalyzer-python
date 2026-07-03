@@ -183,6 +183,9 @@ def _communities(h: nx.Graph, resolution: float, seed: int) -> List[Set[str]]:
     """Weighted community detection, preferring Louvain with a graceful fallback."""
     if h.number_of_nodes() == 0:
         return []
+    if h.number_of_edges() == 0:
+        # Fully isolated nodes — no coupling signal; each node is its own shard.
+        return [{n} for n in h.nodes()]
     if hasattr(nx.community, "louvain_communities"):
         return [
             set(c)
