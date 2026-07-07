@@ -69,3 +69,85 @@ additions, all additive:
 - `CALL` SDG edges are not projected: the callable-level `PY_CALLS` twin
   already carries calls; callsite-statement granularity is recoverable via
   `PY_HAS_CALLSITE`/`PY_RESOLVES_TO`.
+
+## Stage 0 — Scalpel oracle spike
+
+Research spike (issue #70) verifying **SMAT-Lab/Scalpel** as the primary L4
+may-alias oracle before the interprocedural-dataflow stage writes any
+integration. No product code changed; a throwaway probe under `test/spikes/`
+was run and deleted.
+
+**Decision.** Primary oracle = **`ScalpelAliasOracle`** implementing the
+frozen interface `may_alias(path_a: str, path_b: str) -> bool`; automatic
+fallback = the existing `TypeBasedAliasOracle` (for constructs Scalpel can't
+resolve and for parse/build failures, keeping the interface total).
+
+**Verdict: Scalpel is VIABLE** as the L4 oracle — consumed as **SSA + copy/const
+facts**, not as a turnkey points-to engine (Scalpel ships no Andersen/
+Steensgaard heap analysis; its "alias pairs" are copy/const records over SSA).
+
+**Environment.** Installed `python-scalpel==1.0b0` (self-reports
+`__version__ == "1.0dev"`) via `uv pip install python-scalpel` into the repo's
+uv-managed `.venv`, **CPython 3.12.13** (the project interpreter per
+`pyvenv.cfg`/`.envrc`; the bare `python` on PATH is a pyenv shim to 3.14.0 and
+is *not* the project env). `import scalpel` and `import codeanalyzer` both work
+afterward. `uv pip install` does not touch `uv.lock`; installed packages live
+in the gitignored `.venv`.
+
+**Modules / classes / functions to consume, and their output shape:**
+
+1. **CFG substrate** — `from scalpel.cfg import CFGBuilder`;
+   `CFGBuilder().build_from_src(name, src)` (or `build_from_file`). CFG is
+   **basic-block level**: nested-function CFGs in `cfg.functioncfgs` keyed by
+   `(entry_id, func_name)`, params in `cfg.function_args`. `Block.statements`
+   are **real `ast` statement nodes retaining `.lineno`/`.col_offset`**.
+2. **SSA + alias** (there is *no* standalone alias module) — `from
+   scalpel.SSA.const import SSA`; `ssa_results, const_dict =
+   SSA().compute_SSA(func_cfg)`. **Statement-level** on top of the block CFG.
+   - `ssa_results`: `dict[block_id] -> [ {var_name: {def_version_ints}} ]` (one
+     dict per statement) — the use-def chain; a version set with >1 element is
+     a **phi/merge**; an empty set is a param/global/external use. Attribute
+     access-path names (`a.field`) appear as keys.
+   - `const_dict`: `dict[(var_name, version)] -> ast value node` — the **alias
+     carrier**. Value an `ast.Name` ⇒ a copy edge (`('b',0)->Name 'a'` means
+     b aliases a); value an `ast.Attribute` ⇒ attribute-path store; `<ret>`
+     is the return-value pseudo-name. Version counter is function-global, so
+     `(name, version)` is a stable intra-function SSA identity.
+3. **Type inference** (for the type-guided branch) — `from
+   scalpel.typeinfer.typeinfer import TypeInference`; **file-based**:
+   `TypeInference(name, entry_point=path).infer_types(); get_types()` →
+   `list[dict]` rows `{file, line_number, function, type: set[str],
+   variable|parameter}`; `'any'` = unknown.
+
+**Mapping onto access-path strings / `(signature, node_id)`.** Both the repo
+(`codeanalyzer/dataflow/cfg.py` `CFGNode` carries `start_line`/`end_line` +
+`ast_node`) and Scalpel build from the **same source AST**, so the join is by
+source position: function ⇄ `functioncfgs` key; node ⇄ statement AST
+`(lineno, col_offset)` equal to `CFGNode.start_line`(/col) ⇒ same `node_id`
+(the integration can even reuse the repo AST, making it identity not a match).
+Scalpel var names use the same `base(.field|[*])*` grammar (normalize
+subscripts to `[*]`, re-`k_limit`). `may_alias` = transitively close
+`const_dict` `Name`→`Name`/attribute copies into per-function equivalence
+classes; TRUE iff bases share a class **and** suffixes are prefix-compatible
+(reuse `suffix_of`/prefix logic); for unrelated bases consult `TypeInference`
+(incompatible concrete types ⇒ not aliased, `any`/unknown ⇒ may-alias); on
+anything unresolved, fall back to `TypeBasedAliasOracle`.
+
+**Probe answers.** (a) alias/SSA output **is** keyable to `(function,
+line/col)` — verified end-to-end. (b) **CFG block-level, SSA/use-def
+statement-level.** (c) modern syntax: `walrus :=` OK, `async`/`await`/`async
+with` OK, `match`/`case` **does not crash** but is **not** split into per-arm
+CFG branches (block-level imprecision, mitigated by the repo's own
+statement-level CFG).
+
+**Concerns carried to Stage 4.** Copy-only + intra-function (no heap
+points-to; two params/aliased container elements are not modeled — the
+type-guided branch + sound-leaning fallback must cover them); `match` arms
+unbranched in Scalpel's CFG; dependency hygiene — `python-scalpel` is a
+low-maintenance pre-release that drags in `typed-ast` (C build, historically
+fails on 3.13+) and a `dataclasses` backport (harmlessly shadowed on 3.12), so
+pin/constrain them, gate the import as a soft dependency (missing/broken
+Scalpel → fallback, not a hard failure), and confirm the build across the repo's
+supported 3.9–3.13+ range; `compute_SSA`'s return contract is discovered from
+source (not a documented public API) — wrap it behind `ScalpelAliasOracle` to
+contain upstream drift.
