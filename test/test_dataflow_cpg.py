@@ -1,52 +1,45 @@
-"""Stage-8b gate: the CPG projection of the level-3 graphs.
+"""Stage-3 (v2) gate: the CPG overlay projection of the level-3 graphs.
 
-- PyCFGNode row count equals the JSON section's node count (CFG + parameter
-  nodes) — the contract's count-parity assertion;
-- every PY_CFG_NEXT/PY_CDG/PY_DDG/PY_PARAM_IN/PY_PARAM_OUT/PY_SUMMARY edge
-  endpoint references an emitted PyCFGNode id (deferred-edge/no-dangling gate);
+Projected off each callable's v2 ``body``/``cfg``/``cdg``/``ddg`` (populated by
+``emit_l3_body`` at ``-a 3``), the Neo4j overlay must satisfy:
+
+- ``PyCFGNode`` row count equals the total number of ``body`` nodes across all
+  callables — the count-parity / two-projection-agreement assertion;
+- every ``PY_CFG_NEXT``/``PY_CDG``/``PY_DDG`` edge endpoint that is a PyCFGNode
+  references an emitted PyCFGNode id (the no-dangling gate);
+- every emitted PyCFGNode is owned by its callable via ``PY_HAS_CFG_NODE``;
 - the Cypher snapshot renders and contains the overlay's vocabulary.
 
-Loading into a live Neo4j is exercised by the (container-gated) bolt tests;
-these stay fast and deterministic.
+Parameter/summary edges (``PY_PARAM_IN``/``PY_PARAM_OUT``/``PY_SUMMARY``) are an
+L4/SDG concern and are intentionally absent here. Loading into a live Neo4j is
+exercised by the (container-gated) bolt tests; these stay fast and deterministic.
 """
 import pytest
-pytest.skip(
-    "Deferred to Stage 3 v2 dataflow/neo4j test migration (see issues #73, #72). "
-    "Uses deleted graph models / pre-envelope analyze() shape.",
-    allow_module_level=True,
-)
 
-from pathlib import Path
-
-from codeanalyzer.core import Codeanalyzer
 from codeanalyzer.neo4j import project
 from codeanalyzer.neo4j.cypher import render_cypher
-from codeanalyzer.options import AnalysisOptions
+from codeanalyzer.semantic_analysis.call_graph import iter_callables_in_symbol_table
 
-FIXTURE = Path(__file__).parent / "fixtures" / "single_functionalities" / "dataflow"
+from sample_graph_app import make_sample_app
 
-CPG_EDGE_TYPES = {"PY_CFG_NEXT", "PY_CDG", "PY_DDG", "PY_PARAM_IN", "PY_PARAM_OUT", "PY_SUMMARY"}
-
-
-@pytest.fixture(scope="module")
-def level3_app(tmp_path_factory):
-    cache = tmp_path_factory.mktemp("dataflow-cpg-cache")
-    options = AnalysisOptions(
-        input=FIXTURE, analysis_level=3, no_venv=True, cache_dir=cache
-    )
-    with Codeanalyzer(options) as analyzer:
-        return analyzer.analyze()
+CPG_EDGE_TYPES = {"PY_CFG_NEXT", "PY_CDG", "PY_DDG"}
 
 
 @pytest.fixture(scope="module")
-def rows(level3_app):
-    return project(level3_app, "dataflow-fixture")
+def sample():
+    return make_sample_app()  # (app, sig_to_id)
 
 
-def test_cfg_node_count_matches_the_json_section(level3_app, rows):
+@pytest.fixture(scope="module")
+def rows(sample):
+    app, sig_to_id = sample
+    return project(app, "dataflow-fixture", sig_to_id)
+
+
+def test_cfg_node_count_matches_the_body_section(sample, rows):
+    app, _sig_to_id = sample
     expected = sum(
-        len(fg.cfg.nodes if fg.cfg else []) + len(fg.param_nodes or [])
-        for fg in level3_app.program_graphs.functions.values()
+        len(c.body or {}) for c in iter_callables_in_symbol_table(app.symbol_table)
     )
     emitted = [n for n in rows.nodes if "PyCFGNode" in n.labels]
     assert expected > 0
@@ -64,14 +57,14 @@ def test_no_dangling_cpg_edge_endpoints(rows):
             assert e.to_ref.value in cfg_ids, e
 
 
-def test_every_callable_with_graphs_owns_its_cfg_nodes(level3_app, rows):
+def test_every_callable_with_graphs_owns_its_cfg_nodes(rows):
     has_edges = [e for e in rows.edges if e.type == "PY_HAS_CFG_NODE"]
     owned = {e.to_ref.value for e in has_edges}
     cfg_ids = {n.value for n in rows.nodes if "PyCFGNode" in n.labels}
     assert owned == cfg_ids, "every CFGNode must be owned by its callable"
 
 
-def test_cypher_snapshot_renders_the_overlay(level3_app, rows):
+def test_cypher_snapshot_renders_the_overlay(rows):
     cypher = render_cypher(rows, "dataflow-fixture")
     assert ":PyCFGNode" in cypher
     for t in CPG_EDGE_TYPES:
