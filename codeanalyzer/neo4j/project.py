@@ -76,7 +76,9 @@ def project(app: PyApplication, app_name: str, sig_to_id: dict) -> GraphRows:
             "PY_CALLS", src, tgt, _call_edge_props(e.weight, list(e.provenance or []))
         )
 
-    # CPG overlay projection rebuilt on the v2 tree in Stage 3
+    # Level-3 CPG overlay: each callable's v2 body/cfg/cdg/ddg. Idempotent under
+    # MERGE — a no-op when no callable carries L3 fields (levels 1/2).
+    _project_program_graphs(b, app)
 
     return b.finish()
 
@@ -86,92 +88,78 @@ def project(app: PyApplication, app_name: str, sig_to_id: dict) -> GraphRows:
 # ----------------------------------------------------------------------------------------------
 
 
-def _signature_modules(app: PyApplication) -> dict:
-    """signature → owning module file_key, for CFGNode `_module` provenance."""
-    from codeanalyzer.semantic_analysis.call_graph import _walk_module_callables
+def _global_ordinal(callable_id: str, local_key: str) -> str:
+    """The globally-unique PyCFGNode merge key for a callable's body node: the
+    callable's ``can://`` id joined to its LOCAL body key with a single ``@``.
+    The synthetic bookends already carry the leading ``@`` (``"@entry"``/
+    ``"@exit"``); real statements are bare ``"line:col"`` and gain the ``@``.
 
-    out: dict = {}
-    for file_key, mod in app.symbol_table.items():
-        for c in _walk_module_callables(mod):
-            out[c.signature] = file_key
-    return out
+    This MUST agree with :meth:`IdentityMap.global_id` for the same node, so the
+    JSON ``body``/``cfg`` projection and this Neo4j projection land on one node
+    identity (two-projection agreement)."""
+    return (
+        f"{callable_id}{local_key}"
+        if local_key.startswith("@")
+        else f"{callable_id}@{local_key}"
+    )
 
 
-def _cfg_node_ref(b: RowBuilder, sig: str, node_id: int) -> NodeRef:
-    return NodeRef("PyCFGNode", "id", f"{sig}#{node_id}")
+def _cfg_ref(callable_id: str, local_key: str) -> NodeRef:
+    return NodeRef("PyCFGNode", "id", _global_ordinal(callable_id, local_key))
 
 
 def _project_program_graphs(b: RowBuilder, app: PyApplication) -> None:
-    """CFG/PDG/SDG rows: node label ``PyCFGNode`` (merge key ``id`` =
-    ``<signature>#<node_id>``) and edge types ``PY_HAS_CFG_NODE`` /
-    ``PY_CFG_NEXT`` (prop ``kind``) / ``PY_CDG`` / ``PY_DDG`` (prop ``var``) /
-    ``PY_PARAM_IN`` / ``PY_PARAM_OUT`` / ``PY_SUMMARY``. The vocabulary is
-    cross-language in shape but PY_-namespaced like every other row family, so
-    a multi-language database never mingles analyzers' dependence edges.
-    Parameter nodes ride the same label with their HRB kinds plus
-    ``var``/``call_node`` props (an additive, recorded extension)."""
-    pg = app.program_graphs
-    sig_module = _signature_modules(app)
+    """Level-3 CPG overlay, projected off each callable's v2 ``body``/``cfg``/
+    ``cdg``/``ddg`` (populated by ``emit_l3_body`` at ``-a 3``; empty otherwise).
 
-    for sig, fg in pg.functions.items():
-        owner = _sym(sig)
-        module = sig_module.get(sig)
-        for n in (fg.cfg.nodes if fg.cfg else []):
-            ref = b.node(
-                ["PyCFGNode"],
-                "id",
-                f"{sig}#{n.id}",
-                prune(
-                    {
-                        "kind": n.kind,
-                        "start_line": n.start_line,
-                        "end_line": n.end_line,
-                        "_module": module,
-                    }
-                ),
-            )
-            b.edge("PY_HAS_CFG_NODE", owner, ref)
-        for p in fg.param_nodes or []:
-            ref = b.node(
-                ["PyCFGNode"],
-                "id",
-                f"{sig}#{p.id}",
-                prune(
-                    {
-                        "kind": p.kind,
-                        "var": p.var,
-                        "call_node": p.call_node,
-                        "start_line": p.start_line,
-                        "end_line": p.end_line,
-                        "_module": module,
-                    }
-                ),
-            )
-            b.edge("PY_HAS_CFG_NODE", owner, ref)
-        for e in (fg.cfg.edges if fg.cfg else []):
-            b.edge(
-                "PY_CFG_NEXT",
-                _cfg_node_ref(b, sig, e.source),
-                _cfg_node_ref(b, sig, e.target),
-                {"kind": e.kind},
-            )
-        for e in (fg.pdg.edges if fg.pdg else []):
-            b.edge(
-                f"PY_{e.type}",  # PY_CDG | PY_DDG
-                _cfg_node_ref(b, sig, e.source),
-                _cfg_node_ref(b, sig, e.target),
-                prune({"var": e.var}),
-            )
+    Node label ``PyCFGNode`` (merge key ``id`` = the GLOBAL ordinal
+    ``<callable can:// id>@<local body key>`` — identical to the JSON body key
+    prefixed with the callable id, so the two projections agree). Edges:
+    ``PY_HAS_CFG_NODE`` from the owning callable, ``PY_CFG_NEXT`` (prop ``kind``)
+    over the CFG, ``PY_CDG`` over control dependence, and ``PY_DDG`` (props
+    ``var``/``prov``) over data dependence. The vocabulary is cross-language in
+    shape but PY_-namespaced like every other row family, so a multi-language
+    database never mingles analyzers' dependence edges. Body-node ``var``/
+    ``call_node`` props are an L4 parameter-node concern and are absent here."""
+    from codeanalyzer.semantic_analysis.call_graph import _walk_module_callables
 
-    for e in pg.sdg_edges:
-        if e.type == "CALL":
-            continue  # the callable-level PY_CALLS twin already carries calls
-        b.edge(
-            f"PY_{e.type}",  # PY_PARAM_IN | PY_PARAM_OUT | PY_SUMMARY
-            _cfg_node_ref(b, e.source.signature, e.source.node),
-            _cfg_node_ref(b, e.target.signature, e.target.node),
-            prune({"var": e.var}),
-        )
+    for file_key, mod in app.symbol_table.items():
+        for c in _walk_module_callables(mod):
+            if not c.id:
+                continue  # unstamped callable — assign_ids must run first
+            owner = _sym(c.id)  # the :PyCallable node, keyed by its can:// id
+            for local_key, node in (c.body or {}).items():
+                span = node.span
+                ref = b.node(
+                    ["PyCFGNode"],
+                    "id",
+                    _global_ordinal(c.id, local_key),
+                    prune(
+                        {
+                            "kind": node.kind,
+                            "start_line": span.start[0] if span else None,
+                            "end_line": span.end[0] if span else None,
+                            "_module": file_key,
+                        }
+                    ),
+                )
+                b.edge("PY_HAS_CFG_NODE", owner, ref)
+            for e in c.cfg or []:
+                b.edge(
+                    "PY_CFG_NEXT",
+                    _cfg_ref(c.id, e.src),
+                    _cfg_ref(c.id, e.dst),
+                    {"kind": e.kind},
+                )
+            for e in c.cdg or []:
+                b.edge("PY_CDG", _cfg_ref(c.id, e.src), _cfg_ref(c.id, e.dst))
+            for e in c.ddg or []:
+                b.edge(
+                    "PY_DDG",
+                    _cfg_ref(c.id, e.src),
+                    _cfg_ref(c.id, e.dst),
+                    prune({"var": e.var, "prov": list(e.prov) if e.prov else None}),
+                )
 
 
 def _sym(can_id: str) -> NodeRef:
