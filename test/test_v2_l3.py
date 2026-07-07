@@ -1,6 +1,7 @@
 import textwrap
 from pathlib import Path
 
+from codeanalyzer.__main__ import app
 from codeanalyzer.dataflow.builder import build_function_pdgs, emit_l3_body
 from codeanalyzer.dataflow.identity import IdentityMap
 from codeanalyzer.dataflow.syntactic import SyntacticOracle
@@ -95,3 +96,66 @@ def test_build_function_pdgs_returns_pdg_per_callable(tmp_path: Path):
     sig = next(iter(mod.functions.values())).signature
     assert sig in infos
     assert infos[sig].pdg.cfg.entry_id is not None
+
+
+def test_cli_graphs_sdg_requires_a4(cli_runner, tmp_path):
+    """CLI: requesting --graphs sdg should error with exit code 2, regardless of -a level."""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "main.py").write_text("def f():\n    pass\n")
+
+    out = tmp_path / "out1"
+    result = cli_runner.invoke(
+        app,
+        [
+            "--input", str(proj),
+            "--analysis-level", "3",
+            "--graphs", "sdg",
+            "--no-venv",
+            "--output", str(out),
+        ],
+        env={"NO_COLOR": "1", "TERM": "dumb"},
+    )
+    assert result.exit_code == 2, f"Expected exit code 2, got {result.exit_code}. Output: {result.output}"
+    assert "sdg requires -a 4" in result.output or "not available yet" in result.output
+
+
+def test_cli_graphs_cfg_pdg_at_a3_succeeds(cli_runner, tmp_path):
+    """CLI: -a 3 --graphs cfg,pdg should succeed (exit 0)."""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "main.py").write_text("def f():\n    pass\n")
+
+    out = tmp_path / "out2"
+    result = cli_runner.invoke(
+        app,
+        [
+            "--input", str(proj),
+            "--analysis-level", "3",
+            "--graphs", "cfg,pdg",
+            "--no-venv",
+            "--output", str(out),
+        ],
+        env={"NO_COLOR": "1", "TERM": "dumb"},
+    )
+    assert result.exit_code == 0, f"Expected exit code 0, got {result.exit_code}. Output: {result.output}"
+
+
+def test_cli_graphs_default_at_a3_succeeds(cli_runner, tmp_path):
+    """CLI: -a 3 with default graphs (no --graphs flag) should succeed (exit 0)."""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "main.py").write_text("def f():\n    pass\n")
+
+    out = tmp_path / "out3"
+    result = cli_runner.invoke(
+        app,
+        [
+            "--input", str(proj),
+            "--analysis-level", "3",
+            "--no-venv",
+            "--output", str(out),
+        ],
+        env={"NO_COLOR": "1", "TERM": "dumb"},
+    )
+    assert result.exit_code == 0, f"Expected exit code 0, got {result.exit_code}. Output: {result.output}"
