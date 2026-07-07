@@ -3,6 +3,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from codeanalyzer.core import Codeanalyzer
+from codeanalyzer.options import AnalysisOptions
 from codeanalyzer.schema.assign_ids import assign_ids
 from codeanalyzer.schema.py_schema import PyApplication, PyModule, PyClass, PyCallable
 
@@ -45,3 +47,14 @@ def test_l1_output_is_conformant(tmp_path: Path):
         capture_output=True, text=True, check=True,
     ).stdout
     assert_conformant(json.loads(out), max_level=1)
+
+
+def test_stale_v1_cache_is_ignored(tmp_path: Path):
+    proj = tmp_path / "proj"; proj.mkdir()
+    (proj / "m.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    cache = tmp_path / ".codeanalyzer"; cache.mkdir()
+    (cache / "analysis_cache.json").write_text('{"symbol_table": {}}', encoding="utf-8")  # v1 shape
+    opts = AnalysisOptions(input=proj, cache_dir=tmp_path, no_venv=True, analysis_level=1)
+    with Codeanalyzer(opts) as an:
+        result = an.analyze()          # must not raise
+    assert result.schema_version == "2.0.0"

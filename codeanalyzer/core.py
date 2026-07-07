@@ -415,18 +415,19 @@ class Codeanalyzer:
         """
         cache_file = self.cache_dir / "analysis_cache.json"
         
-        # Try to load existing cached analysis 
-        cached_pyapplication = None
+        # Try to load existing cached analysis
+        cached = None
         if not self.rebuild_analysis and cache_file.exists():
             try:
-                cached_pyapplication = self._load_pyapplication_from_cache(cache_file)
-                logger.info("Loaded cached analysis")
+                cached = self._load_pyapplication_from_cache(cache_file)
+                if cached is not None:
+                    logger.info("Loaded cached analysis")
             except Exception as e:
                 logger.warning(f"Failed to load cache: {e}. Rebuilding analysis.")
-                cached_pyapplication = None
+                cached = None
 
         # Build symbol table from cached application if available (if no available, the build a new one)
-        symbol_table = self._build_symbol_table(cached_pyapplication.symbol_table if cached_pyapplication else {})
+        symbol_table = self._build_symbol_table(cached.application.symbol_table if cached else {})
 
         resolve_unresolved_constructors(symbol_table)
 
@@ -463,40 +464,57 @@ class Codeanalyzer:
 
         # L3/L4 dataflow emission rebuilt on the v2 tree in Stage 3+
 
-        # Save to cache
-        self._save_analysis_cache(app, cache_file)
-
-        return Analysis(
+        # Build the v2 envelope, then persist it (the cache stores the full
+        # ``Analysis`` envelope so a reused cache round-trips schema_version).
+        analysis = Analysis(
             max_level=self.analysis_level,
             k_limit=self.options.graph_field_depth,
             application=app,
         )
+        self._save_analysis_cache(analysis, cache_file)
 
-    def _load_pyapplication_from_cache(self, cache_file: Path) -> PyApplication:
-        """Load cached analysis from file.
-        
+        return analysis
+
+    def _load_pyapplication_from_cache(self, cache_file: Path) -> Optional[Analysis]:
+        """Load a cached v2 ``Analysis`` envelope from file.
+
+        A cache written by an older (v1) analyzer stored a bare
+        ``PyApplication`` with no ``schema_version``; such a payload no longer
+        validates as an ``Analysis`` (or carries the wrong ``schema_version``).
+        In that case we log and return ``None`` so the caller treats it as a
+        cache miss and rebuilds from scratch — rather than crashing.
+
         Args:
             cache_file: Path to the cache file
-            
+
         Returns:
-            PyApplication: The cached application data
+            Optional[Analysis]: The cached envelope, or ``None`` if the cache is
+            stale/incompatible and should be rebuilt.
         """
         with cache_file.open('r') as f:
             data = f.read()
-        return model_validate_json(PyApplication, data)
-    
-    def _save_analysis_cache(self, app: PyApplication, cache_file: Path) -> None:
-        """Save analysis to cache file.
-        
+        try:
+            cached = model_validate_json(Analysis, data)
+        except Exception:
+            logger.info("stale/incompatible analysis cache — rebuilding")
+            return None
+        if getattr(cached, "schema_version", None) != "2.0.0":
+            logger.info("stale/incompatible analysis cache (schema_version) — rebuilding")
+            return None
+        return cached
+
+    def _save_analysis_cache(self, analysis: Analysis, cache_file: Path) -> None:
+        """Save the v2 ``Analysis`` envelope to the cache file.
+
         Args:
-            app: The PyApplication to cache
+            analysis: The Analysis envelope to cache
             cache_file: Path to save the cache file
         """
         # Ensure cache directory exists
         cache_file.parent.mkdir(parents=True, exist_ok=True)
-        
+
         with cache_file.open('w') as f:
-            f.write(model_dump_json(app, indent=2))
+            f.write(model_dump_json(analysis, indent=2))
 
         logger.info(f"Analysis cached to {cache_file}")
 
