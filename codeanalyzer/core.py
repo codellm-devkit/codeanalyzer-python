@@ -50,7 +50,7 @@ def _process_file_with_ray(py_file: Union[Path, str], project_dir: Union[Path, s
     try:
         py_file = Path(py_file)
         symbol_table_builder = SymbolTableBuilder(project_dir, virtualenv)
-        module_map[str(py_file)] = symbol_table_builder.build_pymodule_from_file(py_file)
+        module_map[str(py_file.relative_to(Path(project_dir)))] = symbol_table_builder.build_pymodule_from_file(py_file)
     except Exception as e:
         console.log(f"❌ Failed to process {py_file}: {e}")
         raise SymbolTableBuilderRayError(f"Ray processing error for {py_file}: {e}")

@@ -36,7 +36,7 @@ def test_cli_emits_v2_envelope(tmp_path: Path):
 
 
 def test_l1_output_is_conformant(tmp_path: Path):
-    from test.conftest_v2 import assert_conformant
+    from conftest_v2 import assert_conformant
     proj = tmp_path / "proj"; proj.mkdir()
     (proj / "pkg").mkdir()
     (proj / "pkg" / "m.py").write_text("def f(a):\n    return a\n", encoding="utf-8")

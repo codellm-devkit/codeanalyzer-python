@@ -43,7 +43,7 @@ def assert_conformant(payload: dict, max_level: int) -> None:
         text = mod["source"].encode("utf-8")[lo:hi].decode("utf-8")
         assert text.lstrip().startswith(("def ", "async def ", "@")), f"{c['id']} span mismatch"
         for node in c.get("body", {}).values():
-            if node["kind"] == "call" and max_level >= 2:
+            if node.get("kind") == "call" and max_level >= 2:
                 assert node.get("callee") is None or isinstance(node["callee"], str)
     for mod, c in _iter_callables(app):
         node_ids = set(c.get("body", {}).keys())
