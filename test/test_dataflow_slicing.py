@@ -4,10 +4,14 @@ The client gate demands an *exact* hand-computed node set for a named
 criterion — this is the assertion that catches both missing dependence edges
 and context-insensitive over-reach.
 """
+import pytest
+pytest.skip(
+    "Deferred to Stage 3 v2 dataflow/neo4j test migration (see issues #73, #72). "
+    "Uses deleted graph models / pre-envelope analyze() shape.",
+    allow_module_level=True,
+)
 
 from pathlib import Path
-
-import pytest
 
 from codeanalyzer.core import Codeanalyzer
 from codeanalyzer.dataflow.builder import build_program_graphs

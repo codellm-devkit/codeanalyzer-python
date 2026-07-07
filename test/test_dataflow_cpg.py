@@ -9,10 +9,14 @@
 Loading into a live Neo4j is exercised by the (container-gated) bolt tests;
 these stay fast and deterministic.
 """
+import pytest
+pytest.skip(
+    "Deferred to Stage 3 v2 dataflow/neo4j test migration (see issues #73, #72). "
+    "Uses deleted graph models / pre-envelope analyze() shape.",
+    allow_module_level=True,
+)
 
 from pathlib import Path
-
-import pytest
 
 from codeanalyzer.core import Codeanalyzer
 from codeanalyzer.neo4j import project

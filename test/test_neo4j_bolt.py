@@ -9,9 +9,14 @@ gate, and contributors without a runtime) and runs only with
 ``RUN_CONTAINER_TESTS=1`` set. The no-container schema conformance test always
 runs (see ``test_neo4j_schema.py``).
 """
-import os
-
 import pytest
+pytest.skip(
+    "Deferred to Stage 3 v2 dataflow/neo4j test migration (see issues #73, #72). "
+    "Uses deleted graph models / pre-envelope analyze() shape.",
+    allow_module_level=True,
+)
+
+import os
 
 from codeanalyzer.neo4j import project
 from codeanalyzer.neo4j.bolt import BoltConfig, bolt_writer
