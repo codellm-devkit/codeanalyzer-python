@@ -58,6 +58,12 @@ dependencies = [
 neo4j = [
   "neo4j>=5.0.0,<6.0.0",
 ]
+# The Scalpel-backed L4 may-alias oracle (ScalpelAliasOracle). Optional: when
+# absent, `make_alias_oracle` degrades to the type-based fallback, so analysis
+# still runs — installing it only sharpens alias precision.
+scalpel = [
+  "python-scalpel>=1.0b0",
+]
 
 [dependency-groups]
 test = [
