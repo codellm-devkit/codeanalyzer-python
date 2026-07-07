@@ -22,7 +22,7 @@ for static analysis purposes.
 from __future__ import annotations
 import inspect
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import gzip
 
 from pydantic import BaseModel
@@ -166,6 +166,29 @@ def builder(cls):
     # Attach the builder class to the original class as an attribute so we can now call `MyModel.builder().name(...)`.
     setattr(cls, "builder", builder_cls)
     return cls
+
+
+def byte_offsets(source: str, start_line: int, start_col: int,
+                 end_line: int, end_col: int) -> Tuple[int, int]:
+    """Convert (1-based line, 0-based col) ast positions to utf-8 byte offsets
+    into `source`. `col` is a character offset within the line (ast semantics);
+    we re-encode the line prefix to bytes so multibyte chars are handled."""
+    lines = source.splitlines(keepends=True)
+    def offset(line: int, col: int) -> int:
+        prefix_bytes = len("".join(lines[: line - 1]).encode("utf-8"))
+        col_bytes = len(lines[line - 1][:col].encode("utf-8")) if line - 1 < len(lines) else 0
+        return prefix_bytes + col_bytes
+    return offset(start_line, start_col), offset(end_line, end_col)
+
+
+@builder
+@msgpk
+class Span(BaseModel):
+    """Where a node lives in source. `start`/`end` are [line, col] (1-based line,
+    0-based col, ast semantics); `bytes` are utf-8 offsets into module.source."""
+    start: Tuple[int, int]
+    end: Tuple[int, int]
+    bytes: Tuple[int, int]
 
 
 @builder
