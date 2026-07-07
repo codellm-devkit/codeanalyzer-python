@@ -43,8 +43,10 @@ def test_cli_call_symbol_table_with_json(cli_runner, whole_applications__xarray)
     json_obj = json.loads(Path(output_dir).joinpath("analysis.json").read_text())
     assert json_obj is not None, "JSON output should not be None"
     assert isinstance(json_obj, dict), "JSON output should be a dictionary"
-    assert "symbol_table" in json_obj.keys(), "Symbol table should be present in the output"
-    assert len(json_obj["symbol_table"]) > 0, "Symbol table should not be empty"
+    assert json_obj.get("schema_version") == "2.0.0"
+    app = json_obj["application"]
+    assert "symbol_table" in app
+    assert len(app["symbol_table"]) > 0
 
 
 def test_no_venv_skips_virtualenv(
@@ -102,7 +104,7 @@ def test_single_file(cli_runner, single_functionalities__stuff_nested_in_functio
     json_obj = json.loads(Path(output_dir).joinpath("analysis.json").read_text())
     assert json_obj is not None, "JSON output should not be None"
     assert isinstance(json_obj, dict), "JSON output should be a dictionary"
-    assert "symbol_table" in json_obj.keys(), "Symbol table should be present in the output"
+    assert "symbol_table" in json_obj["application"], "Symbol table should be present in the output"
 
 
 # ---------------------------------------------------------------------------
@@ -132,7 +134,10 @@ def _run_analysis(cli_runner, fixture_dir, analysis_level=1, file_name=None, ext
     assert result.exit_code == 0, f"CLI failed (level {analysis_level}): {result.output}"
     out = fixture_dir.joinpath(".output", "analysis.json")
     assert out.exists()
-    return json.loads(out.read_text())
+    payload = json.loads(out.read_text())
+    assert payload.get("schema_version") == "2.0.0", "output must be the v2 Analysis envelope"
+    assert "application" in payload, "envelope must carry application"
+    return payload["application"]
 
 
 # ---------------------------------------------------------------------------
