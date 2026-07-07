@@ -564,9 +564,9 @@ class Codeanalyzer:
         if self.file_name is not None:
             single_file = self.project_dir / self.file_name
             logger.info(f"Analyzing single file: {single_file}")
-            
+
             # Check if file is in cache and unchanged
-            file_key = str(single_file)
+            file_key = str(single_file.relative_to(self.project_dir))
             if file_key in cached_symbol_table and not self.rebuild_analysis:
                 # Compute file checksum to see if it changed
                 if self._file_unchanged(single_file, cached_symbol_table[file_key]):
@@ -616,7 +616,7 @@ class Codeanalyzer:
             # Separate files into cached and new/changed
             files_to_process = []
             for py_file in py_files:
-                file_key = str(py_file)
+                file_key = str(py_file.relative_to(self.project_dir))
                 if file_key in cached_symbol_table and not self.rebuild_analysis:
                     if self._file_unchanged(py_file, cached_symbol_table[file_key]):
                         # Use cached version
@@ -644,7 +644,7 @@ class Codeanalyzer:
             
             with ProgressBar(len(py_files), "Building symbol table") as progress:
                 for py_file in py_files:
-                    file_key = str(py_file)
+                    file_key = str(py_file.relative_to(self.project_dir))
                     
                     # Check if file is cached and unchanged
                     if file_key in cached_symbol_table and not self.rebuild_analysis:

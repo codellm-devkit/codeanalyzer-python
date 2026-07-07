@@ -33,3 +33,15 @@ def test_cli_emits_v2_envelope(tmp_path: Path):
     assert payload["max_level"] == 1
     assert payload["application"]["kind"] == "application"
     assert "program_graphs" not in payload  # dissolved into the tree
+
+
+def test_l1_output_is_conformant(tmp_path: Path):
+    from test.conftest_v2 import assert_conformant
+    proj = tmp_path / "proj"; proj.mkdir()
+    (proj / "pkg").mkdir()
+    (proj / "pkg" / "m.py").write_text("def f(a):\n    return a\n", encoding="utf-8")
+    out = subprocess.run(
+        [sys.executable, "-m", "codeanalyzer", "-i", str(proj), "-a", "1", "--no-venv"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    assert_conformant(json.loads(out), max_level=1)
