@@ -52,3 +52,29 @@ def test_l1_subset_of_l2(tmp_path):
         c2 = next(c for c in _callables(a2) if c["id"] == c1["id"])
         assert set(c1.get("body", {})) <= set(c2.get("body", {})), \
             f"L2 dropped a body node from {c1['id']}"
+
+
+def test_l2_subset_of_l3(tmp_path):
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    # Multi-statement fixture with a bare call: the `g(b)` expression statement
+    # is materialized at L1/L2 as a `call` body node keyed by its local
+    # "line:col"; L3 lands its CFG statement node on the SAME key, so the fact
+    # must survive (not be dropped or re-keyed).
+    (proj / "m.py").write_text(
+        "def g(x):\n    return x\ndef f(a):\n    b = a\n    g(b)\n    return b\n",
+        encoding="utf-8",
+    )
+    l2, l3 = _run(proj, 2), _run(proj, 3)
+    assert_conformant(l2, max_level=2)
+    assert_conformant(l3, max_level=3)
+    a2, a3 = l2["application"], l3["application"]
+    # every callable id present at L2 is present at L3
+    ids2 = {c["id"] for c in _callables(a2)}
+    ids3 = {c["id"] for c in _callables(a3)}
+    assert ids2 <= ids3, "L3 dropped a callable present at L2"
+    # L3 only ADDS body statements (+ @entry/@exit); every L2 body key survives.
+    for c2 in _callables(a2):
+        c3 = next(c for c in _callables(a3) if c["id"] == c2["id"])
+        assert set(c2.get("body", {})) <= set(c3.get("body", {})), \
+            f"L3 dropped a body node from {c2['id']}"

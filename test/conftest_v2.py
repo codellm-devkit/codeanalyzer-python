@@ -54,3 +54,12 @@ def assert_conformant(payload: dict, max_level: int) -> None:
         for lst in ("cfg", "cdg", "ddg", "summary"):
             for e in c.get(lst, []):
                 assert e["src"] in node_ids and e["dst"] in node_ids, f"dangling {lst} in {c['id']}"
+    if max_level >= 3:
+        # L3 is syntactic-only: every def-use edge carries exactly ssa
+        # provenance (points-to provenance is the L4 delta). Dangling cfg/cdg/ddg
+        # endpoints are already rejected by the check above.
+        for mod, c in _iter_callables(app):
+            for e in c.get("ddg", []):
+                assert e.get("prov") == ["ssa"], (
+                    f"L3 ddg edge must have prov ['ssa'], got {e.get('prov')} in {c['id']}"
+                )
