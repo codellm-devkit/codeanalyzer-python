@@ -110,20 +110,15 @@ class RowBuilder:
         self._edges.append(EdgeRow(type_, from_ref, to_ref, dict(props or {})))
 
     def edge_to_symbol(
-        self, type_: str, from_ref: NodeRef, target_signature: str, props: Optional[Props] = None
+        self, type_: str, from_ref: NodeRef, target_ref: NodeRef, props: Optional[Props] = None
     ) -> None:
         """An edge to a ``:PySymbol`` target that may be external/library code not
-        present in the graph. Deferred and kept only if the target signature was
-        actually emitted as a node — so PY_EXTENDS / PY_RESOLVES_TO never dangle (the
-        string fallback lives on the source node's props)."""
-        self._deferred.append(
-            EdgeRow(
-                type_,
-                from_ref,
-                NodeRef("PySymbol", "signature", target_signature),
-                dict(props or {}),
-            )
-        )
+        present in the graph. The target is an already-resolved :class:`NodeRef`
+        (a declared symbol by its can:// id, or a signature-keyed external ghost).
+        Deferred and kept only if that ``(label, value)`` was actually emitted as a
+        node — so PY_EXTENDS / PY_RESOLVES_TO never dangle (the string fallback lives
+        on the source node's props)."""
+        self._deferred.append(EdgeRow(type_, from_ref, target_ref, dict(props or {})))
 
     def has_key(self, label: str, value: str) -> bool:
         """Whether a node with this ``(merge_label, value)`` identity was emitted."""

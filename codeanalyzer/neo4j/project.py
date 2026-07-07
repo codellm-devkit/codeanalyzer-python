@@ -57,15 +57,18 @@ def project(app: PyApplication, app_name: str, sig_to_id: dict) -> GraphRows:
         ["PyApplication"], "name", app_name, {"schema_version": SCHEMA_VERSION}
     )
 
+    # Endpoints listed in app.external_symbols become :PyExternal ghost nodes; the
+    # rest are declared :PySymbol nodes emitted here (keyed by their can:// id,
+    # resolved through ``sig_to_id``). Both the module-body projection (for
+    # PY_EXTENDS / PY_RESOLVES_TO) and the PY_CALLS twin below share this split.
+    externals = app.external_symbols or {}
+
     for file_key, mod in app.symbol_table.items():
         mod_ref = b.node(["PyModule"], "id", mod.id, _module_props(mod, file_key))
         b.edge("PY_HAS_MODULE", app_ref, mod_ref)
-        _project_module_body(b, file_key, mod_ref, mod)
+        _project_module_body(b, file_key, mod_ref, mod, externals, sig_to_id)
 
-    # The aggregated :PY_CALLS twin. Endpoints listed in app.external_symbols become
-    # :PyExternal ghost nodes; the rest are declared :PySymbol nodes already emitted
-    # (keyed by their can:// id, resolved through ``sig_to_id``).
-    externals = app.external_symbols or {}
+    # The aggregated :PY_CALLS twin.
     for e in app.call_graph:
         src = _call_endpoint(b, e.source, externals, sig_to_id)
         tgt = _call_endpoint(b, e.target, externals, sig_to_id)
@@ -175,6 +178,16 @@ def _sym(can_id: str) -> NodeRef:
     return NodeRef("PySymbol", "id", can_id)
 
 
+def _symbol_ref(signature: str, externals: dict, sig_to_id: dict) -> NodeRef:
+    """Resolve a call/inheritance target to the NodeRef under which it was (or
+    will be) emitted: a declared symbol by its can:// id, otherwise a
+    signature-keyed :PySymbol (external ghost)."""
+    can_id = sig_to_id.get(signature)
+    if can_id is not None:
+        return NodeRef("PySymbol", "id", can_id)
+    return NodeRef("PySymbol", "signature", signature)
+
+
 def _call_endpoint(
     b: RowBuilder, signature: str, externals: dict, sig_to_id: dict
 ) -> NodeRef:
@@ -212,12 +225,13 @@ def _call_endpoint(
 
 
 def _project_module_body(
-    b: RowBuilder, file_key: str, mod_ref: NodeRef, mod: PyModule
+    b: RowBuilder, file_key: str, mod_ref: NodeRef, mod: PyModule,
+    externals: dict, sig_to_id: dict,
 ) -> None:
     for fn in (mod.functions or {}).values():
-        _project_callable(b, file_key, mod_ref, "PY_DECLARES", fn)
+        _project_callable(b, file_key, mod_ref, "PY_DECLARES", fn, externals, sig_to_id)
     for cl in (mod.classes or {}).values():
-        _project_class(b, file_key, mod_ref, "PY_DECLARES", cl)
+        _project_class(b, file_key, mod_ref, "PY_DECLARES", cl, externals, sig_to_id)
     for v in mod.variables or []:
         _project_variable(b, file_key, mod_ref, file_key, v)
     _project_imports(b, mod_ref, mod)
@@ -256,7 +270,8 @@ def _project_imports(b: RowBuilder, mod_ref: NodeRef, mod: PyModule) -> None:
 
 
 def _project_class(
-    b: RowBuilder, file_key: str, parent: NodeRef, parent_rel: str, cl: PyClass
+    b: RowBuilder, file_key: str, parent: NodeRef, parent_rel: str, cl: PyClass,
+    externals: dict, sig_to_id: dict,
 ) -> None:
     ref = b.node(
         ["PySymbol", "PyClass"], "id", cl.id, _class_props(cl, file_key)
@@ -264,18 +279,20 @@ def _project_class(
     b.edge(parent_rel, parent, ref)
 
     for base in cl.base_classes or []:
-        b.edge_to_symbol("PY_EXTENDS", ref, base)
+        if base:
+            b.edge_to_symbol("PY_EXTENDS", ref, _symbol_ref(base, externals, sig_to_id))
 
     for m in (cl.methods or {}).values():
-        _project_callable(b, file_key, ref, "PY_HAS_METHOD", m)
+        _project_callable(b, file_key, ref, "PY_HAS_METHOD", m, externals, sig_to_id)
     for a in (cl.attributes or {}).values():
         _project_attribute(b, file_key, ref, cl.signature, a)
     for ic in (cl.inner_classes or {}).values():
-        _project_class(b, file_key, ref, "PY_DECLARES", ic)
+        _project_class(b, file_key, ref, "PY_DECLARES", ic, externals, sig_to_id)
 
 
 def _project_callable(
-    b: RowBuilder, file_key: str, owner: NodeRef, owner_rel: str, c: PyCallable
+    b: RowBuilder, file_key: str, owner: NodeRef, owner_rel: str, c: PyCallable,
+    externals: dict, sig_to_id: dict,
 ) -> None:
     ref = b.node(
         ["PySymbol", "PyCallable"],
@@ -296,14 +313,17 @@ def _project_callable(
         cs = b.node(["PyCallSite"], "id", cs_id, _call_site_props(s, file_key))
         b.edge("PY_HAS_CALLSITE", ref, cs)
         if s.callee_signature:
-            b.edge_to_symbol("PY_RESOLVES_TO", cs, s.callee_signature)
+            b.edge_to_symbol(
+                "PY_RESOLVES_TO", cs,
+                _symbol_ref(s.callee_signature, externals, sig_to_id),
+            )
 
     for v in c.local_variables or []:
         _project_variable(b, file_key, ref, c.signature, v)
     for ic in (c.inner_callables or {}).values():
-        _project_callable(b, file_key, ref, "PY_DECLARES", ic)
+        _project_callable(b, file_key, ref, "PY_DECLARES", ic, externals, sig_to_id)
     for cl in (c.inner_classes or {}).values():
-        _project_class(b, file_key, ref, "PY_DECLARES", cl)
+        _project_class(b, file_key, ref, "PY_DECLARES", cl, externals, sig_to_id)
 
 
 def _project_attribute(
