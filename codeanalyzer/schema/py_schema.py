@@ -20,7 +20,6 @@ This module defines the data models used to represent Python code structures
 for static analysis purposes.
 """
 from __future__ import annotations
-import inspect
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 import gzip
@@ -120,12 +119,23 @@ def builder(cls):
     # Get type hints and default values for the fields in the model.
     # For example, {file_path: Path, module_name: str, imports: List[PyImport], ...}
     annotations = cls.__annotations__
-    # Get default values for the fields in the model.
-    defaults = {
-        f.name: f.default
-        for f in inspect.signature(cls).parameters.values()
-        if f.default is not inspect.Parameter.empty
-    }
+    # Get default values for the fields in the model. `inspect.signature` is
+    # unreliable for models carrying forward references (e.g. PyCallable's
+    # self-referential ``inner_callables``): Pydantic falls back to a generic
+    # ``(**data)`` signature that drops the per-field defaults, so the builder
+    # would seed those fields with ``None`` and fail validation. Read the declared
+    # defaults straight off the model instead. Required fields are intentionally
+    # omitted (seeded ``None``) — the builder chain must set them.
+    defaults = {}
+    model_fields = getattr(cls, "model_fields", None)  # Pydantic v2
+    if model_fields:
+        for name, field in model_fields.items():
+            if not field.is_required():
+                defaults[name] = field.get_default(call_default_factory=True)
+    else:  # Pydantic v1
+        for name, field in getattr(cls, "__fields__", {}).items():
+            if not field.required:
+                defaults[name] = field.get_default()
     # Create a namespace for the builder class.
     namespace = {}
 
@@ -189,6 +199,48 @@ class Span(BaseModel):
     start: Tuple[int, int]
     end: Tuple[int, int]
     bytes: Tuple[int, int]
+
+
+@builder
+@msgpk
+class BodyNode(BaseModel):
+    """A node in a callable's `body`: an AST region (statement/call/branch/…) or
+    a synthetic analysis vertex (entry/exit/formal_in/out/actual_in/out)."""
+    kind: str
+    span: Optional[Span] = None
+    callee: Optional[str] = None   # only on `call` nodes; the sanctioned null→id slot
+    of: Optional[str] = None       # param vertices: the variable/return they carry
+    parent: Optional[str] = None   # actuals: owning callsite ordinal id
+
+
+@builder
+@msgpk
+class CfgEdge(BaseModel):
+    src: str; dst: str; kind: str = "fallthrough"
+
+
+@builder
+@msgpk
+class CdgEdge(BaseModel):
+    src: str; dst: str
+
+
+@builder
+@msgpk
+class DdgEdge(BaseModel):
+    src: str; dst: str; var: Optional[str] = None; prov: List[str] = []
+
+
+@builder
+@msgpk
+class SummaryEdge(BaseModel):
+    src: str; dst: str
+
+
+@builder
+@msgpk
+class ParamEdge(BaseModel):
+    src: str; dst: str
 
 
 @builder
@@ -289,11 +341,13 @@ class PyCallable(BaseModel):
     name: str
     path: str
     signature: str  # e.g., module.<class_name>.function_name
+    id: str = ""
+    kind: str = "function"
+    span: Optional[Span] = None
     comments: List[PyComment] = []
     decorators: List[str] = []
     parameters: List[PyCallableParameter] = []
     return_type: Optional[str] = None
-    code: str = None
     start_line: int = -1
     end_line: int = -1
     code_start_line: int = -1
@@ -303,6 +357,11 @@ class PyCallable(BaseModel):
     inner_classes: Dict[str, "PyClass"] = {}
     local_variables: List[PyVariableDeclaration] = []
     cyclomatic_complexity: int = 0
+    body: Dict[str, BodyNode] = {}
+    cfg: List[CfgEdge] = []
+    cdg: List[CdgEdge] = []
+    ddg: List[DdgEdge] = []
+    summary: List[SummaryEdge] = []
 
     def __hash__(self) -> int:
         """Generate a hash based on the callable's signature."""
@@ -330,8 +389,10 @@ class PyClass(BaseModel):
 
     name: str
     signature: str  # e.g., module.class_name
+    id: str = ""
+    kind: str = "class"
+    span: Optional[Span] = None
     comments: List[PyComment] = []
-    code: str = None
     base_classes: List[str] = []
     methods: Dict[str, PyCallable] = {}
     attributes: Dict[str, PyClassAttribute] = {}
@@ -351,6 +412,9 @@ class PyModule(BaseModel):
 
     file_path: str
     module_name: str
+    id: str = ""
+    kind: str = "module"
+    source: str = ""
     imports: List[PyImport] = []
     comments: List[PyComment] = []
     classes: Dict[str, PyClass] = {}
@@ -394,143 +458,28 @@ class PyExternalSymbol(BaseModel):
 
 @builder
 @msgpk
-class PyGraphNode(BaseModel):
-    """A CFG node of one callable's level-3 graphs. ``id`` is the source-span
-    order index within the callable (synthetic ENTRY = 0, EXIT = last CFG id);
-    ``(signature, id)`` is the cross-section join key."""
-
-    id: int
-    kind: Literal[
-        "entry", "exit", "statement", "branch", "loop", "return", "raise", "handler"
-    ] = "statement"
-    start_line: int = -1
-    end_line: int = -1
-    start_column: int = -1
-    end_column: int = -1
-
-
-@builder
-@msgpk
-class PyCFGEdge(BaseModel):
-    """Control-flow successor edge (shared cross-language kind vocabulary)."""
-
-    source: int
-    target: int
-    kind: Literal[
-        "fallthrough",
-        "true",
-        "false",
-        "switch_case",
-        "loop_back",
-        "exception",
-        "return",
-        "break",
-        "continue",
-        "yield",
-        "await_resume",
-    ] = "fallthrough"
-
-
-@builder
-@msgpk
-class PyPDGEdge(BaseModel):
-    """Dependence edge: control (``CDG``) or data (``DDG``, labeled with the
-    k-limited access path being read)."""
-
-    source: int
-    target: int
-    type: Literal["CDG", "DDG"] = "DDG"
-    var: Optional[str] = None
-
-
-@builder
-@msgpk
-class PyParamNode(BaseModel):
-    """HRB parameter-passing node, sharing the owning callable's id space
-    (allocated after EXIT). ``call_node`` is the owning callsite statement for
-    actuals; ``var`` is the parameter name, ``<return>``, ``<capture>:name``,
-    or ``<global>:module::name``."""
-
-    id: int
-    kind: Literal["formal_in", "formal_out", "actual_in", "actual_out"]
-    var: str
-    call_node: Optional[int] = None
-    start_line: int = -1
-    end_line: int = -1
-
-
-@builder
-@msgpk
-class PyCFG(BaseModel):
-    """One callable's control-flow graph."""
-
-    nodes: List[PyGraphNode] = []
-    edges: List[PyCFGEdge] = []
-
-
-@builder
-@msgpk
-class PyPDG(BaseModel):
-    """One callable's dependence edges (over the same node ids as the CFG
-    plus its parameter nodes)."""
-
-    edges: List[PyPDGEdge] = []
-
-
-@builder
-@msgpk
-class PyFunctionGraphs(BaseModel):
-    """The per-callable level-3 sections, keyed by signature."""
-
-    cfg: Optional[PyCFG] = None
-    pdg: Optional[PyPDG] = None
-    param_nodes: List[PyParamNode] = []
-
-
-@builder
-@msgpk
-class PySDGEndpoint(BaseModel):
-    """A ``(signature, node)`` reference into a function's emitted graphs."""
-
-    signature: str
-    node: int
-
-
-@builder
-@msgpk
-class PySDGEdge(BaseModel):
-    """Interprocedural dependence edge. ``CALL``/``PARAM_IN``/``PARAM_OUT``
-    cross functions; ``SUMMARY`` connects a callsite's actual_in to its
-    actual_out within the caller (the callee's transitive flow)."""
-
-    source: PySDGEndpoint
-    target: PySDGEndpoint
-    type: Literal["CALL", "PARAM_IN", "PARAM_OUT", "SUMMARY"]
-    var: Optional[str] = None
-
-
-@builder
-@msgpk
-class PyProgramGraphs(BaseModel):
-    """The optional level-3 top-level section of ``analysis.json`` (present
-    only at ``-a 3``), versioned independently of the application schema."""
-
-    schema_version: str = "1.0.0"
-    k_limit: int = 3
-    functions: Dict[str, PyFunctionGraphs] = {}
-    sdg_edges: List[PySDGEdge] = []
-
-
-@builder
-@msgpk
 class PyApplication(BaseModel):
     """Represents a Python application."""
 
     symbol_table: Dict[str, PyModule]
+    id: str = ""
+    kind: str = "application"
     call_graph: List[PyCallEdge] = []
     # Call-graph endpoints not declared in the symbol table (imported library /
     # builtin members), keyed by signature. Populated by the analyzer so every
     # backend (JSON and Neo4j) shares one authoritative external-symbol set.
     external_symbols: Dict[str, PyExternalSymbol] = {}
-    # Level-3 native dataflow graphs (CFG/PDG/SDG); None below -a 3.
-    program_graphs: Optional[PyProgramGraphs] = None
+    # Interprocedural parameter-passing edges (formal↔actual); populated at L4.
+    param_in: List[ParamEdge] = []
+    param_out: List[ParamEdge] = []
+
+
+@builder
+@msgpk
+class Analysis(BaseModel):
+    """v2 payload root: envelope + the application tree node."""
+    schema_version: str = "2.0.0"
+    language: str = "python"
+    max_level: int = 1
+    k_limit: int = 3
+    application: PyApplication

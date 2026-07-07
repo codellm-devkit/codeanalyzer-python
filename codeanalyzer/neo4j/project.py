@@ -74,10 +74,7 @@ def project(app: PyApplication, app_name: str) -> GraphRows:
             "PY_CALLS", src, tgt, _call_edge_props(e.weight, list(e.provenance or []))
         )
 
-    # Level-3 CPG overlay (present only at -a 3): the same program_graphs IR
-    # projected as :PyCFGNode nodes and PY_-namespaced dependence edge types.
-    if app.program_graphs is not None:
-        _project_program_graphs(b, app)
+    # CPG overlay projection rebuilt on the v2 tree in Stage 3
 
     return b.finish()
 

@@ -213,7 +213,6 @@ class SymbolTableBuilder:
                 .signature(signature)
                 .start_line(start_line)
                 .end_line(end_line)
-                .code(code)
                 .comments(self._pycomments(child, code))
                 .base_classes([
                     ast.unparse(base)
@@ -266,7 +265,6 @@ class SymbolTableBuilder:
                     .path(str(script.path))
                     .signature(signature)  # Use the full signature here
                     .decorators(decorators)
-                    .code(code)
                     .start_line(start_line)
                     .end_line(end_line)
                     .code_start_line(child.body[0].lineno if child.body else start_line)

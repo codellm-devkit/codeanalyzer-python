@@ -2,29 +2,28 @@ from importlib.metadata import version, PackageNotFoundError
 from packaging.version import parse as parse_version
 
 from .py_schema import (
+    Analysis,
+    BodyNode,
+    CdgEdge,
+    CfgEdge,
+    DdgEdge,
+    ParamEdge,
     PyApplication,
     PyCallable,
     PyCallableParameter,
-    PyCFG,
-    PyCFGEdge,
     PyClass,
     PyClassAttribute,
     PyComment,
     PyExternalSymbol,
-    PyFunctionGraphs,
-    PyGraphNode,
     PyImport,
     PyModule,
-    PyParamNode,
-    PyPDG,
-    PyPDGEdge,
-    PyProgramGraphs,
-    PySDGEdge,
-    PySDGEndpoint,
     PyVariableDeclaration,
+    Span,
+    SummaryEdge,
 )
 
 __all__ = [
+    "Analysis",
     "PyApplication",
     "PyExternalSymbol",
     "PyImport",
@@ -35,16 +34,13 @@ __all__ = [
     "PyCallable",
     "PyClassAttribute",
     "PyCallableParameter",
-    "PyGraphNode",
-    "PyCFGEdge",
-    "PyPDGEdge",
-    "PyParamNode",
-    "PyCFG",
-    "PyPDG",
-    "PyFunctionGraphs",
-    "PySDGEndpoint",
-    "PySDGEdge",
-    "PyProgramGraphs",
+    "Span",
+    "BodyNode",
+    "CfgEdge",
+    "CdgEdge",
+    "DdgEdge",
+    "SummaryEdge",
+    "ParamEdge",
 ]
 
 try:
@@ -64,6 +60,7 @@ if not PYDANTIC_V2:
         PyClass=PyClass,
         PyModule=PyModule
     )
+    Analysis.update_forward_refs(PyApplication=PyApplication)
     
 # Compatibility helpers for Pydantic v1/v2
 def model_dump_json(model, **kwargs):

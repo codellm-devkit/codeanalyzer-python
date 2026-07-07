@@ -455,23 +455,7 @@ class Codeanalyzer:
             .build()
         )
 
-        if self.analysis_level >= 3:
-            # Level 3: native dataflow graphs (CFG/PDG/SDG) over the same
-            # signatures, gated so -a 1/-a 2 timings stay untouched.
-            from codeanalyzer.dataflow.builder import (
-                build_program_graphs,
-                to_program_graphs,
-            )
-
-            t0_l3 = time.perf_counter()
-            ir = build_program_graphs(app, k=self.options.graph_field_depth)
-            app.program_graphs = to_program_graphs(
-                ir, set(self.options.graphs.split(","))
-            )
-            logger.info(
-                "✅ Program graphs: %d functions, %d SDG edges in %.1fs",
-                len(ir.functions), len(ir.sdg_edges), time.perf_counter() - t0_l3,
-            )
+        # L3/L4 dataflow emission rebuilt on the v2 tree in Stage 3+
 
         # Save to cache
         self._save_analysis_cache(app, cache_file)
