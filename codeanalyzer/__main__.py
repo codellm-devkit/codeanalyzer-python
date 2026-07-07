@@ -353,7 +353,7 @@ def main(
 
             emit_neo4j(artifacts, options)
         elif options.output is None:
-            print(model_dump_json(artifacts, separators=(",", ":")))
+            print(model_dump_json(artifacts, exclude_none=True))
         else:
             options.output.mkdir(parents=True, exist_ok=True)
             _write_output(artifacts, options.output, options.format)
@@ -364,7 +364,7 @@ def _write_output(artifacts, output_dir: Path, format: OutputFormat):
     if format == OutputFormat.JSON:
         output_file = output_dir / "analysis.json"
         # Use Pydantic's model_dump_json() for compact output
-        json_str = model_dump_json(artifacts, indent=None)
+        json_str = model_dump_json(artifacts, indent=None, exclude_none=True)
         with output_file.open("w") as f:
             f.write(json_str)
         logger.info(f"Analysis saved to {output_file}")

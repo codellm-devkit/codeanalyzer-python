@@ -72,6 +72,8 @@ def model_dump_json(model, **kwargs):
         v1_kwargs = {}
         if 'indent' in kwargs:
             v1_kwargs['indent'] = kwargs['indent']
+        if 'exclude_none' in kwargs:
+            v1_kwargs['exclude_none'] = kwargs['exclude_none']
         if 'separators' in kwargs:
             # In v1, separators is passed to dumps_kwargs
             v1_kwargs['separators'] = kwargs['separators']

@@ -32,7 +32,7 @@ from codeanalyzer.neo4j.schema import build_schema_document
 from codeanalyzer.neo4j.cypher import render_cypher
 from codeanalyzer.neo4j.project import project
 from codeanalyzer.options import AnalysisOptions
-from codeanalyzer.schema import PyApplication
+from codeanalyzer.schema import Analysis
 from codeanalyzer.utils import logger
 
 
@@ -49,11 +49,11 @@ def emit_schema(output: Optional[Path]) -> None:
     logger.info(f"Neo4j schema written to {output / 'schema.json'}")
 
 
-def emit_neo4j(app: PyApplication, options: AnalysisOptions) -> None:
+def emit_neo4j(analysis: Analysis, options: AnalysisOptions) -> None:
     """Project the analysis to a graph and write it: a live Bolt push when
     ``--neo4j-uri`` is set, otherwise a self-contained ``graph.cypher`` snapshot."""
     app_name = options.app_name or Path(options.input).resolve().name
-    rows = project(app, app_name)
+    rows = project(analysis.application, app_name)
 
     if options.neo4j_uri:
         cfg = BoltConfig(

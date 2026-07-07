@@ -11,6 +11,7 @@ import time
 import ray
 from codeanalyzer.utils import logger
 from codeanalyzer.schema import (
+    Analysis,
     PyApplication,
     PyExternalSymbol,
     PyModule,
@@ -407,9 +408,9 @@ class Codeanalyzer:
                 externals[sig] = PyExternalSymbol(name=name, module=module)
         return externals
 
-    def analyze(self) -> PyApplication:
-        """Analyze the project and return a PyApplication with symbol table.
-        
+    def analyze(self) -> Analysis:
+        """Analyze the project and return the v2 ``Analysis`` envelope.
+
         Uses caching to avoid re-analyzing unchanged files.
         """
         cache_file = self.cache_dir / "analysis_cache.json"
@@ -465,7 +466,11 @@ class Codeanalyzer:
         # Save to cache
         self._save_analysis_cache(app, cache_file)
 
-        return app
+        return Analysis(
+            max_level=self.analysis_level,
+            k_limit=self.options.graph_field_depth,
+            application=app,
+        )
 
     def _load_pyapplication_from_cache(self, cache_file: Path) -> PyApplication:
         """Load cached analysis from file.

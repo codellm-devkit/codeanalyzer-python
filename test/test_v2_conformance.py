@@ -1,3 +1,8 @@
+import json
+import subprocess
+import sys
+from pathlib import Path
+
 from codeanalyzer.schema.assign_ids import assign_ids
 from codeanalyzer.schema.py_schema import PyApplication, PyModule, PyClass, PyCallable
 
@@ -13,3 +18,18 @@ def test_ids_assigned_down_the_tree():
     assert mod.id == "can://python/myapp/pkg/m.py"
     assert cl.id == "can://python/myapp/pkg/m.py/Hasher"
     assert fn.id == "can://python/myapp/pkg/m.py/Hasher/hash()"
+
+
+def test_cli_emits_v2_envelope(tmp_path: Path):
+    proj = tmp_path / "proj"; proj.mkdir()
+    (proj / "m.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    out = subprocess.run(
+        [sys.executable, "-m", "codeanalyzer", "-i", str(proj), "-a", "1", "--no-venv"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    payload = json.loads(out)
+    assert payload["schema_version"] == "2.0.0"
+    assert payload["language"] == "python"
+    assert payload["max_level"] == 1
+    assert payload["application"]["kind"] == "application"
+    assert "program_graphs" not in payload  # dissolved into the tree
