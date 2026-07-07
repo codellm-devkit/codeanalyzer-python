@@ -204,14 +204,14 @@ def emit_l3_body(
     :func:`build_function_pdgs` (syntactic oracle), this writes onto the
     matching ``PyCallable`` in ``app``'s symbol table:
 
-    * ``body`` — one node per CFG node, keyed by its ordinal id
-      (``<can:// id>@entry``/``@exit`` for the synthetic bookends,
-      ``<can:// id>@line:col`` for real statements). A statement position an
-      L1 pass already materialized as a ``call`` node keeps its ``call`` kind
-      and L2-resolved ``callee``; it is only re-keyed onto its ordinal id (so
-      the edge lists resolve to it and it is not duplicated) and given the
-      byte-offset ``span`` L1 could not compute.
-    * ``cfg`` — one ``CfgEdge`` per CFG edge, endpoints as ordinal ids.
+    * ``body`` — one node per CFG node, keyed by its LOCAL id (``"@entry"``/
+      ``"@exit"`` for the synthetic bookends, ``"line:col"`` for real
+      statements — the same key format L1 uses). A statement position an L1
+      pass already materialized as a ``call`` node lands on the SAME local key,
+      so it keeps its ``call`` kind and L2-resolved ``callee`` in place (no
+      re-keying, no duplication) and is only given the byte-offset ``span`` L1
+      could not compute.
+    * ``cfg`` — one ``CfgEdge`` per CFG edge, endpoints as local ids.
     * ``cdg`` — the PDG's control-dependence edges.
     * ``ddg`` — the PDG's syntactic def-use edges, each with ``prov=["ssa"]``
       (no points-to provenance at L3; that is the L4 delta).
@@ -261,50 +261,45 @@ def emit_l3_body(
             im = IdentityMap.for_function(callable_id, pdg)
 
             for node in pdg.cfg.nodes:
-                ordinal = im.ordinal(node.id)
+                local = im.local(node.id)
                 if node.id == pdg.cfg.entry_id:
-                    pycallable.body[ordinal] = BodyNode(kind="entry")
+                    pycallable.body[local] = BodyNode(kind="entry")
                     continue
                 if node.id == pdg.cfg.exit_id:
-                    pycallable.body[ordinal] = BodyNode(kind="exit")
+                    pycallable.body[local] = BodyNode(kind="exit")
                     continue
                 span = _span_of(source, node)
-                # An L1 `call` node was keyed by its "line:col"; if this CFG node
-                # sits at the same position, keep that node's `call` kind and
-                # resolved `callee` and merely re-key it onto the ordinal id
-                # (dedup + endpoint resolution), filling any missing span.
-                existing = pycallable.body.get(ordinal)
-                if existing is None:
-                    existing = pycallable.body.pop(
-                        f"{node.start_line}:{node.start_column}", None
-                    )
+                # An L1 `call` node was keyed by its LOCAL "line:col"; this CFG
+                # node at the same position lands on the SAME key, so keep the
+                # node's `call` kind and L2-resolved `callee` in place and just
+                # fill any missing span — never re-key or duplicate it.
+                existing = pycallable.body.get(local)
                 if existing is not None:
                     if existing.span is None and span is not None:
                         existing.span = span
-                    pycallable.body[ordinal] = existing
                     continue
-                pycallable.body[ordinal] = BodyNode(kind=node.kind, span=span)
+                pycallable.body[local] = BodyNode(kind=node.kind, span=span)
 
             if want_cfg:
                 pycallable.cfg = [
                     CfgEdge(
-                        src=im.ordinal(e.source),
-                        dst=im.ordinal(e.target),
+                        src=im.local(e.source),
+                        dst=im.local(e.target),
                         kind=e.kind,
                     )
                     for e in pdg.cfg.edges
                 ]
             if want_pdg:
                 pycallable.cdg = [
-                    CdgEdge(src=im.ordinal(e.source), dst=im.ordinal(e.target))
+                    CdgEdge(src=im.local(e.source), dst=im.local(e.target))
                     for e in pdg.edges
                     if e.type == "CDG"
                 ]
             if want_ddg:
                 pycallable.ddg = [
                     DdgEdge(
-                        src=im.ordinal(e.source),
-                        dst=im.ordinal(e.target),
+                        src=im.local(e.source),
+                        dst=im.local(e.target),
                         var=e.var,
                         prov=["ssa"],
                     )
