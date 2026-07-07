@@ -50,7 +50,7 @@ from codeanalyzer.schema import (
 from codeanalyzer.schema.py_schema import PyCallsite
 
 
-def project(app: PyApplication, app_name: str) -> GraphRows:
+def project(app: PyApplication, app_name: str, sig_to_id: dict) -> GraphRows:
     b = RowBuilder()
 
     app_ref = b.node(
@@ -58,18 +58,17 @@ def project(app: PyApplication, app_name: str) -> GraphRows:
     )
 
     for file_key, mod in app.symbol_table.items():
-        mod_ref = b.node(
-            ["PyModule"], "file_key", file_key, _module_props(mod, file_key)
-        )
+        mod_ref = b.node(["PyModule"], "id", mod.id, _module_props(mod, file_key))
         b.edge("PY_HAS_MODULE", app_ref, mod_ref)
         _project_module_body(b, file_key, mod_ref, mod)
 
     # The aggregated :PY_CALLS twin. Endpoints listed in app.external_symbols become
-    # :PyExternal ghost nodes; the rest are declared :PySymbol nodes already emitted.
+    # :PyExternal ghost nodes; the rest are declared :PySymbol nodes already emitted
+    # (keyed by their can:// id, resolved through ``sig_to_id``).
     externals = app.external_symbols or {}
     for e in app.call_graph:
-        src = _call_endpoint(b, e.source, externals)
-        tgt = _call_endpoint(b, e.target, externals)
+        src = _call_endpoint(b, e.source, externals, sig_to_id)
+        tgt = _call_endpoint(b, e.target, externals, sig_to_id)
         b.edge(
             "PY_CALLS", src, tgt, _call_edge_props(e.weight, list(e.provenance or []))
         )
@@ -172,21 +171,27 @@ def _project_program_graphs(b: RowBuilder, app: PyApplication) -> None:
         )
 
 
-def _sym(signature: str) -> NodeRef:
-    return NodeRef("PySymbol", "signature", signature)
+def _sym(can_id: str) -> NodeRef:
+    return NodeRef("PySymbol", "id", can_id)
 
 
-def _call_endpoint(b: RowBuilder, signature: str, externals: dict) -> NodeRef:
-    """A call-graph endpoint: a declared callable already emitted, or an external
-    symbol (imported library / builtin member) materialized as a :PyExternal ghost.
+def _call_endpoint(
+    b: RowBuilder, signature: str, externals: dict, sig_to_id: dict
+) -> NodeRef:
+    """A call-graph endpoint: a declared callable already emitted (keyed by its
+    canonical ``can://`` id, resolved through ``sig_to_id``), or an external symbol
+    (imported library / builtin member) materialized as a :PyExternal ghost.
 
     Classification is authoritative -- it comes from ``app.external_symbols``, not a
     "present in the graph" heuristic -- so an imported module name (which exists only
-    as a :PyPackage) can never shadow the call target. A small fallback still
-    materializes an external for any endpoint that is neither declared nor listed."""
+    as a :PyPackage) can never shadow the call target. A declared endpoint resolves to
+    its ``can://`` id; anything neither declared nor listed falls back to a
+    signature-keyed :PyExternal ghost rather than raising."""
     ext = externals.get(signature)
-    if ext is None and b.has_key("PySymbol", signature):
-        return _sym(signature)
+    if ext is None:
+        can_id = sig_to_id.get(signature)
+        if can_id is not None:
+            return _sym(can_id)
     name = (
         ext.name
         if ext is not None
@@ -254,7 +259,7 @@ def _project_class(
     b: RowBuilder, file_key: str, parent: NodeRef, parent_rel: str, cl: PyClass
 ) -> None:
     ref = b.node(
-        ["PySymbol", "PyClass"], "signature", cl.signature, _class_props(cl, file_key)
+        ["PySymbol", "PyClass"], "id", cl.id, _class_props(cl, file_key)
     )
     b.edge(parent_rel, parent, ref)
 
@@ -274,8 +279,8 @@ def _project_callable(
 ) -> None:
     ref = b.node(
         ["PySymbol", "PyCallable"],
-        "signature",
-        c.signature,
+        "id",
+        c.id,
         _callable_props(c, file_key),
     )
     b.edge(owner_rel, owner, ref)
@@ -334,6 +339,8 @@ def _project_decorator(b: RowBuilder, on: NodeRef, decorator: str) -> None:
 def _module_props(mod: PyModule, file_key: str) -> Props:
     return prune(
         {
+            "id": mod.id,
+            "file_key": file_key,
             "module_name": mod.module_name,
             "content_hash": mod.content_hash,
             "last_modified": mod.last_modified,
@@ -346,8 +353,10 @@ def _module_props(mod: PyModule, file_key: str) -> Props:
 def _class_props(cl: PyClass, file_key: str) -> Props:
     return prune(
         {
+            "id": cl.id,
+            "signature": cl.signature,
             "name": cl.name,
-            "code": cl.code,
+            "code": getattr(cl, "code", None),
             "base_classes": list(cl.base_classes or []),
             "docstring": _docstring_of(cl.comments),
             "start_line": cl.start_line,
@@ -360,11 +369,13 @@ def _class_props(cl: PyClass, file_key: str) -> Props:
 def _callable_props(c: PyCallable, file_key: str) -> Props:
     return prune(
         {
+            "id": c.id,
+            "signature": c.signature,
             "name": c.name,
             "path": c.path,
             "return_type": c.return_type,
             "cyclomatic_complexity": c.cyclomatic_complexity,
-            "code": c.code,
+            "code": getattr(c, "code", None),
             "code_start_line": c.code_start_line,
             "start_line": c.start_line,
             "end_line": c.end_line,

@@ -33,6 +33,7 @@ from codeanalyzer.neo4j.cypher import render_cypher
 from codeanalyzer.neo4j.project import project
 from codeanalyzer.options import AnalysisOptions
 from codeanalyzer.schema import Analysis
+from codeanalyzer.schema.assign_ids import assign_ids
 from codeanalyzer.utils import logger
 
 
@@ -53,7 +54,11 @@ def emit_neo4j(analysis: Analysis, options: AnalysisOptions) -> None:
     """Project the analysis to a graph and write it: a live Bolt push when
     ``--neo4j-uri`` is set, otherwise a self-contained ``graph.cypher`` snapshot."""
     app_name = options.app_name or Path(options.input).resolve().name
-    rows = project(analysis.application, app_name)
+    # ``assign_ids`` is idempotent: it stamps every module/class/callable with its
+    # canonical ``can://`` id and returns the ``signature -> id`` map the projection
+    # keys nodes on, so the JSON and Neo4j projections agree.
+    sig_to_id = assign_ids(analysis.application, app_name)
+    rows = project(analysis.application, app_name, sig_to_id)
 
     if options.neo4j_uri:
         cfg = BoltConfig(

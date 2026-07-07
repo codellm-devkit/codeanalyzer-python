@@ -72,8 +72,9 @@ NODE_LABELS: List[NodeLabel] = [
     NodeLabel(
         "PyModule",
         "PyModule",
-        "file_key",
+        "id",
         {
+            "id": "string",
             "file_key": "string",
             "module_name": "string",
             "content_hash": "string",
@@ -85,8 +86,9 @@ NODE_LABELS: List[NodeLabel] = [
     NodeLabel(
         "PyClass",
         "PySymbol",
-        "signature",
+        "id",
         {
+            "id": "string",
             "signature": "string",
             "name": "string",
             "code": "string",
@@ -99,8 +101,9 @@ NODE_LABELS: List[NodeLabel] = [
     NodeLabel(
         "PyCallable",
         "PySymbol",
-        "signature",
+        "id",
         {
+            "id": "string",
             "signature": "string",
             "name": "string",
             "path": "string",
