@@ -520,6 +520,16 @@ class Codeanalyzer:
         if getattr(cached, "schema_version", None) != "2.0.0":
             logger.info("stale/incompatible analysis cache (schema_version) — rebuilding")
             return None
+        # The cache keys only on file hash/mtime/size, not on level, so a cache
+        # built at a different analysis_level would leak higher-level body/edge
+        # content (or omit content when the cached level is lower). Reject the
+        # mismatch and force a full rebuild at the requested level.
+        if cached.max_level != self.analysis_level:
+            logger.info(
+                f"cache built at level {cached.max_level} != requested "
+                f"{self.analysis_level} — rebuilding"
+            )
+            return None
         return cached
 
     def _save_analysis_cache(self, analysis: Analysis, cache_file: Path) -> None:
