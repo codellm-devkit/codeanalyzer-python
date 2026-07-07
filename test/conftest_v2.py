@@ -43,8 +43,12 @@ def assert_conformant(payload: dict, max_level: int) -> None:
         text = mod["source"].encode("utf-8")[lo:hi].decode("utf-8")
         assert text.lstrip().startswith(("def ", "async def ", "@")), f"{c['id']} span mismatch"
         for node in c.get("body", {}).values():
-            if node.get("kind") == "call" and max_level >= 2:
-                assert node.get("callee") is None or isinstance(node["callee"], str)
+            if node.get("kind") == "call" and "callee" in node:
+                assert isinstance(node["callee"], str), "resolved callee must be a string id"
+    if max_level >= 2:
+        for e in app.get("call_graph", []):
+            assert isinstance(e["source"], str), f"call_graph edge source must be string: {e}"
+            assert isinstance(e["target"], str), f"call_graph edge target must be string: {e}"
     for mod, c in _iter_callables(app):
         node_ids = set(c.get("body", {}).keys())
         for lst in ("cfg", "cdg", "ddg", "summary"):
