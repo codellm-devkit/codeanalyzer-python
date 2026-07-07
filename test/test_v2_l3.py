@@ -1,4 +1,11 @@
+import textwrap
+from pathlib import Path
+
+from codeanalyzer.dataflow.builder import build_function_pdgs
 from codeanalyzer.dataflow.identity import IdentityMap
+from codeanalyzer.dataflow.syntactic import SyntacticOracle
+from codeanalyzer.schema.py_schema import PyApplication
+from codeanalyzer.syntactic_analysis.symbol_table_builder import SymbolTableBuilder
 
 class _Node:
     def __init__(self, id, start_line, start_column, kind):
@@ -21,3 +28,23 @@ def test_ordinal_ids_for_entry_exit_and_statements():
     assert im.ordinal(1) == "can://python/app/m.py/f()@2:4"
     assert im.ordinal(2) == "can://python/app/m.py/f()@exit"
     assert set(im.node_ids()) == {0, 1, 2}
+
+
+def test_syntactic_oracle_only_identity_aliases():
+    o = SyntacticOracle()
+    assert o.may_alias("x.f", "x.f") is True
+    assert o.may_alias("x.f", "y.f") is False
+    assert o.may_alias("a", "b") is False
+
+
+def test_build_function_pdgs_returns_pdg_per_callable(tmp_path: Path):
+    f = tmp_path / "m.py"
+    f.write_text(textwrap.dedent("def f(a):\n    b = a\n    return b\n"), encoding="utf-8")
+    mod = SymbolTableBuilder(tmp_path, None).build_pymodule_from_file(f)
+    app = PyApplication(symbol_table={"m.py": mod})
+    infos, func_asts = build_function_pdgs(
+        app, k=3, oracle_factory=lambda c: SyntacticOracle()
+    )
+    sig = next(iter(mod.functions.values())).signature
+    assert sig in infos
+    assert infos[sig].pdg.cfg.entry_id is not None

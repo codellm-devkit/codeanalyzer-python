@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from codeanalyzer.dataflow.access_paths import _PathExtractor, _calls_in
 from codeanalyzer.dataflow.alias import TypeBasedAliasOracle
@@ -127,14 +127,24 @@ def _match_args(
     return tuple(pairs)
 
 
-def build_program_graphs(
+def build_function_pdgs(
     app: PyApplication,
     k: int = DEFAULT_K_LIMIT,
-) -> ProgramGraphsIR:
-    """Build CFG/PDG per callable and the whole-program SDG."""
-    class_idx = _class_index(app)
-    callable_idx = _callable_index(app)
+    *,
+    oracle_factory: Callable[[PyCallable], object],
+) -> Tuple[Dict[str, FunctionInfo], Dict[str, ast.AST]]:
+    """Intraprocedural phase only: one ``FunctionInfo`` (CFG → PDG) per
+    callable, keyed by signature, with no SDG/summary/callsite work.
 
+    ``oracle_factory(pycallable)`` supplies the may-alias oracle per callable —
+    ``TypeBasedAliasOracle`` for the L4 path, ``SyntacticOracle`` for L3.
+
+    Returns ``(infos, func_asts)`` rather than bare PDGs so that the L4
+    orchestrator (:func:`build_program_graphs`) still has both the
+    ``FunctionInfo`` records its callsite/summary/SDG phases mutate and the
+    matched def nodes its Phase 2 reads. L3 callers just read ``info.pdg`` per
+    signature and ignore ``func_asts``.
+    """
     infos: Dict[str, FunctionInfo] = {}
     func_asts: Dict[str, ast.AST] = {}
 
@@ -166,7 +176,7 @@ def build_program_graphs(
                 if enclosing_ast is not None:
                     enclosing_locals |= _locals_of(enclosing_ast)
 
-            oracle = TypeBasedAliasOracle(_base_types(pycallable))
+            oracle = oracle_factory(pycallable)
             pdg = build_pdg(
                 func,
                 enclosing_locals=enclosing_locals,
@@ -178,6 +188,21 @@ def build_program_graphs(
                 signature=pycallable.signature, pdg=pdg, oracle=oracle
             )
             func_asts[pycallable.signature] = func
+
+    return infos, func_asts
+
+
+def build_program_graphs(
+    app: PyApplication,
+    k: int = DEFAULT_K_LIMIT,
+) -> ProgramGraphsIR:
+    """Build CFG/PDG per callable and the whole-program SDG."""
+    class_idx = _class_index(app)
+    callable_idx = _callable_index(app)
+
+    infos, func_asts = build_function_pdgs(
+        app, k, oracle_factory=lambda c: TypeBasedAliasOracle(_base_types(c))
+    )
 
     # Callsites and nested defs, now that every signature is known.
     for sig, info in infos.items():
