@@ -18,6 +18,7 @@ from codeanalyzer.schema import (
     model_validate_json,
 )
 from codeanalyzer.schema.assign_ids import assign_ids
+from codeanalyzer.schema.l1_body import populate_l1_body
 from codeanalyzer.schema.py_schema import PyCallEdge
 from codeanalyzer.semantic_analysis.call_graph import (
     filter_external_edges,
@@ -457,6 +458,7 @@ class Codeanalyzer:
         )
 
         assign_ids(app, self.options.app_name or self.project_dir.name)
+        populate_l1_body(app)
 
         # L3/L4 dataflow emission rebuilt on the v2 tree in Stage 3+
 
