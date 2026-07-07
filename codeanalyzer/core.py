@@ -21,6 +21,7 @@ from codeanalyzer.schema import (
 from codeanalyzer.schema.assign_ids import assign_ids
 from codeanalyzer.schema.l1_body import populate_l1_body
 from codeanalyzer.schema.l2_callees import backfill_callees
+from codeanalyzer.schema.call_graph_ids import reidentify_call_graph
 from codeanalyzer.schema.py_schema import PyCallEdge
 from codeanalyzer.semantic_analysis.call_graph import (
     filter_external_edges,
@@ -465,6 +466,7 @@ class Codeanalyzer:
         populate_l1_body(app)
         if self.analysis_level >= 2:
             backfill_callees(app, sig_to_id)
+        reidentify_call_graph(app, sig_to_id)
 
         # L3/L4 dataflow emission rebuilt on the v2 tree in Stage 3+
 

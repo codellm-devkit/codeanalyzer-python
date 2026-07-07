@@ -1,6 +1,7 @@
 from codeanalyzer.schema.l2_callees import backfill_callees
+from codeanalyzer.schema.call_graph_ids import reidentify_call_graph
 from codeanalyzer.schema.py_schema import (
-    PyApplication, PyModule, PyCallable, PyCallsite, BodyNode,
+    PyApplication, PyModule, PyCallable, PyCallsite, BodyNode, PyCallEdge,
 )
 
 def _app_with_one_call(callee_sig):
@@ -25,3 +26,18 @@ def test_unresolved_callsite_leaves_callee_absent():
     app, fn = _app_with_one_call(None)
     backfill_callees(app, {})
     assert fn.body["2:4"].callee is None
+
+def test_call_graph_endpoints_reidentified():
+    edge = PyCallEdge(source="m.f", target="m.g")
+    app = PyApplication(symbol_table={}, call_graph=[edge])
+    reidentify_call_graph(app, {"m.f": "can://python/app/m.py/f()",
+                                "m.g": "can://python/app/m.py/g()"})
+    assert app.call_graph[0].source == "can://python/app/m.py/f()"
+    assert app.call_graph[0].target == "can://python/app/m.py/g()"
+
+def test_call_graph_external_target_unchanged():
+    edge = PyCallEdge(source="m.f", target="requests.get")
+    app = PyApplication(symbol_table={}, call_graph=[edge])
+    reidentify_call_graph(app, {"m.f": "can://python/app/m.py/f()"})
+    assert app.call_graph[0].source == "can://python/app/m.py/f()"
+    assert app.call_graph[0].target == "requests.get"
