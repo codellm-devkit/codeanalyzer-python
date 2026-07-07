@@ -1,9 +1,10 @@
 import textwrap
 from pathlib import Path
 
-from codeanalyzer.dataflow.builder import build_function_pdgs
+from codeanalyzer.dataflow.builder import build_function_pdgs, emit_l3_body
 from codeanalyzer.dataflow.identity import IdentityMap
 from codeanalyzer.dataflow.syntactic import SyntacticOracle
+from codeanalyzer.schema.assign_ids import assign_ids
 from codeanalyzer.schema.py_schema import PyApplication
 from codeanalyzer.syntactic_analysis.symbol_table_builder import SymbolTableBuilder
 
@@ -35,6 +36,29 @@ def test_syntactic_oracle_only_identity_aliases():
     assert o.may_alias("x.f", "x.f") is True
     assert o.may_alias("x.f", "y.f") is False
     assert o.may_alias("a", "b") is False
+
+
+def test_emit_l3_populates_body_and_cfg(tmp_path: Path):
+    f = tmp_path / "m.py"
+    f.write_text("def f(a):\n    b = a\n    return b\n", encoding="utf-8")
+    mod = SymbolTableBuilder(tmp_path, None).build_pymodule_from_file(f)
+    app = PyApplication(symbol_table={"m.py": mod})
+    sig_to_id = assign_ids(app, "app")
+    infos, _func_asts = build_function_pdgs(
+        app, k=3, oracle_factory=lambda c: SyntacticOracle()
+    )
+    emit_l3_body(app, infos, sig_to_id, graphs={"cfg", "dfg", "pdg"})
+    fn = next(iter(mod.functions.values()))
+    assert any(k.endswith("@entry") for k in fn.body)
+    assert any(k.endswith("@exit") for k in fn.body)
+    assert len(fn.cfg) > 0
+    # every cfg endpoint resolves to a body node id
+    body_ids = set(fn.body)
+    for e in fn.cfg:
+        assert e.src in body_ids and e.dst in body_ids
+    # ddg (if any) carries ssa provenance
+    for e in fn.ddg:
+        assert e.prov == ["ssa"]
 
 
 def test_build_function_pdgs_returns_pdg_per_callable(tmp_path: Path):

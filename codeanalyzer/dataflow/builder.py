@@ -192,6 +192,127 @@ def build_function_pdgs(
     return infos, func_asts
 
 
+def emit_l3_body(
+    app: PyApplication,
+    infos: Dict[str, FunctionInfo],
+    sig_to_id: Dict[str, str],
+    graphs: Set[str],
+) -> None:
+    """Project each callable's syntactic PDG onto the v2 tree at L3.
+
+    For every callable that produced a ``FunctionInfo`` in
+    :func:`build_function_pdgs` (syntactic oracle), this writes onto the
+    matching ``PyCallable`` in ``app``'s symbol table:
+
+    * ``body`` — one node per CFG node, keyed by its ordinal id
+      (``<can:// id>@entry``/``@exit`` for the synthetic bookends,
+      ``<can:// id>@line:col`` for real statements). A statement position an
+      L1 pass already materialized as a ``call`` node keeps its ``call`` kind
+      and L2-resolved ``callee``; it is only re-keyed onto its ordinal id (so
+      the edge lists resolve to it and it is not duplicated) and given the
+      byte-offset ``span`` L1 could not compute.
+    * ``cfg`` — one ``CfgEdge`` per CFG edge, endpoints as ordinal ids.
+    * ``cdg`` — the PDG's control-dependence edges.
+    * ``ddg`` — the PDG's syntactic def-use edges, each with ``prov=["ssa"]``
+      (no points-to provenance at L3; that is the L4 delta).
+
+    ``graphs`` scopes the edge lists exactly as the dormant
+    :func:`to_program_graphs` does: ``cfg`` needs ``"cfg"``; ``cdg`` needs
+    ``"pdg"``/``"sdg"``; ``ddg`` needs those or ``"dfg"``. ``body`` is always
+    populated. Callables absent from ``infos`` (unrecovered AST) are skipped.
+    """
+    from codeanalyzer.dataflow.identity import IdentityMap
+    from codeanalyzer.schema.py_schema import (
+        BodyNode,
+        CdgEdge,
+        CfgEdge,
+        DdgEdge,
+        Span,
+        byte_offsets,
+    )
+
+    want_pdg = bool({"pdg", "sdg"} & graphs)
+    want_cfg = "cfg" in graphs
+    want_ddg = want_pdg or "dfg" in graphs
+
+    def _span_of(source: str, node) -> Optional["Span"]:
+        if not source or node.start_line < 1:
+            return None
+        return Span(
+            start=(node.start_line, node.start_column),
+            end=(node.end_line, node.end_column),
+            bytes=byte_offsets(
+                source,
+                node.start_line,
+                node.start_column,
+                node.end_line,
+                node.end_column,
+            ),
+        )
+
+    for module in app.symbol_table.values():
+        source = module.source
+        for pycallable, _chain in _walk_callables(module):
+            info = infos.get(pycallable.signature)
+            if info is None:
+                continue
+            pdg = info.pdg
+            callable_id = sig_to_id.get(pycallable.signature) or pycallable.id
+            im = IdentityMap.for_function(callable_id, pdg)
+
+            for node in pdg.cfg.nodes:
+                ordinal = im.ordinal(node.id)
+                if node.id == pdg.cfg.entry_id:
+                    pycallable.body[ordinal] = BodyNode(kind="entry")
+                    continue
+                if node.id == pdg.cfg.exit_id:
+                    pycallable.body[ordinal] = BodyNode(kind="exit")
+                    continue
+                span = _span_of(source, node)
+                # An L1 `call` node was keyed by its "line:col"; if this CFG node
+                # sits at the same position, keep that node's `call` kind and
+                # resolved `callee` and merely re-key it onto the ordinal id
+                # (dedup + endpoint resolution), filling any missing span.
+                existing = pycallable.body.get(ordinal)
+                if existing is None:
+                    existing = pycallable.body.pop(
+                        f"{node.start_line}:{node.start_column}", None
+                    )
+                if existing is not None:
+                    if existing.span is None and span is not None:
+                        existing.span = span
+                    pycallable.body[ordinal] = existing
+                    continue
+                pycallable.body[ordinal] = BodyNode(kind=node.kind, span=span)
+
+            if want_cfg:
+                pycallable.cfg = [
+                    CfgEdge(
+                        src=im.ordinal(e.source),
+                        dst=im.ordinal(e.target),
+                        kind=e.kind,
+                    )
+                    for e in pdg.cfg.edges
+                ]
+            if want_pdg:
+                pycallable.cdg = [
+                    CdgEdge(src=im.ordinal(e.source), dst=im.ordinal(e.target))
+                    for e in pdg.edges
+                    if e.type == "CDG"
+                ]
+            if want_ddg:
+                pycallable.ddg = [
+                    DdgEdge(
+                        src=im.ordinal(e.source),
+                        dst=im.ordinal(e.target),
+                        var=e.var,
+                        prov=["ssa"],
+                    )
+                    for e in pdg.edges
+                    if e.type == "DDG"
+                ]
+
+
 def build_program_graphs(
     app: PyApplication,
     k: int = DEFAULT_K_LIMIT,

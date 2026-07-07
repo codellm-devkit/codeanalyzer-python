@@ -468,7 +468,20 @@ class Codeanalyzer:
             backfill_callees(app, sig_to_id)
         reidentify_call_graph(app, sig_to_id)
 
-        # L3/L4 dataflow emission rebuilt on the v2 tree in Stage 3+
+        # L3: intraprocedural dataflow (CFG/CDG/DDG) emitted onto the v2 tree.
+        if self.analysis_level >= 3:
+            from codeanalyzer.dataflow.builder import (
+                build_function_pdgs,
+                emit_l3_body,
+            )
+            from codeanalyzer.dataflow.syntactic import SyntacticOracle
+
+            infos, _func_asts = build_function_pdgs(
+                app,
+                k=self.options.graph_field_depth,
+                oracle_factory=lambda c: SyntacticOracle(),
+            )
+            emit_l3_body(app, infos, sig_to_id, set(self.options.graphs.split(",")))
 
         # Build the v2 envelope, then persist it (the cache stores the full
         # ``Analysis`` envelope so a reused cache round-trips schema_version).
