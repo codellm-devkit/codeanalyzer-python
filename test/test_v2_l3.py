@@ -31,7 +31,9 @@ def test_local_and_global_ids_for_entry_exit_and_statements():
     assert im.local(1) == "2:4"
     assert im.local(2) == "@exit"
     # GLOBAL id: fully addressable form for Neo4j / cross-callable use.
-    assert im.global_id(1) == "can://python/app/m.py/f()@2:4"
+    assert im.global_id(0) == "can://python/app/m.py/f()@entry"   # entry (single @, no double)
+    assert im.global_id(1) == "can://python/app/m.py/f()@2:4"     # statement
+    assert im.global_id(2) == "can://python/app/m.py/f()@exit"    # exit
     assert set(im.node_ids()) == {0, 1, 2}
 
 

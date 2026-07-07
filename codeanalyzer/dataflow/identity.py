@@ -40,7 +40,9 @@ class IdentityMap:
 
     def global_id(self, node_id: int) -> str:
         """Fully addressable id: ``"<callable-id>@<local>"``."""
-        return f"{self._callable_id}@{self._map[node_id]}"
+        loc = self._map[node_id]
+        # local statements are "line:col"; bookends already carry the leading "@"
+        return f"{self._callable_id}{loc}" if loc.startswith("@") else f"{self._callable_id}@{loc}"
 
     def node_ids(self) -> Iterable[int]:
         return self._map.keys()
