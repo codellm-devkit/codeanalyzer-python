@@ -60,7 +60,7 @@ def test_emit_l3_populates_body_and_cfg(tmp_path: Path):
     fn.body[call_key].callee = "m.g"
 
     infos, _func_asts = build_function_pdgs(
-        app, k=3, oracle_factory=lambda c: SyntacticOracle()
+        app, k=3, oracle_factory=lambda c, fast: SyntacticOracle()
     )
     emit_l3_body(app, infos, sig_to_id, graphs={"cfg", "dfg", "pdg"})
 
@@ -91,7 +91,7 @@ def test_build_function_pdgs_returns_pdg_per_callable(tmp_path: Path):
     mod = SymbolTableBuilder(tmp_path, None).build_pymodule_from_file(f)
     app = PyApplication(symbol_table={"m.py": mod})
     infos, func_asts = build_function_pdgs(
-        app, k=3, oracle_factory=lambda c: SyntacticOracle()
+        app, k=3, oracle_factory=lambda c, fast: SyntacticOracle()
     )
     sig = next(iter(mod.functions.values())).signature
     assert sig in infos

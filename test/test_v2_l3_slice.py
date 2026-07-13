@@ -17,7 +17,7 @@ def test_backward_slice_equals_hand_computed_set(tmp_path: Path):
     app = PyApplication(symbol_table={"m.py": mod})
 
     infos, _func_asts = build_function_pdgs(
-        app, k=3, oracle_factory=lambda c: SyntacticOracle()
+        app, k=3, oracle_factory=lambda c, fast: SyntacticOracle()
     )
     fn = next(iter(mod.functions.values()))
     callable_id = fn.signature

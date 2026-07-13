@@ -108,7 +108,7 @@ def make_sample_app() -> Tuple[PyApplication, Dict[str, str]]:
     sig_to_id = assign_ids(app, "sample-app")
     populate_l1_body(app)
     infos, _func_asts = build_function_pdgs(
-        app, k=3, oracle_factory=lambda c: SyntacticOracle()
+        app, k=3, oracle_factory=lambda c, fast: SyntacticOracle()
     )
     emit_l3_body(app, infos, sig_to_id, {"cfg", "dfg", "pdg"})
 

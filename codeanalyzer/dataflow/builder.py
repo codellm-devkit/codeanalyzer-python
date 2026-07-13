@@ -131,13 +131,16 @@ def build_function_pdgs(
     app: PyApplication,
     k: int = DEFAULT_K_LIMIT,
     *,
-    oracle_factory: Callable[[PyCallable], object],
+    oracle_factory: Callable[[PyCallable, ast.AST], object],
 ) -> Tuple[Dict[str, FunctionInfo], Dict[str, ast.AST]]:
     """Intraprocedural phase only: one ``FunctionInfo`` (CFG → PDG) per
     callable, keyed by signature, with no SDG/summary/callsite work.
 
-    ``oracle_factory(pycallable)`` supplies the may-alias oracle per callable —
-    ``TypeBasedAliasOracle`` for the L4 path, ``SyntacticOracle`` for L3.
+    ``oracle_factory(pycallable, func_ast)`` supplies the may-alias oracle per
+    callable — the matched def AST is threaded through so the primary L4 oracle
+    (:func:`~codeanalyzer.dataflow.scalpel_oracle.make_alias_oracle`) can build
+    Scalpel's SSA from it; ``TypeBasedAliasOracle`` for the plain L4 path and
+    ``SyntacticOracle`` for L3 simply ignore the AST argument.
 
     Returns ``(infos, func_asts)`` rather than bare PDGs so that the L4
     orchestrator (:func:`build_program_graphs`) still has both the
@@ -176,7 +179,7 @@ def build_function_pdgs(
                 if enclosing_ast is not None:
                     enclosing_locals |= _locals_of(enclosing_ast)
 
-            oracle = oracle_factory(pycallable)
+            oracle = oracle_factory(pycallable, func)
             pdg = build_pdg(
                 func,
                 enclosing_locals=enclosing_locals,
@@ -311,14 +314,23 @@ def emit_l3_body(
 def build_program_graphs(
     app: PyApplication,
     k: int = DEFAULT_K_LIMIT,
+    *,
+    oracle_factory: Callable[[PyCallable, ast.AST], object] = (
+        lambda c, fast: TypeBasedAliasOracle(_base_types(c))
+    ),
 ) -> ProgramGraphsIR:
-    """Build CFG/PDG per callable and the whole-program SDG."""
+    """Build CFG/PDG per callable and the whole-program SDG.
+
+    ``oracle_factory(pycallable, func_ast)`` selects the per-callable may-alias
+    oracle. The default is the frozen :class:`TypeBasedAliasOracle` (preserving
+    the historical behavior); the L4 path in ``core`` injects
+    :func:`~codeanalyzer.dataflow.scalpel_oracle.make_alias_oracle` so Scalpel
+    is the primary oracle with the type-based total fallback.
+    """
     class_idx = _class_index(app)
     callable_idx = _callable_index(app)
 
-    infos, func_asts = build_function_pdgs(
-        app, k, oracle_factory=lambda c: TypeBasedAliasOracle(_base_types(c))
-    )
+    infos, func_asts = build_function_pdgs(app, k, oracle_factory=oracle_factory)
 
     # Callsites and nested defs, now that every signature is known.
     for sig, info in infos.items():
@@ -394,6 +406,94 @@ def build_program_graphs(
 
     summaries = compute_summaries(infos, sorted(set(call_edges)))
     return assemble_sdg(infos, summaries, k)
+
+
+def emit_l4(
+    app: PyApplication,
+    ir: ProgramGraphsIR,
+    sig_to_id: Dict[str, str],
+) -> None:
+    """Project the interprocedural L4 delta of ``ir`` onto the v2 tree.
+
+    Layered strictly *on top of* the L3 syntactic overlay (which
+    :func:`emit_l3_body` has already written), so L3 ⊆ L4 holds by
+    construction — this function only *adds* keys/edges, never rewrites L3's.
+    Per callable it emits:
+
+    * **synthetic param vertices** — each :class:`ParamNode`
+      (``formal_in``/``formal_out``/``actual_in``/``actual_out``) becomes a
+      ``body`` node keyed by its LOCAL id (``@formal_in:<i>``, ``@formal_out``,
+      ``<callsite-local>/actual_in:<i>``, …), carrying the variable it models in
+      ``of`` and — for actuals — the owning callsite's local id in ``parent``;
+    * **summary edges** — each same-signature ``SUMMARY`` SDG edge (a callee's
+      transitive actual_in → actual_out pass-through) lands on the callable's
+      ``summary`` as a :class:`SummaryEdge` of LOCAL ids;
+    * **param_in / param_out** — each cross-function ``PARAM_IN`` / ``PARAM_OUT``
+      SDG edge becomes an application-level :class:`ParamEdge` of GLOBAL ids
+      (``<callable-id>@<local>``), resolved through the endpoint functions'
+      identity maps.
+
+    ``CALL`` SDG edges are dropped — they duplicate the call graph. ``ddg``
+    points-to provenance and taint are *not* emitted here (later tasks).
+    """
+    from codeanalyzer.dataflow.identity import IdentityMap
+    from codeanalyzer.schema.py_schema import BodyNode, ParamEdge, SummaryEdge
+
+    # Tree callables by signature: these are the live objects in ``app``'s
+    # symbol table, so mutating them mutates the emitted tree.
+    sig_to_callable: Dict[str, PyCallable] = {}
+    for module in app.symbol_table.values():
+        for pycallable, _chain in _walk_callables(module):
+            sig_to_callable[pycallable.signature] = pycallable
+
+    # One IdentityMap per function, each folding *that* function's synthetic
+    # param vertices, so both intra-function (summary) and cross-function
+    # (param_in/param_out) endpoints resolve uniformly by node id.
+    ims: Dict[str, IdentityMap] = {}
+    for sig, fg in ir.functions.items():
+        pycallable = sig_to_callable.get(sig)
+        callable_id = sig_to_id.get(sig) or (pycallable.id if pycallable else sig)
+        ims[sig] = IdentityMap.for_function(
+            callable_id, fg.pdg, param_nodes=fg.param_nodes
+        )
+
+    # (a) synthetic param vertices onto each callable's body.
+    for sig, fg in ir.functions.items():
+        pycallable = sig_to_callable.get(sig)
+        if pycallable is None:
+            continue
+        im = ims[sig]
+        for pn in fg.param_nodes:
+            parent = im.local(pn.call_node) if pn.call_node is not None else None
+            pycallable.body[im.local(pn.id)] = BodyNode(
+                kind=pn.kind, of=pn.var, parent=parent
+            )
+
+    # (b/c/d) SDG edges → summary / param_in / param_out; CALL dropped.
+    for e in ir.sdg_edges:
+        if e.type == "CALL":
+            continue
+        if e.type == "SUMMARY":
+            pycallable = sig_to_callable.get(e.source_sig)
+            im = ims.get(e.source_sig)
+            if pycallable is None or im is None:
+                continue
+            pycallable.summary.append(
+                SummaryEdge(
+                    src=im.local(e.source_node),
+                    dst=im.local(e.target_node),
+                )
+            )
+        elif e.type in ("PARAM_IN", "PARAM_OUT"):
+            src_im = ims.get(e.source_sig)
+            dst_im = ims.get(e.target_sig)
+            if src_im is None or dst_im is None:
+                continue
+            edge = ParamEdge(
+                src=src_im.global_id(e.source_node),
+                dst=dst_im.global_id(e.target_node),
+            )
+            (app.param_in if e.type == "PARAM_IN" else app.param_out).append(edge)
 
 
 VALID_GRAPHS = ("cfg", "dfg", "pdg", "sdg")

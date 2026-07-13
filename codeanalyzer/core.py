@@ -479,9 +479,29 @@ class Codeanalyzer:
             infos, _func_asts = build_function_pdgs(
                 app,
                 k=self.options.graph_field_depth,
-                oracle_factory=lambda c: SyntacticOracle(),
+                oracle_factory=lambda c, fast: SyntacticOracle(),
             )
             emit_l3_body(app, infos, sig_to_id, set(self.options.graphs.split(",")))
+
+        # L4: interprocedural dataflow (param vertices + summary + param_in/out)
+        # layered on top of the L3 syntactic overlay (L3 ⊆ L4). Scalpel is the
+        # primary may-alias oracle, with the type-based total fallback.
+        if self.analysis_level >= 4:
+            from codeanalyzer.dataflow.builder import (
+                _base_types,
+                build_program_graphs,
+                emit_l4,
+            )
+            from codeanalyzer.dataflow.scalpel_oracle import make_alias_oracle
+
+            ir = build_program_graphs(
+                app,
+                k=self.options.graph_field_depth,
+                oracle_factory=lambda c, fast: make_alias_oracle(
+                    c, fast, _base_types(c)
+                ),
+            )
+            emit_l4(app, ir, sig_to_id)
 
         # Build the v2 envelope, then persist it (the cache stores the full
         # ``Analysis`` envelope so a reused cache round-trips schema_version).

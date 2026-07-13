@@ -151,3 +151,88 @@ def test_scalpel_oracle_copy_chain():
 
     assert oracle.may_alias("a", "b") is True
     assert oracle.may_alias("a", "x") is False
+
+
+L4_FIXTURE = "def id_(x):\n    return x\n\n\ndef caller():\n    return id_(5)\n"
+
+
+def test_emit_l4_end_to_end_param_vertices_summary_and_param_edges(tmp_path):
+    """Drive the whole analyzer at ``-a 4`` over a pass-through call and assert
+    the interprocedural L4 delta lands on the v2 tree, layered on top of the L3
+    overlay: synthetic param vertices in each callable's ``body``, a ``summary``
+    edge on the caller, and application-level ``param_in`` / ``param_out`` edges
+    resolving actual↔formal across the two functions. ``CALL`` SDG edges are
+    dropped (already in the call graph). Scalpel is the primary oracle here; the
+    param/summary structure is oracle-independent, so this passes whether Scalpel
+    runs or falls back to the type-based oracle.
+    """
+    from codeanalyzer.core import Codeanalyzer
+    from codeanalyzer.options import AnalysisOptions
+
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "m.py").write_text(L4_FIXTURE, encoding="utf-8")
+
+    opts = AnalysisOptions(
+        input=proj,
+        analysis_level=4,
+        graph_field_depth=3,
+        no_venv=True,
+        cache_dir=tmp_path / "cache",
+    )
+    with Codeanalyzer(opts) as an:
+        analysis = an.analyze()
+
+    app = analysis.application
+    by_name = {}
+    for module in app.symbol_table.values():
+        for fn in module.functions.values():
+            by_name[fn.name] = fn
+    id_fn, caller_fn = by_name["id_"], by_name["caller"]
+
+    # (a) id_ carries its formal_in(x) and its sole formal_out param vertices.
+    assert id_fn.body["@formal_in:0"].kind == "formal_in"
+    assert id_fn.body["@formal_in:0"].of == "x"
+    assert id_fn.body["@formal_out"].kind == "formal_out"
+
+    # caller carries actual_in / actual_out vertices at the id_(5) callsite,
+    # each rooted at (and pointing back to) its owning callsite local id.
+    actual_in_keys = [k for k, n in caller_fn.body.items() if n.kind == "actual_in"]
+    actual_out_keys = [k for k, n in caller_fn.body.items() if n.kind == "actual_out"]
+    assert actual_in_keys, "caller should have an actual_in at the id_(5) callsite"
+    assert actual_out_keys, "caller should have an actual_out at the id_(5) callsite"
+    for k in actual_in_keys + actual_out_keys:
+        node = caller_fn.body[k]
+        assert node.parent is not None
+        assert k.startswith(node.parent + "/")
+
+    # (c) param_in: an application edge whose dst is id_'s @formal_in:0 global id,
+    # sourced at a caller actual_in (cross-function resolution via both maps).
+    formal_in_gid = f"{id_fn.id}@formal_in:0"
+    matching_in = [e for e in app.param_in if e.dst == formal_in_gid]
+    assert matching_in, (
+        f"param_in should target {formal_in_gid}; got {[e.dst for e in app.param_in]}"
+    )
+    assert all("actual_in" in e.src for e in matching_in)
+
+    # param_out mirrors: an edge whose src is id_'s formal_out global id, landing
+    # on a caller actual_out.
+    formal_out_gid = f"{id_fn.id}@formal_out"
+    matching_out = [e for e in app.param_out if e.src == formal_out_gid]
+    assert matching_out, (
+        f"param_out should originate at {formal_out_gid}; got {[e.src for e in app.param_out]}"
+    )
+    assert all("actual_out" in e.dst for e in matching_out)
+
+    # (b) a pass-through summary edge on caller (actual_in → actual_out).
+    assert caller_fn.summary, "caller should carry a pass-through summary edge"
+    assert any(
+        "actual_in" in s.src and "actual_out" in s.dst for s in caller_fn.summary
+    )
+
+    # (d) no CALL SDG edge leaks: no body vertex is a CALL, and no param edge
+    # touches a callee @entry (the node a CALL edge would have targeted).
+    for fn in (id_fn, caller_fn):
+        assert all(n.kind != "CALL" for n in fn.body.values())
+    for e in list(app.param_in) + list(app.param_out):
+        assert not e.src.endswith("@entry") and not e.dst.endswith("@entry")

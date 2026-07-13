@@ -54,7 +54,7 @@ def _build_l3_app(tmp_path):
     sig_to_id = assign_ids(app, "app")
     populate_l1_body(app)
     infos, _func_asts = build_function_pdgs(
-        app, k=3, oracle_factory=lambda c: SyntacticOracle()
+        app, k=3, oracle_factory=lambda c, fast: SyntacticOracle()
     )
     emit_l3_body(app, infos, sig_to_id, graphs={"cfg", "dfg", "pdg"})
     return app, sig_to_id, mod
