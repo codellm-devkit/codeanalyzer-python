@@ -10,11 +10,6 @@ Contract assertions (dataflow-graphs § verification gates):
   files; closure captures bind at the definition site.
 """
 import pytest
-pytest.skip(
-    "Deferred to Stage 3 v2 dataflow/neo4j test migration (see issues #73, #72). "
-    "Uses deleted graph models / pre-envelope analyze() shape.",
-    allow_module_level=True,
-)
 
 from pathlib import Path
 
@@ -33,7 +28,7 @@ def fixture_app(tmp_path_factory):
         input=FIXTURE, analysis_level=1, no_venv=True, cache_dir=cache
     )
     with Codeanalyzer(options) as analyzer:
-        return analyzer.analyze()
+        return analyzer.analyze().application
 
 
 @pytest.fixture(scope="module")

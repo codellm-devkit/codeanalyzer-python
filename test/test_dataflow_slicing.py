@@ -5,11 +5,6 @@ criterion — this is the assertion that catches both missing dependence edges
 and context-insensitive over-reach.
 """
 import pytest
-pytest.skip(
-    "Deferred to Stage 3 v2 dataflow/neo4j test migration (see issues #73, #72). "
-    "Uses deleted graph models / pre-envelope analyze() shape.",
-    allow_module_level=True,
-)
 
 from pathlib import Path
 
@@ -28,7 +23,7 @@ def ir(tmp_path_factory):
         input=FIXTURE, analysis_level=1, no_venv=True, cache_dir=cache
     )
     with Codeanalyzer(options) as analyzer:
-        return build_program_graphs(analyzer.analyze())
+        return build_program_graphs(analyzer.analyze().application)
 
 
 def _sig(ir, suffix: str) -> str:
