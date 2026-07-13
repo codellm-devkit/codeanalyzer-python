@@ -119,8 +119,17 @@ def _project_program_graphs(b: RowBuilder, app: PyApplication) -> None:
     over the CFG, ``PY_CDG`` over control dependence, and ``PY_DDG`` (props
     ``var``/``prov``) over data dependence. The vocabulary is cross-language in
     shape but PY_-namespaced like every other row family, so a multi-language
-    database never mingles analyzers' dependence edges. Body-node ``var``/
-    ``call_node`` props are an L4 parameter-node concern and are absent here."""
+    database never mingles analyzers' dependence edges.
+
+    L4 (``-a 4``) layers the interprocedural delta onto the same node label:
+    parameter-passing vertices (``formal_in``/``formal_out``/``actual_in``/
+    ``actual_out``) carry ``var`` (the variable/return they model, from
+    ``BodyNode.of``) and ``call_node`` (the owning callsite local id, from
+    ``BodyNode.parent``) instead of span-derived lines; ``PY_SUMMARY`` runs over
+    each callable's transitive pass-throughs (LOCAL ids → global refs), and the
+    app-level ``PY_PARAM_IN``/``PY_PARAM_OUT`` edges connect actual↔formal
+    vertices across callables (endpoints are already GLOBAL ordinals matching the
+    emitted ``PyCFGNode`` keys). All idempotent under MERGE — no-ops below L4."""
     from codeanalyzer.semantic_analysis.call_graph import _walk_module_callables
 
     for file_key, mod in app.symbol_table.items():
@@ -130,6 +139,9 @@ def _project_program_graphs(b: RowBuilder, app: PyApplication) -> None:
             owner = _sym(c.id)  # the :PyCallable node, keyed by its can:// id
             for local_key, node in (c.body or {}).items():
                 span = node.span
+                # L4 param vertices carry the variable they model (``of``) and
+                # their owning callsite (``parent``) instead of span lines; both
+                # are None on ordinary statement nodes and pruned away there.
                 ref = b.node(
                     ["PyCFGNode"],
                     "id",
@@ -139,6 +151,8 @@ def _project_program_graphs(b: RowBuilder, app: PyApplication) -> None:
                             "kind": node.kind,
                             "start_line": span.start[0] if span else None,
                             "end_line": span.end[0] if span else None,
+                            "var": node.of,
+                            "call_node": node.parent,
                             "_module": file_key,
                         }
                     ),
@@ -160,6 +174,28 @@ def _project_program_graphs(b: RowBuilder, app: PyApplication) -> None:
                     _cfg_ref(c.id, e.dst),
                     prune({"var": e.var, "prov": list(e.prov) if e.prov else None}),
                 )
+            # L4 intraprocedural summaries (transitive actual_in → actual_out
+            # pass-throughs); LOCAL ids resolved to global PyCFGNode refs.
+            for e in c.summary or []:
+                b.edge("PY_SUMMARY", _cfg_ref(c.id, e.src), _cfg_ref(c.id, e.dst))
+
+    # L4 interprocedural parameter passing, emitted once at the app scope. The
+    # endpoints are ALREADY global ordinals (emit_l4 resolved them through the
+    # endpoint functions' identity maps), so they land on the very PyCFGNode ids
+    # projected above — a formal_in global id equals _global_ordinal(callee.id,
+    # "@formal_in:0"). No dangling references.
+    for e in app.param_in or []:
+        b.edge(
+            "PY_PARAM_IN",
+            NodeRef("PyCFGNode", "id", e.src),
+            NodeRef("PyCFGNode", "id", e.dst),
+        )
+    for e in app.param_out or []:
+        b.edge(
+            "PY_PARAM_OUT",
+            NodeRef("PyCFGNode", "id", e.src),
+            NodeRef("PyCFGNode", "id", e.dst),
+        )
 
 
 def _sym(can_id: str) -> NodeRef:
