@@ -236,3 +236,68 @@ def test_emit_l4_end_to_end_param_vertices_summary_and_param_edges(tmp_path):
         assert all(n.kind != "CALL" for n in fn.body.values())
     for e in list(app.param_in) + list(app.param_out):
         assert not e.src.endswith("@entry") and not e.dst.endswith("@entry")
+
+
+# `b = a` makes b an alias of a; writing `b.x` then reaches the read of `a.x`.
+# Name-equality (L3 syntactic) misses this; the real oracle (Scalpel or the
+# type-based fallback — both alias a.x/b.x since the bases share a copy / carry
+# unknown types) catches it, so it is a genuine points-to delta either way.
+ALIAS_FIXTURE = "def f(a):\n    b = a\n    b.x = 1\n    return a.x\n"
+
+
+def _analyze(proj, level, cache_dir):
+    from codeanalyzer.core import Codeanalyzer
+    from codeanalyzer.options import AnalysisOptions
+
+    opts = AnalysisOptions(
+        input=proj,
+        analysis_level=level,
+        graph_field_depth=3,
+        no_venv=True,
+        cache_dir=cache_dir,
+    )
+    with Codeanalyzer(opts) as an:
+        return an.analyze()
+
+
+def _ddg_of(analysis, name):
+    for module in analysis.application.symbol_table.values():
+        for fn in module.functions.values():
+            if fn.name == name:
+                return fn.ddg
+    raise AssertionError(f"function {name!r} not found in symbol table")
+
+
+def test_ddg_pointsto_delta_is_additive_over_l3_ssa(tmp_path):
+    """The semantic ``ddg`` delta at ``-a 4``: the alias-derived def-use edge
+    the real oracle produces beyond the L3 name-equality set is emitted with
+    ``prov=["points-to"]``, layered *additively* on top of the unchanged L3
+    ``ssa`` edges. Asserts (a) both provenances are present at -a4 and (b) the
+    ssa-prov subset at -a4 is exactly the whole ddg at -a3. Oracle-agnostic:
+    holds whether Scalpel runs or the type-based fallback does.
+    """
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "m.py").write_text(ALIAS_FIXTURE, encoding="utf-8")
+
+    # Distinct cache dirs so the level-4 run does not reuse the level-3 cache.
+    ddg_l3 = _ddg_of(_analyze(proj, 3, tmp_path / "cache3"), "f")
+    ddg_l4 = _ddg_of(_analyze(proj, 4, tmp_path / "cache4"), "f")
+
+    ssa_l4 = [e for e in ddg_l4 if e.prov == ["ssa"]]
+    pointsto_l4 = [e for e in ddg_l4 if e.prov == ["points-to"]]
+
+    # (a) L4 adds at least one alias-derived edge AND keeps the L3 ssa edges.
+    assert pointsto_l4, "expected at least one prov=['points-to'] ddg edge at -a 4"
+    assert ssa_l4, "expected the L3 ssa ddg edges to remain at -a 4"
+
+    # L3 emits only ssa provenance (the points-to set is the L4 delta).
+    assert all(e.prov == ["ssa"] for e in ddg_l3)
+
+    # (b) Additivity: the ssa-prov ddg edges at -a4 == the whole ddg at -a3.
+    def _keys(edges):
+        return {(e.src, e.dst, e.var) for e in edges}
+
+    assert _keys(ssa_l4) == _keys(ddg_l3)
+    # The points-to delta is disjoint from the ssa set (F − S by construction).
+    assert not (_keys(pointsto_l4) & _keys(ssa_l4))

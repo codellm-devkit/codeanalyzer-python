@@ -490,6 +490,7 @@ class Codeanalyzer:
             from codeanalyzer.dataflow.builder import (
                 _base_types,
                 build_program_graphs,
+                emit_ddg_pointsto_delta,
                 emit_l4,
             )
             from codeanalyzer.dataflow.scalpel_oracle import make_alias_oracle
@@ -502,6 +503,10 @@ class Codeanalyzer:
                 ),
             )
             emit_l4(app, ir, sig_to_id)
+            # Semantic ddg delta: the alias-derived def-use edges the real
+            # oracle adds beyond the L3 syntactic set, tagged prov=["points-to"].
+            # ``infos`` are the syntactic (L3) PDGs from the >=3 block above.
+            emit_ddg_pointsto_delta(app, infos, ir, sig_to_id)
 
         # Build the v2 envelope, then persist it (the cache stores the full
         # ``Analysis`` envelope so a reused cache round-trips schema_version).

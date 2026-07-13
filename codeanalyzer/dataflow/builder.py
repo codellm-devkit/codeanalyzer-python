@@ -496,6 +496,71 @@ def emit_l4(
             (app.param_in if e.type == "PARAM_IN" else app.param_out).append(edge)
 
 
+def _ddg_local_set(im, pdg) -> Set[Tuple[str, str, Optional[str]]]:
+    """The DDG edges of ``pdg`` as a set of ``(local_src, local_dst, var)``.
+
+    Keyed by LOCAL ids (``"line:col"`` / ``"@entry"``…), which are position-
+    based and thus stable across oracle choice — so a syntactic-oracle set and
+    a real-oracle set are directly comparable through the *same* identity map.
+    """
+    return {
+        (im.local(e.source), im.local(e.target), e.var)
+        for e in pdg.edges
+        if e.type == "DDG"
+    }
+
+
+def emit_ddg_pointsto_delta(
+    app: PyApplication,
+    syntactic_infos: Dict[str, FunctionInfo],
+    ir: ProgramGraphsIR,
+    sig_to_id: Dict[str, str],
+) -> None:
+    """Append the semantic ``ddg`` delta at L4: the alias-derived def-use edges
+    the real (Scalpel-primary) oracle produces beyond the L3 syntactic
+    (name-equality) set, each tagged ``prov=["points-to"]``.
+
+    Strictly *additive*: :func:`emit_l3_body` has already written the syntactic
+    ``ssa`` edges, and this function never touches them — it only appends the
+    points-to delta. For every signature present in *both* ``syntactic_infos``
+    (the L3 syntactic PDGs) and ``ir.functions`` (the real-oracle PDGs):
+
+    * build one :class:`IdentityMap` from the real PDG — the CFG is
+      oracle-independent, so node ids and their ``"line:col"`` locals coincide
+      between the two builds, and a single map resolves both sets;
+    * ``S`` = the syntactic-oracle DDG set, ``F`` = the real-oracle DDG set,
+      both as ``(local_src, local_dst, var)``;
+    * for each edge in ``F − S`` (sorted for determinism) whose endpoints exist
+      in the callable's ``body`` (defensive — they are CFG nodes), append a
+      ``DdgEdge(prov=["points-to"])``.
+    """
+    from codeanalyzer.dataflow.identity import IdentityMap
+    from codeanalyzer.schema.py_schema import DdgEdge
+
+    # Tree callables by signature: the live objects in ``app``'s symbol table,
+    # so appending to their ``ddg`` mutates the emitted tree in place.
+    sig_to_callable: Dict[str, PyCallable] = {}
+    for module in app.symbol_table.values():
+        for pycallable, _chain in _walk_callables(module):
+            sig_to_callable[pycallable.signature] = pycallable
+
+    for sig, fg in ir.functions.items():
+        syn = syntactic_infos.get(sig)
+        pycallable = sig_to_callable.get(sig)
+        if syn is None or pycallable is None:
+            continue
+        callable_id = sig_to_id.get(sig) or pycallable.id
+        im = IdentityMap.for_function(callable_id, fg.pdg)
+
+        delta = _ddg_local_set(im, fg.pdg) - _ddg_local_set(im, syn.pdg)
+        for src, dst, var in sorted(delta, key=lambda t: (t[0], t[1], t[2] or "")):
+            if src not in pycallable.body or dst not in pycallable.body:
+                continue
+            pycallable.ddg.append(
+                DdgEdge(src=src, dst=dst, var=var, prov=["points-to"])
+            )
+
+
 VALID_GRAPHS = ("cfg", "dfg", "pdg", "sdg")
 
 
