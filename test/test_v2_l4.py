@@ -1,6 +1,9 @@
 import ast
+import json
 import logging
+import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -301,3 +304,73 @@ def test_ddg_pointsto_delta_is_additive_over_l3_ssa(tmp_path):
     assert _keys(ssa_l4) == _keys(ddg_l3)
     # The points-to delta is disjoint from the ssa set (F − S by construction).
     assert not (_keys(pointsto_l4) & _keys(ssa_l4))
+
+
+# CLI tests for `-a 4` and `--graphs sdg` validation
+def test_cli_a4_with_graphs_sdg_succeeds(tmp_path: Path):
+    """CLI: `-a 4 --graphs sdg --no-venv -o <dir>` → exit 0 (sdg now valid at L4)."""
+    from pathlib import Path as PathlibPath
+    venv_python = Path(".venv/bin/python")
+    if not venv_python.exists():
+        # Fallback to sys.executable if venv doesn't exist
+        venv_python = sys.executable
+
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "m.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    output_dir = tmp_path / "output"
+
+    result = subprocess.run(
+        [str(venv_python), "-m", "codeanalyzer", "-i", str(proj), "-a", "4",
+         "--graphs", "sdg", "--no-venv", "-o", str(output_dir)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, f"Expected exit 0, got {result.returncode}. stderr: {result.stderr}"
+    # Verify output was written
+    assert (output_dir / "analysis.json").exists()
+
+
+def test_cli_a3_with_graphs_sdg_fails(tmp_path: Path):
+    """CLI: `-a 3 --graphs sdg --no-venv` → exit 2 (sdg still rejected below L4)."""
+    from pathlib import Path as PathlibPath
+    venv_python = Path(".venv/bin/python")
+    if not venv_python.exists():
+        # Fallback to sys.executable if venv doesn't exist
+        venv_python = sys.executable
+
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "m.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+
+    result = subprocess.run(
+        [str(venv_python), "-m", "codeanalyzer", "-i", str(proj), "-a", "3",
+         "--graphs", "sdg", "--no-venv"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 2, f"Expected exit 2, got {result.returncode}"
+    assert "sdg requires -a 4" in result.stderr, (
+        f"Expected error message mentioning 'sdg requires -a 4', got: {result.stderr}"
+    )
+
+
+def test_cli_a4_default_graphs_succeeds(tmp_path: Path):
+    """CLI: `-a 4 --no-venv -o <dir>` → exit 0 (default graphs at L4)."""
+    from pathlib import Path as PathlibPath
+    venv_python = Path(".venv/bin/python")
+    if not venv_python.exists():
+        # Fallback to sys.executable if venv doesn't exist
+        venv_python = sys.executable
+
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "m.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    output_dir = tmp_path / "output"
+
+    result = subprocess.run(
+        [str(venv_python), "-m", "codeanalyzer", "-i", str(proj), "-a", "4",
+         "--no-venv", "-o", str(output_dir)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, f"Expected exit 0, got {result.returncode}. stderr: {result.stderr}"
+    # Verify output was written
+    assert (output_dir / "analysis.json").exists()

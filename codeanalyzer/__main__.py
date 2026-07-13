@@ -115,18 +115,19 @@ def main(
             "-a",
             "--analysis-level",
             help="Analysis depth: 1=symbol table+Jedi call graph, 2=+PyCG call "
-            "graph, 3=+native intraprocedural dataflow (CFG/PDG).",
+            "graph, 3=+native intraprocedural dataflow (CFG/PDG), "
+            "4=+interprocedural SDG (param/summary edges, alias-aware DDG).",
             min=1,
-            max=3,
+            max=4,
         ),
     ] = 1,
     graphs: Annotated[
         str,
         typer.Option(
             "--graphs",
-            help="Level 3 only: comma-separated program-graph sections to emit "
+            help="Level 3+ only: comma-separated program-graph sections to emit "
             "(cfg, dfg, pdg, sdg). Default: cfg,dfg,pdg. `dfg` emits the PDG's data "
-            "edges only; `sdg` requires -a 4 (not yet available).",
+            "edges only; `sdg` requires -a 4.",
         ),
     ] = "cfg,dfg,pdg",
     graph_field_depth: Annotated[
@@ -277,8 +278,8 @@ def main(
     if not selected_graphs:
         logger.error("--graphs requires at least one of: " + ", ".join(VALID_GRAPHS))
         raise typer.Exit(code=2)
-    if "sdg" in selected_graphs:
-        logger.error("--graphs sdg requires -a 4 (interprocedural SDG); not available yet.")
+    if "sdg" in selected_graphs and analysis_level < 4:
+        logger.error("--graphs sdg requires -a 4 (interprocedural SDG).")
         raise typer.Exit(code=2)
     if analysis_level < 3 and graphs != "cfg,dfg,pdg":
         logger.error("--graphs is a level-3 option; pass -a 3 to emit program graphs.")
