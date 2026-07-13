@@ -78,3 +78,46 @@ def test_l2_subset_of_l3(tmp_path):
         c3 = next(c for c in _callables(a3) if c["id"] == c2["id"])
         assert set(c2.get("body", {})) <= set(c3.get("body", {})), \
             f"L3 dropped a body node from {c2['id']}"
+
+
+def _ddg_edges(app):
+    """Provenance-tagged ddg edge tuples, keyed per owning callable so local
+    line:col ids never collide across functions."""
+    edges = set()
+    for c in _callables(app):
+        for e in c.get("ddg", []):
+            edges.add((c["id"], e["src"], e["dst"], e.get("var"), tuple(e.get("prov", []))))
+    return edges
+
+
+def test_l3_subset_of_l4(tmp_path):
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    # Multi-statement, multi-call fixture: `f` threads `a` through two callees,
+    # so L3 lands syntactic ssa def-use edges and L4 layers the interprocedural
+    # delta (param vertices + param_in/param_out + summaries) additively on top.
+    (proj / "m.py").write_text(
+        "def g(x):\n    return x\n"
+        "def h(y):\n    return y\n"
+        "def f(a):\n    b = g(a)\n    c = h(b)\n    return c\n",
+        encoding="utf-8",
+    )
+    l3, l4 = _run(proj, 3), _run(proj, 4)
+    assert_conformant(l3, max_level=3)
+    assert_conformant(l4, max_level=4)
+    a3, a4 = l3["application"], l4["application"]
+    # every callable id present at L3 is present at L4
+    ids3 = {c["id"] for c in _callables(a3)}
+    ids4 = {c["id"] for c in _callables(a4)}
+    assert ids3 <= ids4, "L4 dropped a callable present at L3"
+    # L4 only ADDS param vertices to bodies; every L3 body key survives.
+    for c3 in _callables(a3):
+        c4 = next(c for c in _callables(a4) if c["id"] == c3["id"])
+        assert set(c3.get("body", {})) <= set(c4.get("body", {})), \
+            f"L4 dropped a body node from {c3['id']}"
+    # The L3 ddg (all ssa) is a subset of the L4 ddg (ssa + points-to): L4 keeps
+    # every L3 ssa edge verbatim and only adds alias-derived points-to edges.
+    ddg3, ddg4 = _ddg_edges(a3), _ddg_edges(a4)
+    assert ddg3, "expected the L3 fixture to produce ssa ddg edges"
+    assert all(prov == ("ssa",) for *_rest, prov in ddg3), "L3 ddg must be ssa-only"
+    assert ddg3 <= ddg4, "L4 dropped an L3 ssa ddg edge (must be a superset)"
