@@ -14,6 +14,7 @@ from jedi.api.project import Project
 from codeanalyzer.schema.py_schema import (
     PyCallable,
     PyCallableParameter,
+    PyCallArgument,
     PyCallsite,
     PyClass,
     PyClassAttribute,
@@ -432,6 +433,7 @@ class SymbolTableBuilder:
                                     script, target.lineno, target.col_offset
                                 )
                             )
+                            .initializer(ast.unparse(stmt.value) if stmt.value else None)
                             .start_line(getattr(target, "lineno", -1))
                             .end_line(getattr(stmt, "end_lineno", stmt.lineno))
                             .build()
@@ -450,6 +452,7 @@ class SymbolTableBuilder:
                                 script, target.lineno, target.col_offset
                             )
                         )
+                        .initializer(ast.unparse(stmt.value) if stmt.value else None)
                         .start_line(getattr(target, "lineno", -1))
                         .end_line(getattr(stmt, "end_lineno", stmt.lineno))
                         .build()
@@ -657,11 +660,18 @@ class SymbolTableBuilder:
             elif isinstance(func_expr, ast.Name):
                 method_name = func_expr.id
 
-            argument_types = [
-                self._infer_type(script, arg.lineno, arg.col_offset)
-                or type(arg).__name__
+            arguments = [
+                PyCallArgument(
+                    ast_kind=type(arg).__name__,
+                    inferred_type=self._infer_type(script, arg.lineno, arg.col_offset),
+                )
                 for arg in node.args
             ]
+
+            # Legacy field, derived from the structured arguments above rather
+            # than re-inferring: byte-identical to the old
+            # `self._infer_type(...) or type(arg).__name__` per argument.
+            argument_types = [a.inferred_type or a.ast_kind for a in arguments]
 
             call_sites.append(
                 PyCallsite.builder()
@@ -669,6 +679,7 @@ class SymbolTableBuilder:
                 .receiver_expr(receiver_expr)
                 .receiver_type(receiver_type)
                 .argument_types(argument_types)
+                .arguments(arguments)
                 .return_type(return_type)
                 .callee_signature(callee_signature)
                 .is_constructor_call(is_constructor)

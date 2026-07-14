@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.1.0",
+  "schema_version": "1.2.0",
   "generator": "codeanalyzer-python",
   "marker_labels": [],
   "node_labels": [
@@ -9,7 +9,12 @@
       "key": "name",
       "properties": {
         "name": "string",
-        "schema_version": "string"
+        "schema_version": "string",
+        "analyzer_name": "string",
+        "analyzer_version": "string",
+        "repo_uri": "string",
+        "source_revision": "string",
+        "repo_dirty": "boolean"
       }
     },
     {
@@ -97,6 +102,7 @@
         "receiver_expr": "string",
         "receiver_type": "string",
         "argument_types": "string[]",
+        "arguments_json": "string",
         "return_type": "string",
         "callee_signature": "string",
         "is_constructor_call": "boolean",
@@ -115,6 +121,7 @@
         "id": "string",
         "name": "string",
         "type": "string",
+        "initializer": "string",
         "docstring": "string",
         "start_line": "integer",
         "end_line": "integer",
@@ -244,9 +251,11 @@
         "PyModule"
       ],
       "to": [
+        "PyModule",
         "PyPackage"
       ],
       "properties": {
+        "spellings": "string[]",
         "imported_names": "string[]",
         "aliases": "string[]"
       }

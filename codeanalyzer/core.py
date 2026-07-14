@@ -26,9 +26,11 @@ from codeanalyzer.semantic_analysis.call_graph import (
 )
 from codeanalyzer.semantic_analysis.pycg import PyCG, PyCGExceptions
 from codeanalyzer.syntactic_analysis.exceptions import SymbolTableBuilderRayError
+from codeanalyzer.syntactic_analysis.import_resolver import resolve_imports
 from codeanalyzer.syntactic_analysis.symbol_table_builder import SymbolTableBuilder
 from codeanalyzer.utils import ProgressBar
 from codeanalyzer.options import AnalysisOptions
+from codeanalyzer.provenance import analyzer_info, repository_info
 
 @ray.remote
 def _process_file_with_ray(py_file: Union[Path, str], project_dir: Union[Path, str], virtualenv: Union[Path, str, None]) -> Dict[str, PyModule]:
@@ -411,8 +413,8 @@ class Codeanalyzer:
         Uses caching to avoid re-analyzing unchanged files.
         """
         cache_file = self.cache_dir / "analysis_cache.json"
-        
-        # Try to load existing cached analysis 
+
+        # Try to load existing cached analysis
         cached_pyapplication = None
         if not self.rebuild_analysis and cache_file.exists():
             try:
@@ -421,6 +423,12 @@ class Codeanalyzer:
             except Exception as e:
                 logger.warning(f"Failed to load cache: {e}. Rebuilding analysis.")
                 cached_pyapplication = None
+
+        if cached_pyapplication is not None and not self._cache_analyzer_matches(
+            cached_pyapplication, analyzer_info(self.analysis_level).version
+        ):
+            logger.info("Analysis cache written by a different analyzer version; rebuilding.")
+            cached_pyapplication = None
 
         # Build symbol table from cached application if available (if no available, the build a new one)
         symbol_table = self._build_symbol_table(cached_pyapplication.symbol_table if cached_pyapplication else {})
@@ -454,11 +462,34 @@ class Codeanalyzer:
             .external_symbols(external_symbols)
             .build()
         )
-        
+
+        # Every run re-resolves import spellings against the analyzed module
+        # set -- pure and cheap; cached modules from older caches default to
+        # resolved_module=None and get stamped here (issue #82).
+        resolve_imports(app, self.project_dir)
+
+        # Single choke point for provenance: every produced app (fresh symbol
+        # table or reused-from-cache) passes through here before being cached
+        # or returned, so analyzer/repository always reflect *this* run/checkout
+        # even when the symbol table itself came from the on-disk cache.
+        app.analyzer = analyzer_info(self.analysis_level)
+        app.repository = repository_info(self.project_dir)
+
         # Save to cache
         self._save_analysis_cache(app, cache_file)
         
         return app
+
+    @staticmethod
+    def _cache_analyzer_matches(cached_app: Optional[PyApplication], current_version: str) -> bool:
+        """A cache written by another analyzer version (or before versions were
+        recorded) may lack fields the current models populate — pydantic fills
+        silent defaults, which would masquerade as analyzed absence."""
+        return (
+            cached_app is not None
+            and cached_app.analyzer is not None
+            and cached_app.analyzer.version == current_version
+        )
 
     def _load_pyapplication_from_cache(self, cache_file: Path) -> PyApplication:
         """Load cached analysis from file.

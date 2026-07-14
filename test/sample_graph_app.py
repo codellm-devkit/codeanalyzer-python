@@ -19,7 +19,13 @@ from codeanalyzer.schema import (
     PyModule,
     PyVariableDeclaration,
 )
-from codeanalyzer.schema.py_schema import PyCallEdge, PyCallsite
+from codeanalyzer.schema.py_schema import (
+    PyAnalyzerInfo,
+    PyCallArgument,
+    PyCallEdge,
+    PyCallsite,
+    PyRepositoryInfo,
+)
 
 
 def make_sample_app() -> PyApplication:
@@ -50,7 +56,9 @@ def make_sample_app() -> PyApplication:
         base_classes=["src.service.BaseService"],
         methods={"announce": announce},
         attributes={
-            "name": PyClassAttribute(name="name", type="str", start_line=8, end_line=8)
+            "name": PyClassAttribute(
+                name="name", type="str", initializer="'svc'", start_line=8, end_line=8
+            )
         },
         inner_classes={"Inner": inner},
         start_line=6,
@@ -80,6 +88,7 @@ def make_sample_app() -> PyApplication:
                 receiver_expr="Service()",
                 receiver_type="src.service.Service",
                 callee_signature="src.service.Service.announce",
+                arguments=[PyCallArgument(ast_kind="Name", inferred_type="str")],
                 start_line=18,
                 start_column=4,
                 end_line=18,
@@ -96,7 +105,16 @@ def make_sample_app() -> PyApplication:
     service_mod = PyModule(
         file_path="src/service.py",
         module_name="src.service",
-        imports=[PyImport(module="os", name="path", alias="p")],
+        imports=[
+            PyImport(module="os", name="path", alias="p"),
+            # Internal import, pre-resolved (issue #82): exercises the
+            # PY_IMPORTS -> :PyModule edge alongside the :PyPackage one above.
+            PyImport(
+                module="src.util",
+                name="src.util",
+                resolved_module="src/util.py",
+            ),
+        ],
         classes={"Service": service, "BaseService": base_service},
         functions={"helper": helper},
         variables=[
@@ -153,4 +171,10 @@ def make_sample_app() -> PyApplication:
         # The ghost edge's target (requests.get) is a library member, recorded as a
         # first-class external symbol so the projection emits a :PyExternal for it.
         external_symbols={"requests.get": PyExternalSymbol(name="get", module="requests")},
+        analyzer=PyAnalyzerInfo(
+            name="codeanalyzer-python", version="0.0.0-test", config={"analysis_level": 1}
+        ),
+        repository=PyRepositoryInfo(
+            uri="https://example.invalid/repo.git", revision="deadbeef", dirty=False
+        ),
     )

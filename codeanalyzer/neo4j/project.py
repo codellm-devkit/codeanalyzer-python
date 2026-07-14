@@ -54,7 +54,19 @@ def project(app: PyApplication, app_name: str) -> GraphRows:
     b = RowBuilder()
 
     app_ref = b.node(
-        ["PyApplication"], "name", app_name, {"schema_version": SCHEMA_VERSION}
+        ["PyApplication"],
+        "name",
+        app_name,
+        prune(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "analyzer_name": app.analyzer.name if app.analyzer else None,
+                "analyzer_version": app.analyzer.version if app.analyzer else None,
+                "repo_uri": app.repository.uri if app.repository else None,
+                "source_revision": app.repository.revision if app.repository else None,
+                "repo_dirty": app.repository.dirty if app.repository else None,
+            }
+        ),
     )
 
     for file_key, mod in app.symbol_table.items():
@@ -124,25 +136,47 @@ def _project_module_body(
 
 
 def _project_imports(b: RowBuilder, mod_ref: NodeRef, mod: PyModule) -> None:
-    # Per-target-module aggregation: collapse all bindings for a given imported
-    # module into one PY_IMPORTS edge to a shared :PyPackage node.
+    # At most one PY_IMPORTS edge per (module, target) pair -- mirrors PY_CALLS,
+    # which pre-aggregates for the same reason: both writers MERGE edges on
+    # (type, from, to) and SET their props, so a second row for the same pair
+    # would silently overwrite the first in Neo4j instead of adding an edge.
+    # Buckets key on the edge's target identity (the resolved module, or the
+    # spelling itself for unresolved/external imports), so the SAME target
+    # imported under different spellings (``from pkg import util``,
+    # ``from . import util as u``, ``from .util import helper``) collapses
+    # onto one edge; the raw spellings ride along as a ``spellings`` array.
+    # Resolved internal imports point at the real :PyModule; externals keep
+    # the shared :PyPackage. Unresolved *relative* spellings (".", ".foo")
+    # name no package -- they are dropped from the graph (the spelling
+    # survives in analysis.json), instead of minting bogus
+    # :PyPackage{name: "."} nodes.
     agg: dict = {}
     for im in mod.imports or []:
         if not im.module:
-            continue  # relative `from . import x` — no resolvable package
-        a = agg.setdefault(im.module, {"names": set(), "aliases": set()})
+            continue
+        if im.resolved_module is None and im.module.startswith("."):
+            continue
+        key = im.resolved_module or im.module
+        a = agg.setdefault(
+            key, {"spellings": set(), "names": set(), "aliases": set(), "resolved": im.resolved_module}
+        )
+        a["spellings"].add(im.module)
         if im.name:
             a["names"].add(im.name)
         if im.alias:
             a["aliases"].add(im.alias)
-    for module_name, a in agg.items():
-        pkg = b.node(["PyPackage"], "name", module_name, {})
+    for key, a in agg.items():
+        if a["resolved"] is not None:
+            target = NodeRef("PyModule", "file_key", a["resolved"])
+        else:
+            target = b.node(["PyPackage"], "name", key, {})
         b.edge(
             "PY_IMPORTS",
             mod_ref,
-            pkg,
+            target,
             prune(
                 {
+                    "spellings": sorted(a["spellings"]),
                     "imported_names": sorted(a["names"]) or None,
                     "aliases": sorted(a["aliases"]) or None,
                 }
@@ -288,6 +322,7 @@ def _attribute_props(a: PyClassAttribute, attr_id: str, file_key: str) -> Props:
             "id": attr_id,
             "name": a.name,
             "type": a.type,
+            "initializer": a.initializer,
             "docstring": _docstring_of(a.comments),
             "start_line": a.start_line,
             "end_line": a.end_line,
@@ -320,6 +355,7 @@ def _call_site_props(s: PyCallsite, file_key: str) -> Props:
             "receiver_expr": s.receiver_expr,
             "receiver_type": s.receiver_type,
             "argument_types": list(s.argument_types or []),
+            "arguments_json": _stringify_if(s.arguments),
             "return_type": s.return_type,
             "callee_signature": s.callee_signature,
             "is_constructor_call": s.is_constructor_call,

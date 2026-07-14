@@ -64,3 +64,39 @@ def test_fallback_signatures_strip_only_the_py_suffix(tmp_path):
     }
     for relative_path, expected in cases.items():
         assert builder._fallback_signature(tmp_path / relative_path, "extract") == expected
+
+
+def test_class_attribute_initializers_are_captured(single_functionalities__method_call_resolution):
+    builder = SymbolTableBuilder(single_functionalities__method_call_resolution, None)
+    module = builder.build_pymodule_from_file(single_functionalities__method_call_resolution / "main.py")
+
+    account_move = next(c for c in module.classes.values() if c.name == "AccountMove")
+    assert account_move.attributes["_name"].initializer == "'account.move'"
+    assert account_move.attributes["_inherit"].initializer == "['mail.thread']"
+
+    model = next(c for c in module.classes.values() if c.name == "Model")
+    assert model.attributes["env"].initializer == "Environment()"
+
+
+def test_call_arguments_distinguish_ast_kind_from_inferred_type(single_functionalities__method_call_resolution):
+    call_sites = _action_post_call_sites(single_functionalities__method_call_resolution)
+
+    search_args = call_sites["search"].arguments
+    assert [a.ast_kind for a in search_args] == ["List"]
+    assert search_args[0].inferred_type == "list"
+
+    len_args = call_sites["len"].arguments
+    assert [a.ast_kind for a in len_args] == ["Name"]
+    assert len_args[0].inferred_type == "list"
+
+    str_args = call_sites["str"].arguments
+    assert [a.ast_kind for a in str_args] == ["Call"]
+
+    assert call_sites["helper"].arguments == []
+
+
+def test_legacy_argument_types_field_is_unchanged(single_functionalities__method_call_resolution):
+    call_sites = _action_post_call_sites(single_functionalities__method_call_resolution)
+
+    assert call_sites["search"].argument_types == ["list"]
+    assert call_sites["len"].argument_types == ["list"]

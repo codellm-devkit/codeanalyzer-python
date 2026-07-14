@@ -176,6 +176,7 @@ class PyImport(BaseModel):
     module: str
     name: str
     alias: Optional[str] = None
+    resolved_module: Optional[str] = None
     start_line: int = -1
     end_line: int = -1
     start_column: int = -1
@@ -242,6 +243,19 @@ class PyCallableParameter(BaseModel):
 
 @builder
 @msgpk
+class PyCallArgument(BaseModel):
+    """One call-site argument: AST category + inferred type, kept separate.
+
+    The legacy ``PyCallsite.argument_types`` mixed these two vocabularies
+    in one list; this model is the disambiguated replacement (#86).
+    """
+
+    ast_kind: str
+    inferred_type: Optional[str] = None
+
+
+@builder
+@msgpk
 class PyCallsite(BaseModel):
     """Represents a Python call site (function or method invocation) with contextual metadata."""
 
@@ -249,6 +263,7 @@ class PyCallsite(BaseModel):
     receiver_expr: Optional[str] = None
     receiver_type: Optional[str] = None
     argument_types: List[str] = []
+    arguments: List[PyCallArgument] = []
     return_type: Optional[str] = None
     callee_signature: Optional[str] = None
     is_constructor_call: bool = False
@@ -295,6 +310,7 @@ class PyClassAttribute(BaseModel):
 
     name: str
     type: Optional[str] = None
+    initializer: Optional[str] = None
     comments: List[PyComment] = []
     start_line: int = -1
     end_line: int = -1
@@ -371,6 +387,26 @@ class PyExternalSymbol(BaseModel):
 
 @builder
 @msgpk
+class PyRepositoryInfo(BaseModel):
+    """Where the analyzed source came from: git provenance captured at analysis time."""
+
+    uri: Optional[str] = None
+    revision: str
+    dirty: bool = False
+
+
+@builder
+@msgpk
+class PyAnalyzerInfo(BaseModel):
+    """Which analyzer produced this snapshot, and how it was configured."""
+
+    name: str
+    version: str
+    config: Dict[str, Any] = {}
+
+
+@builder
+@msgpk
 class PyApplication(BaseModel):
     """Represents a Python application."""
 
@@ -380,3 +416,5 @@ class PyApplication(BaseModel):
     # builtin members), keyed by signature. Populated by the analyzer so every
     # backend (JSON and Neo4j) shares one authoritative external-symbol set.
     external_symbols: Dict[str, PyExternalSymbol] = {}
+    analyzer: Optional[PyAnalyzerInfo] = None
+    repository: Optional[PyRepositoryInfo] = None

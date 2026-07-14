@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Class-attribute initializers** — `PyClassAttribute.initializer` captures the assignment RHS (`_name = 'account.account'` is now recoverable), projected as `PyAttribute.initializer` ([#83](https://github.com/codellm-devkit/codeanalyzer-python/issues/83)).
+- **Structured call-site arguments** — `PyCallsite.arguments: [{ast_kind, inferred_type?}]` separates the AST category from the Jedi-inferred type (absent when unknown), projected as `PyCallSite.arguments_json` ([#86](https://github.com/codellm-devkit/codeanalyzer-python/issues/86)).
+- **Snapshot provenance** — `PyApplication.repository {uri, revision, dirty}` (git queried read-only at analysis time; absent for non-checkouts) and `PyApplication.analyzer {name, version, config}`, mirrored as flattened `:PyApplication` properties ([#85](https://github.com/codellm-devkit/codeanalyzer-python/issues/85)).
+- **Internal import resolution** — each `PyImport` gains `resolved_module` (the analyzed target module's file key); resolved imports project as `PY_IMPORTS` edges to the real `:PyModule` (one edge per module pair, raw spellings preserved in a `spellings` array), externals keep `:PyPackage`, and unresolved relative spellings (`.`, `.foo`, `..x`) no longer mint bogus `:PyPackage` nodes ([#82](https://github.com/codellm-devkit/codeanalyzer-python/issues/82)).
+- Neo4j `SCHEMA_VERSION` bumped `1.1.0 → 1.2.0` (additive: new properties on `PyAttribute`, `PyCallSite`, `PyApplication`, `PY_IMPORTS`; `PY_IMPORTS` may now target `:PyModule`).
+
+### Deprecated
+- `PyCallsite.argument_types` (and the `PyCallSite.argument_types` graph property): it silently mixes AST node categories with inferred type names in one list. Use `arguments`/`arguments_json` instead; the legacy field is unchanged and will be removed in schema v2 ([#86](https://github.com/codellm-devkit/codeanalyzer-python/issues/86)).
+
 ### Fixed
 - Attribute-call callees (`receiver.method(...)`) now resolve to the invoked method instead of the receiver's type — Jedi inference was anchored at the call expression's first character, i.e. the receiver token, so nearly every method call's `callee_signature` (and the Neo4j `PY_RESOLVES_TO` edge) pointed at the receiver's class ([#80](https://github.com/codellm-devkit/codeanalyzer-python/issues/80)).
 - `PyCallsite.return_type` now holds the inferred type of the call *result* (the callee's inferred return type, or the instance for a constructor call), and is absent when Jedi cannot tell. Previously it held the type inferred at the call expression's start — effectively the receiver's type ([#80](https://github.com/codellm-devkit/codeanalyzer-python/issues/80)).
