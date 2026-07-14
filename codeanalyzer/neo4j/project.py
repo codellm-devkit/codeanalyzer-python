@@ -54,7 +54,19 @@ def project(app: PyApplication, app_name: str) -> GraphRows:
     b = RowBuilder()
 
     app_ref = b.node(
-        ["PyApplication"], "name", app_name, {"schema_version": SCHEMA_VERSION}
+        ["PyApplication"],
+        "name",
+        app_name,
+        prune(
+            {
+                "schema_version": SCHEMA_VERSION,
+                "analyzer_name": app.analyzer.name if app.analyzer else None,
+                "analyzer_version": app.analyzer.version if app.analyzer else None,
+                "repo_uri": app.repository.uri if app.repository else None,
+                "source_revision": app.repository.revision if app.repository else None,
+                "repo_dirty": app.repository.dirty if app.repository else None,
+            }
+        ),
     )
 
     for file_key, mod in app.symbol_table.items():

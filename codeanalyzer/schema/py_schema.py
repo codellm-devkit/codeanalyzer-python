@@ -386,6 +386,26 @@ class PyExternalSymbol(BaseModel):
 
 @builder
 @msgpk
+class PyRepositoryInfo(BaseModel):
+    """Where the analyzed source came from: git provenance captured at analysis time."""
+
+    uri: Optional[str] = None
+    revision: str
+    dirty: bool = False
+
+
+@builder
+@msgpk
+class PyAnalyzerInfo(BaseModel):
+    """Which analyzer produced this snapshot, and how it was configured."""
+
+    name: str
+    version: str
+    config: Dict[str, Any] = {}
+
+
+@builder
+@msgpk
 class PyApplication(BaseModel):
     """Represents a Python application."""
 
@@ -395,3 +415,5 @@ class PyApplication(BaseModel):
     # builtin members), keyed by signature. Populated by the analyzer so every
     # backend (JSON and Neo4j) shares one authoritative external-symbol set.
     external_symbols: Dict[str, PyExternalSymbol] = {}
+    analyzer: Optional[PyAnalyzerInfo] = None
+    repository: Optional[PyRepositoryInfo] = None

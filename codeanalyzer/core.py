@@ -29,6 +29,7 @@ from codeanalyzer.syntactic_analysis.exceptions import SymbolTableBuilderRayErro
 from codeanalyzer.syntactic_analysis.symbol_table_builder import SymbolTableBuilder
 from codeanalyzer.utils import ProgressBar
 from codeanalyzer.options import AnalysisOptions
+from codeanalyzer.provenance import analyzer_info, repository_info
 
 @ray.remote
 def _process_file_with_ray(py_file: Union[Path, str], project_dir: Union[Path, str], virtualenv: Union[Path, str, None]) -> Dict[str, PyModule]:
@@ -454,7 +455,14 @@ class Codeanalyzer:
             .external_symbols(external_symbols)
             .build()
         )
-        
+
+        # Single choke point for provenance: every produced app (fresh symbol
+        # table or reused-from-cache) passes through here before being cached
+        # or returned, so analyzer/repository always reflect *this* run/checkout
+        # even when the symbol table itself came from the on-disk cache.
+        app.analyzer = analyzer_info(self.analysis_level)
+        app.repository = repository_info(self.project_dir)
+
         # Save to cache
         self._save_analysis_cache(app, cache_file)
         

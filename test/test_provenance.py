@@ -1,0 +1,51 @@
+import subprocess
+from pathlib import Path
+
+from codeanalyzer.provenance import analyzer_info, repository_info
+
+
+def _run_git(cwd: Path, *args: str) -> None:
+    subprocess.run(["git", "-C", str(cwd), *args], check=True, capture_output=True)
+
+
+def test_repository_info_for_a_git_checkout(tmp_path):
+    _run_git(tmp_path, "init")
+    _run_git(tmp_path, "config", "user.email", "t@example.invalid")
+    _run_git(tmp_path, "config", "user.name", "t")
+    _run_git(tmp_path, "remote", "add", "origin", "https://example.invalid/repo.git")
+    (tmp_path / "a.py").write_text("x = 1\n")
+    _run_git(tmp_path, "add", "a.py")
+    _run_git(tmp_path, "commit", "-m", "init")
+
+    info = repository_info(tmp_path)
+
+    assert info is not None
+    assert info.uri == "https://example.invalid/repo.git"
+    assert len(info.revision) == 40
+    assert info.dirty is False
+
+    (tmp_path / "a.py").write_text("x = 2\n")
+    assert repository_info(tmp_path).dirty is True
+
+
+def test_repository_info_outside_a_repo_is_none(tmp_path):
+    assert repository_info(tmp_path) is None
+
+
+def test_analyzer_info_carries_identity_and_config():
+    info = analyzer_info(2)
+
+    assert info.name == "codeanalyzer-python"
+    assert info.version
+    assert info.config == {"analysis_level": 2}
+
+
+def test_app_node_carries_provenance_props():
+    from codeanalyzer.neo4j.project import project
+    from sample_graph_app import make_sample_app
+
+    rows = project(make_sample_app(), "sample")
+    app_row = next(n for n in rows.nodes if "PyApplication" in n.labels)
+    assert app_row.props["source_revision"] == "deadbeef"
+    assert app_row.props["analyzer_name"] == "codeanalyzer-python"
+    assert app_row.props["repo_dirty"] is False

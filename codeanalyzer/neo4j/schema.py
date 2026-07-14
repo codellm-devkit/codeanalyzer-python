@@ -67,7 +67,15 @@ NODE_LABELS: List[NodeLabel] = [
         "PyApplication",
         "PyApplication",
         "name",
-        {"name": "string", "schema_version": "string"},
+        {
+            "name": "string",
+            "schema_version": "string",
+            "analyzer_name": "string",
+            "analyzer_version": "string",
+            "repo_uri": "string",
+            "source_revision": "string",
+            "repo_dirty": "boolean",
+        },
     ),
     NodeLabel(
         "PyModule",

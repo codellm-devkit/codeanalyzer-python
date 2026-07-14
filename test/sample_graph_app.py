@@ -19,7 +19,13 @@ from codeanalyzer.schema import (
     PyModule,
     PyVariableDeclaration,
 )
-from codeanalyzer.schema.py_schema import PyCallArgument, PyCallEdge, PyCallsite
+from codeanalyzer.schema.py_schema import (
+    PyAnalyzerInfo,
+    PyCallArgument,
+    PyCallEdge,
+    PyCallsite,
+    PyRepositoryInfo,
+)
 
 
 def make_sample_app() -> PyApplication:
@@ -156,4 +162,10 @@ def make_sample_app() -> PyApplication:
         # The ghost edge's target (requests.get) is a library member, recorded as a
         # first-class external symbol so the projection emits a :PyExternal for it.
         external_symbols={"requests.get": PyExternalSymbol(name="get", module="requests")},
+        analyzer=PyAnalyzerInfo(
+            name="codeanalyzer-python", version="0.0.0-test", config={"analysis_level": 1}
+        ),
+        repository=PyRepositoryInfo(
+            uri="https://example.invalid/repo.git", revision="deadbeef", dirty=False
+        ),
     )
