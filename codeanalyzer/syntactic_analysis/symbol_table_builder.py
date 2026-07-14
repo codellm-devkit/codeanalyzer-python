@@ -44,6 +44,16 @@ class SymbolTableBuilder:
                 environment_path=Path(virtualenv) / "bin" / "python",
             )
 
+    def _fallback_signature(self, script_path: Union[Path, str], name: str) -> str:
+        """Path-derived qualified name used when Jedi can't name a definition.
+
+        Strips only the terminal ``.py`` suffix — a bare ``str.replace``
+        would also eat interior ``.py`` substrings and corrupt the module
+        prefix (``odoo/tools/pycompat.py`` → ``odoo.toolscompat``).
+        """
+        relative = Path(script_path).relative_to(self.project_dir)
+        return ".".join(relative.with_suffix("").parts) + f".{name}"
+
     @staticmethod
     def _infer_type(script: Script, line: int, column: int) -> str:
         """Tries to infer the type at a given position using Jedi."""
@@ -246,10 +256,10 @@ class SymbolTableBuilder:
                     definitions = script.goto(line=start_line, column=child.col_offset)
                     signature = next(
                         (d.full_name for d in definitions if d.type == "class"),
-                        f"{Path(script.path).relative_to(self.project_dir).__str__().replace('/', '.').replace('.py', '')}.{class_name}"
+                        self._fallback_signature(script.path, class_name),
                     )
                 except Exception:
-                    signature = f"{Path(script.path).relative_to(self.project_dir).__str__().replace('/', '.').replace('.py', '')}.{class_name}"
+                    signature = self._fallback_signature(script.path, class_name)
             py_class = (
                 PyClass.builder()
                 .name(class_name)
@@ -301,8 +311,7 @@ class SymbolTableBuilder:
                     
                     # If Jedi didn't provide a signature, build one relative to project_dir
                     if not signature:
-                        relative_path = Path(script.path).relative_to(self.project_dir)
-                        signature = f"{str(relative_path).replace('/', '.').replace('.py', '')}.{method_name}"
+                        signature = self._fallback_signature(script.path, method_name)
                 py_callable = (
                     PyCallable.builder()
                     .name(method_name)  # Use the actual method name, not the full signature

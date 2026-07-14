@@ -52,3 +52,15 @@ def test_builder_accepts_a_relative_project_dir(single_functionalities__method_c
 
     assert call_sites["search"].callee_signature == "main.Model.search"
     assert call_sites["helper"].callee_signature == "main.Model.helper"
+
+
+def test_fallback_signatures_strip_only_the_py_suffix(tmp_path):
+    builder = SymbolTableBuilder(tmp_path, None)
+
+    cases = {
+        "odoo/tools/babel/python_extractor.py": "odoo.tools.babel.python_extractor.extract",
+        "odoo/_monkeypatches/pytz.py": "odoo._monkeypatches.pytz.extract",
+        "odoo/tools/pycompat.py": "odoo.tools.pycompat.extract",
+    }
+    for relative_path, expected in cases.items():
+        assert builder._fallback_signature(tmp_path / relative_path, "extract") == expected
