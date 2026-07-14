@@ -9,8 +9,18 @@ import subprocess
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from pathlib import Path
 from typing import Optional, Union
+from urllib.parse import urlsplit, urlunsplit
 
 from codeanalyzer.schema.py_schema import PyAnalyzerInfo, PyRepositoryInfo
+
+
+def _strip_userinfo(uri: str) -> str:
+    """Drop credentials from URL-style remotes; scp-style git@host:path is a
+    username, not a secret, and parses with no netloc — left intact."""
+    parts = urlsplit(uri)
+    if parts.netloc and "@" in parts.netloc:
+        return urlunsplit(parts._replace(netloc=parts.netloc.rpartition("@")[2]))
+    return uri
 
 
 def _git(project_dir: Union[Path, str], *args: str) -> Optional[str]:
@@ -32,7 +42,8 @@ def repository_info(project_dir: Union[Path, str]) -> Optional[PyRepositoryInfo]
     revision = _git(project_dir, "rev-parse", "HEAD")
     if not revision:
         return None
-    uri = _git(project_dir, "remote", "get-url", "origin") or None
+    raw_uri = _git(project_dir, "remote", "get-url", "origin")
+    uri = _strip_userinfo(raw_uri) if raw_uri else None
     status = _git(project_dir, "status", "--porcelain", "--untracked-files=no")
     return PyRepositoryInfo(uri=uri, revision=revision, dirty=bool(status))
 

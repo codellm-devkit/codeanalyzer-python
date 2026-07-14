@@ -51,6 +51,33 @@ def test_app_node_carries_provenance_props():
     assert app_row.props["repo_dirty"] is False
 
 
+def test_repo_uri_credentials_are_stripped(tmp_path):
+    _run_git(tmp_path, "init")
+    _run_git(tmp_path, "config", "user.email", "t@example.invalid")
+    _run_git(tmp_path, "config", "user.name", "t")
+    _run_git(tmp_path, "remote", "add", "origin", "https://ci-user:supersecret@example.invalid/org/repo.git")
+    (tmp_path / "a.py").write_text("x = 1\n")
+    _run_git(tmp_path, "add", "a.py")
+    _run_git(tmp_path, "commit", "-m", "init")
+
+    info = repository_info(tmp_path)
+
+    assert info.uri == "https://example.invalid/org/repo.git"
+    assert "supersecret" not in (info.uri or "")
+
+
+def test_scp_style_remote_is_left_intact(tmp_path):
+    _run_git(tmp_path, "init")
+    _run_git(tmp_path, "config", "user.email", "t@example.invalid")
+    _run_git(tmp_path, "config", "user.name", "t")
+    _run_git(tmp_path, "remote", "add", "origin", "git@example.invalid:org/repo.git")
+    (tmp_path / "a.py").write_text("x = 1\n")
+    _run_git(tmp_path, "add", "a.py")
+    _run_git(tmp_path, "commit", "-m", "init")
+
+    assert repository_info(tmp_path).uri == "git@example.invalid:org/repo.git"
+
+
 def test_untracked_files_do_not_mark_the_checkout_dirty(tmp_path):
     _run_git(tmp_path, "init")
     _run_git(tmp_path, "config", "user.email", "t@example.invalid")
