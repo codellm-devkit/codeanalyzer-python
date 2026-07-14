@@ -64,3 +64,15 @@ def test_fallback_signatures_strip_only_the_py_suffix(tmp_path):
     }
     for relative_path, expected in cases.items():
         assert builder._fallback_signature(tmp_path / relative_path, "extract") == expected
+
+
+def test_class_attribute_initializers_are_captured(single_functionalities__method_call_resolution):
+    builder = SymbolTableBuilder(single_functionalities__method_call_resolution, None)
+    module = builder.build_pymodule_from_file(single_functionalities__method_call_resolution / "main.py")
+
+    account_move = next(c for c in module.classes.values() if c.name == "AccountMove")
+    assert account_move.attributes["_name"].initializer == "'account.move'"
+    assert account_move.attributes["_inherit"].initializer == "['mail.thread']"
+
+    model = next(c for c in module.classes.values() if c.name == "Model")
+    assert model.attributes["env"].initializer == "Environment()"

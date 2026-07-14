@@ -50,7 +50,9 @@ def make_sample_app() -> PyApplication:
         base_classes=["src.service.BaseService"],
         methods={"announce": announce},
         attributes={
-            "name": PyClassAttribute(name="name", type="str", start_line=8, end_line=8)
+            "name": PyClassAttribute(
+                name="name", type="str", initializer="'svc'", start_line=8, end_line=8
+            )
         },
         inner_classes={"Inner": inner},
         start_line=6,

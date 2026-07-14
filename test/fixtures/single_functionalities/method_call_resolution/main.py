@@ -14,6 +14,9 @@ class Model:
 
 
 class AccountMove(Model):
+    _name = 'account.move'
+    _inherit = ['mail.thread']
+
     def action_post(self):
         accounts = self.env['account.account'].search([])
         self.helper()

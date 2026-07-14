@@ -432,6 +432,7 @@ class SymbolTableBuilder:
                                     script, target.lineno, target.col_offset
                                 )
                             )
+                            .initializer(ast.unparse(stmt.value) if stmt.value else None)
                             .start_line(getattr(target, "lineno", -1))
                             .end_line(getattr(stmt, "end_lineno", stmt.lineno))
                             .build()
@@ -450,6 +451,7 @@ class SymbolTableBuilder:
                                 script, target.lineno, target.col_offset
                             )
                         )
+                        .initializer(ast.unparse(stmt.value) if stmt.value else None)
                         .start_line(getattr(target, "lineno", -1))
                         .end_line(getattr(stmt, "end_lineno", stmt.lineno))
                         .build()

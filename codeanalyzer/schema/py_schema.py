@@ -295,6 +295,7 @@ class PyClassAttribute(BaseModel):
 
     name: str
     type: Optional[str] = None
+    initializer: Optional[str] = None
     comments: List[PyComment] = []
     start_line: int = -1
     end_line: int = -1

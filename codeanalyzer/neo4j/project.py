@@ -288,6 +288,7 @@ def _attribute_props(a: PyClassAttribute, attr_id: str, file_key: str) -> Props:
             "id": attr_id,
             "name": a.name,
             "type": a.type,
+            "initializer": a.initializer,
             "docstring": _docstring_of(a.comments),
             "start_line": a.start_line,
             "end_line": a.end_line,
