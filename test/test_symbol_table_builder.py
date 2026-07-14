@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from codeanalyzer.syntactic_analysis.symbol_table_builder import SymbolTableBuilder
@@ -41,3 +42,13 @@ def test_call_return_types_reflect_the_call_result(single_functionalities__metho
     assert call_sites["helper"].return_type == "int"
     assert call_sites["len"].return_type == "int"
     assert call_sites["str"].return_type == "str"
+
+
+def test_builder_accepts_a_relative_project_dir(single_functionalities__method_call_resolution):
+    relative_dir = Path(os.path.relpath(single_functionalities__method_call_resolution, Path.cwd()))
+    assert not relative_dir.is_absolute()
+
+    call_sites = _action_post_call_sites(relative_dir)
+
+    assert call_sites["search"].callee_signature == "main.Model.search"
+    assert call_sites["helper"].callee_signature == "main.Model.helper"

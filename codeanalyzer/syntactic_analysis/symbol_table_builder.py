@@ -1,5 +1,6 @@
 import ast
 import hashlib
+import os
 import tokenize
 from ast import AST, ClassDef
 from io import StringIO
@@ -28,7 +29,11 @@ class SymbolTableBuilder:
     """A class for building a symbol table for a Python project."""
 
     def __init__(self, project_dir: Union[Path, str], virtualenv: Union[Path, str, None]) -> None:
-        self.project_dir = Path(project_dir)
+        # Jedi reports absolute Script paths, so a relative project_dir would
+        # crash every relative_to() fallback below. abspath (not resolve())
+        # keeps symlinks intact, matching Jedi's own absolute()-style
+        # normalization under symlinked roots like macOS /tmp.
+        self.project_dir = Path(os.path.abspath(project_dir))
         if virtualenv is None:
             # If no virtual environment is provided, create a jedi project without an environment.
             self.jedi_project: Project = jedi.Project(path=self.project_dir)
