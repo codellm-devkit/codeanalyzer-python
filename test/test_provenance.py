@@ -49,3 +49,17 @@ def test_app_node_carries_provenance_props():
     assert app_row.props["source_revision"] == "deadbeef"
     assert app_row.props["analyzer_name"] == "codeanalyzer-python"
     assert app_row.props["repo_dirty"] is False
+
+
+def test_untracked_files_do_not_mark_the_checkout_dirty(tmp_path):
+    _run_git(tmp_path, "init")
+    _run_git(tmp_path, "config", "user.email", "t@example.invalid")
+    _run_git(tmp_path, "config", "user.name", "t")
+    (tmp_path / "a.py").write_text("x = 1\n")
+    _run_git(tmp_path, "add", "a.py")
+    _run_git(tmp_path, "commit", "-m", "init")
+
+    (tmp_path / "scratch.py").write_text("y = 2\n")
+
+    info = repository_info(tmp_path)
+    assert info.dirty is False
