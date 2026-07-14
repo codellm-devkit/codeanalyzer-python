@@ -44,9 +44,9 @@ def test_cli_call_symbol_table_with_json(cli_runner, whole_applications__xarray)
     assert json_obj is not None, "JSON output should not be None"
     assert isinstance(json_obj, dict), "JSON output should be a dictionary"
     assert json_obj.get("schema_version") == "2.0.0"
-    app = json_obj["application"]
-    assert "symbol_table" in app
-    assert len(app["symbol_table"]) > 0
+    application = json_obj["application"]
+    assert "symbol_table" in application
+    assert len(application["symbol_table"]) > 0
 
 
 def test_no_venv_skips_virtualenv(

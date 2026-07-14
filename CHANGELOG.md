@@ -7,46 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- **`--analysis-level 3`: native dataflow graphs** (#67). Whole-program dependence graphs built
-  in-process from the stdlib `ast` — per-callable exceptional **CFG**s (statement-level, synthetic
-  ENTRY/EXIT, first-class exception/yield/await edges), **PDG**s (Ferrante–Ottenstein–Warren
-  control dependence + reaching-definitions data dependence over k-limited access paths), and a
-  Horwitz–Reps–Binkley **SDG** (formal/actual parameter nodes, CALL/PARAM_IN/PARAM_OUT edges,
-  SUMMARY edges from bottom-up relational function summaries over the Tarjan SCC condensation;
-  globals as extra formals, closure captures bound at definition sites). Emitted as the
-  `program_graphs` section of `analysis.json` (own `schema_version` 1.0.0), keyed by the same
-  callable signatures as the symbol table and call graph.
-- **Context-sensitive backward slicing** as an SDG query (`codeanalyzer.dataflow.slicing`, HRB
-  two-phase traversal). Taint is deliberately left to the CLDK SDK — post-SDG it is
-  language-independent labeled reachability.
-- **CPG overlay in the Neo4j projection** at level 3: `PyCFGNode` nodes plus the
-  `PY_HAS_CFG_NODE`/`PY_CFG_NEXT`/`PY_CDG`/`PY_DDG`/`PY_PARAM_IN`/`PY_PARAM_OUT`/`PY_SUMMARY`
-  edge vocabulary — cross-language in shape, PY_-namespaced like every other row family so a
-  multi-language database never mingles analyzers' dependence edges. `schema.neo4j.json`
-  bumped additively to **1.2.0**.
-- **New flags**: `--graphs cfg,dfg,pdg,sdg` (scopes the emitted sections; strict validation —
-  unknown values or use below `-a 3` exit non-zero) and `--graph-field-depth` (access-path
-  k-limit, default 3 — the bound that guarantees the interprocedural fixpoint terminates).
-- **Alias oracle (MVP)**: type-based may-alias using Jedi-inferred types (unknown types
-  conservatively alias); frozen behind `may_alias()` for a later points-to upgrade.
-
-### Changed
-- `-a/--analysis-level` now accepts `3`; levels stay cumulative (level 3 includes PyCG
-  enrichment). `-a 1`/`-a 2` output and timings are unchanged.
-
 ## [0.4.0] - 2026-07-14
 
 ### Added
 - **Four analysis levels** (`-a 1|2|3|4`): L1 is symbol table and Jedi call graph; L2 adds
   PyCG call-graph edges (`--pycg-shard` scales to large apps); L3 adds intraprocedural dataflow
   (CFG/CDG/DDG, syntactic, `prov:["ssa"]`); L4 adds interprocedural SDG with synthetic
-  parameter-in/out and summary edges, alias-aware DDG (`prov:["points-to"]`).
+  parameter-in/out and summary edges, alias-aware DDG (`prov:["points-to"]`). Dataflow graphs are
+  built in-process from the stdlib `ast` (exceptional CFGs with synthetic ENTRY/EXIT and
+  exception/yield/await edges; Ferrante–Ottenstein–Warren control dependence; reaching-definitions
+  data dependence over k-limited access paths; a Horwitz–Reps–Binkley SDG with parameter and
+  bottom-up summary edges over the Tarjan SCC condensation). They are emitted inline on each
+  callable as `body`/`cfg`/`cdg`/`ddg` under the v2 `application` tree — not a separate section.
+- **`--graphs` and `--graph-field-depth` flags** (level 3+): `--graphs cfg,dfg,pdg,sdg` scopes the
+  emitted program-graph sections (strict validation — unknown values or use below `-a 3` exit
+  non-zero; `sdg` requires `-a 4`); `--graph-field-depth` sets the access-path k-limit (default 3),
+  the bound that guarantees the interprocedural fixpoint terminates.
+- **Context-sensitive backward slicing** as an SDG query (`codeanalyzer.dataflow.slicing`,
+  HRB two-phase traversal). Taint is deliberately left to the CLDK SDK — post-SDG it is
+  language-independent labeled reachability.
 - **Scalpel points-to oracle** for L4 alias analysis (optional `python-scalpel` dependency:
   `pip install "codeanalyzer-python[scalpel]"`). Automatic type-based fallback when absent.
 - **Neo4j schema v2.0.0** — the property graph is re-keyed onto canonical `can://` node IDs.
   New `PY_PARAM_IN`, `PY_PARAM_OUT`, `PY_SUMMARY` edges. `PY_DDG` carries `prov` property
   to distinguish syntactic (ssa) from semantic (points-to) dependence.
+- **Neo4j CPG overlay at levels 3–4** (part of schema v2.0.0): `PyCFGNode` nodes plus the
+  `PY_HAS_CFG_NODE`/`PY_CFG_NEXT`/`PY_CDG`/`PY_DDG` edges project each callable's control-flow and
+  dependence graph, PY_-namespaced like every other row family so a multi-language database never
+  mingles analyzers' dependence edges.
 
 ### Changed
 - **BREAKING: canonical schema v2** (`analysis.json`). Structure is now a single additive CPG

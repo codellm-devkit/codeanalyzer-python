@@ -131,7 +131,7 @@ python -m codeanalyzer -i <sample> -a 2 -o <tmp> --no-venv   # → analysis.l2.j
 python -m codeanalyzer -i <sample> -a 3 -o <tmp> --no-venv   # → analysis.l3.json
 python -m codeanalyzer -i <sample> -a 4 -o <tmp> --no-venv   # → analysis.l4.json
 python -m codeanalyzer -i <sample> --emit neo4j -o <tmp> --no-venv   # → graph.cypher
-python -m codeanalyzer --emit schema -o <tmp>                # → schema.neo4j.json
+python -m codeanalyzer --emit schema -o <tmp>                # → schema.json
 ```
 
 In `analysis.l4.json`, the interprocedural flow to verify:
