@@ -156,7 +156,7 @@ contain upstream drift.
 
 The stage-5 pre-release conformance check against the canonical schema-v2
 keystone (paired-fixture parity with codeanalyzer-typescript-v2) found five
-deviations; all landed before the 0.4.0 tag so no per-language special cases
+deviations; all landed before the 1.0.0 tag so no per-language special cases
 bake into the SDK's shared `cpg` models:
 
 1. **Edge keys.** `call_graph` edges are `{src, dst, prov, weight}` — the

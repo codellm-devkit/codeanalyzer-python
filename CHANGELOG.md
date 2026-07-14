@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.4.0] - 2026-07-14
+## [1.0.0] - 2026-07-14
 
 ### Added
 - **Four analysis levels** (`-a 1|2|3|4`): L1 is symbol table and Jedi call graph; L2 adds
@@ -44,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `application.symbol_table`, `application.call_graph` (now nested under `application`), and
   inline `body`/`cfg`/`cdg`/`ddg` on each callable. Nodes carry canonical `can://` identifiers.
   Module `source` is stored once with byte-offset spans; per-node `code` is dropped. Upgrade:
-  pin `codeanalyzer-python==0.4.0` and update any code that read top-level
+  pin `codeanalyzer-python==1.0.0` and update any code that read top-level
   `symbol_table`/`call_graph` to go through `application`.
 - **BREAKING: keystone conformance sweep** (#98, part of the schema-v2 change above; key-for-key
   parity with the canonical CPG keystone shared by every analyzer):

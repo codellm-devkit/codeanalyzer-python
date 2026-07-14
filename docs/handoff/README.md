@@ -13,14 +13,14 @@ the contract lives in the spec, the decision log, and `schema.neo4j.json`.
 Pin the analyzer that produced these samples:
 
 ```
-pip install "codeanalyzer-python==0.4.0"
+pip install "codeanalyzer-python==1.0.0"
 ```
 
 For L4 alias analysis (the Scalpel points-to oracle), install the optional extra —
 without it, L4 degrades to the type-based fallback oracle (still sound, coarser):
 
 ```
-pip install "codeanalyzer-python[scalpel]==0.4.0"
+pip install "codeanalyzer-python[scalpel]==1.0.0"
 ```
 
 ## Schema contract
@@ -38,7 +38,7 @@ The authoritative contract for consuming these outputs is, in order:
   merge keys, property types, and relationship types. Byte-identical to the repo-root
   `schema.neo4j.json` and to `python -m codeanalyzer --emit schema`.
 
-### Containment vocabulary (keystone-conformant as of 0.4.0)
+### Containment vocabulary (keystone-conformant as of 1.0.0)
 
 The `analysis.json` symbol tree uses the **canonical keystone member names** —
 no per-language mapping layer is needed (issue #98 closed the old

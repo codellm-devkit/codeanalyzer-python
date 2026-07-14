@@ -68,7 +68,7 @@ application scope because their endpoints span callables.
 canonical names — `PyModule.types`/`.functions`, `PyClass.callables`/`.types`,
 `PyCallable.callables`/`.types` — never per-language renames, so one SDK model
 set parses every analyzer's output. (The historical `classes`/`methods`/
-`inner_classes` names are gone as of 0.4.0.)
+`inner_classes` names are gone as of 1.0.0.)
 
 **No dangling edge endpoints.** Every `call_graph` endpoint joins the id space:
 declared callables by their `can://` tree id, imported/builtin targets by a

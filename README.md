@@ -463,7 +463,7 @@ just populate more of the same tree:
   "language": "python",
   "max_level": 4,                 // the level this run was produced at
   "k_limit": 3,                   // access-path depth bound (--graph-field-depth); L3+ only
-  "analyzer": { "name": "codeanalyzer-python", "version": "0.4.0" },
+  "analyzer": { "name": "codeanalyzer-python", "version": "1.0.0" },
   "application": {
     "id": "can://python/<app>",
     "kind": "application",
