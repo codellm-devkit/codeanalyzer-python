@@ -4,7 +4,7 @@
 
 # codeanalyzer-python (`canpy`)
 
-**A Python static-analysis toolkit — the CLDK backend that emits a canonical symbol table and call graph, as `analysis.json` or a Neo4j property graph.**
+**A Python static-analysis toolkit — the CLDK backend that emits the canonical schema v2 Code Property Graph, as `analysis.json` or a Neo4j property graph.**
 
 [![PyPI](https://img.shields.io/pypi/v/codeanalyzer-python?style=for-the-badge&logo=pypi&logoColor=white)](https://pypi.org/project/codeanalyzer-python/)
 [![GitHub release](https://img.shields.io/github/v/release/codellm-devkit/codeanalyzer-python?style=for-the-badge&logo=github&label=GitHub&color=2dba4e)](https://github.com/codellm-devkit/codeanalyzer-python/releases/latest)
@@ -15,18 +15,19 @@
 
 ---
 
-`canpy` is a static analyzer for Python built on [Jedi](https://jedi.readthedocs.io/), with optional
-[CodeQL](https://codeql.github.com/)-resolved call edges and
-[Tree-sitter](https://tree-sitter.github.io/) parsing. It produces the canonical CodeLLM-DevKit
-(CLDK) `analysis.json` — a symbol table plus a call graph — and can project that same analysis into a
-**Neo4j property graph**. It is the Python backend behind
-[CLDK](https://github.com/codellm-devkit/python-sdk), mirroring its
+`canpy` is a static analyzer for Python built on [Jedi](https://jedi.readthedocs.io/),
+[PyCG](https://github.com/vitsalis/PyCG), and [Tree-sitter](https://tree-sitter.github.io/). It
+emits the **canonical CodeLLM-DevKit (CLDK) schema v2** — a single, additive Code Property Graph
+tree — either as `analysis.json` or projected into a **Neo4j property graph**. It is the Python
+backend behind [CLDK](https://github.com/codellm-devkit/python-sdk), mirroring its
 [TypeScript](https://github.com/codellm-devkit/codeanalyzer-typescript) (`cants`) and
 [Java](https://github.com/codellm-devkit/codeanalyzer-java) siblings.
 
-Every run produces a symbol table **and** a call graph. Edges come from Jedi's lexical resolution by
-default; `--codeql` resolves additional edges (RPC / third-party / dynamically-dispatched targets)
-and merges them with the Jedi-derived edges, also backfilling callees Jedi could not resolve.
+The payload is **one tree grown one layer at a time** across four analysis levels (`-a 1|2|3|4`): a
+symbol table, a call graph, intraprocedural control- and data-dependence graphs, and a whole-program
+interprocedural system dependence graph. Each level is a strict superset of the one below it
+(`analysis.json(-a 1) ⊆ … ⊆ analysis.json(-a 4)`), so a consumer can request exactly the depth it
+needs.
 
 ## Table of Contents
 
@@ -40,6 +41,9 @@ and merges them with the Jedi-derived edges, also backfilling callees Jedi could
 - [Usage](#usage)
   - [Options](#options)
   - [Examples](#examples)
+- [Analysis levels](#analysis-levels)
+- [Architecture & Tooling](#architecture--tooling)
+- [Output shape (canonical schema v2)](#output-shape-canonical-schema-v2)
 - [Output targets](#output-targets)
   - [`analysis.json` (default)](#analysisjson-default)
   - [Neo4j graph](#neo4j-graph)
@@ -49,19 +53,21 @@ and merges them with the Jedi-derived edges, also backfilling callees Jedi could
 
 ## Features
 
+- **Canonical schema v2** — one additive Code Property Graph tree (`schema_version` `2.0.0`),
+  stamped with `language`, `max_level`, and `k_limit`, rooted at a single `application` node with
+  durable `can://` ids on every callable and above.
 - **Symbol table** — modules, classes, functions, methods, variables, decorators, imports, and
-  docstrings, with precise source spans.
-- **Call graph** — Jedi's lexical resolver by default (level 1), with optional **PyCG**-resolved
-  edges merged in at `--analysis-level 2` (provenance-tagged, coupling-aware sharding for large
-  apps).
-- **Dataflow graphs (level 3)** — native, whole-program dependence graphs built from Python's own
-  `ast`: per-callable exceptional **CFG**s and **PDG**s (control + data dependence), stitched into
-  a Horwitz–Reps–Binkley **SDG** with parameter/summary edges, emitted as the `program_graphs`
-  section at `--analysis-level 3` and queryable with a context-sensitive backward slicer.
+  docstrings, with precise byte-offset source spans; each module carries its `source` once.
+- **Call graph** — Jedi's lexical resolver at level 1, enriched with **PyCG**-resolved edges at
+  level 2 (provenance-tagged, coupling-aware sharding for large apps).
+- **Dataflow graphs** — native, per-callable exceptional **CFG** plus **control-** and
+  **data-dependence** edges (`cfg`/`cdg`/`ddg`) at level 3, stitched into a whole-program
+  **interprocedural SDG** (synthetic parameter vertices, `param_in`/`param_out`/`summary`,
+  alias-aware DDG) at level 4 — all built in-process from the stdlib `ast`.
 - **Neo4j output** — project the analysis into a labeled property graph: a self-contained
   `graph.cypher` snapshot, or an **incremental** push to a live database over Bolt.
 - **Versioned schema** — a machine-readable, version-stamped Neo4j schema contract (`--emit schema`),
-  checked in as `schema.neo4j.json` and shipped with every release.
+  checked in as `schema.neo4j.json` (`2.0.0`) and shipped with every release.
 - **Incremental cache** — per-file results are cached under `.codeanalyzer`; `--lazy` (default)
   reuses them, `--eager` forces a clean rebuild. `--ray` distributes the work across cores.
 - **Compact output** — canonical `analysis.json`, or binary `analysis.msgpack` for smaller artifacts.
@@ -96,6 +102,13 @@ For the optional **live Neo4j push** (`--emit neo4j --neo4j-uri …`), install t
 
 ```sh
 pip install 'codeanalyzer-python[neo4j]'
+```
+
+For the **Scalpel-backed points-to oracle** at level 4, install the `scalpel` extra. It is optional:
+when it is absent, level 4 automatically falls back to the built-in type-based oracle.
+
+```sh
+pip install 'codeanalyzer-python[scalpel]'
 ```
 
 ### Install via shell script
@@ -189,23 +202,25 @@ $ canpy --help
 │                                                                        (default: server          │
 │                                                                        default).                 │
 │                                                                        [env var: NEO4J_DATABASE] │
-│ --analysis-level       -a                     INTEGER RANGE [1<=x<=3]  Analysis depth: 1=symbol  │
+│ --analysis-level       -a                     INTEGER RANGE [1<=x<=4]  Analysis depth: 1=symbol  │
 │                                                                        table+Jedi call graph,    │
 │                                                                        2=+PyCG call graph,       │
-│                                                                        3=+native dataflow graphs │
-│                                                                        (CFG/PDG/SDG).            │
+│                                                                        3=+native intraprocedural │
+│                                                                        dataflow (CFG/PDG),       │
+│                                                                        4=+interprocedural SDG    │
+│                                                                        (param/summary edges,     │
+│                                                                        alias-aware DDG).         │
 │                                                                        [default: 1]              │
-│ --graphs                                      TEXT                     Level 3 only:             │
+│ --graphs                                      TEXT                     Level 3+ only:            │
 │                                                                        comma-separated           │
 │                                                                        program-graph sections to │
 │                                                                        emit (cfg, dfg, pdg,      │
-│                                                                        sdg). Default: all. `dfg` │
-│                                                                        emits the PDG's data      │
-│                                                                        edges only; `sdg` implies │
-│                                                                        the dependence edges it   │
-│                                                                        stitches.                 │
-│                                                                        [default:                 │
-│                                                                        cfg,dfg,pdg,sdg]          │
+│                                                                        sdg). Default:            │
+│                                                                        cfg,dfg,pdg. `dfg` emits  │
+│                                                                        the PDG's data edges      │
+│                                                                        only; `sdg` requires -a   │
+│                                                                        4.                        │
+│                                                                        [default: cfg,dfg,pdg]    │
 │ --graph-field-depth                           INTEGER RANGE [x>=1]     Level 3 only: k-limit on  │
 │                                                                        access-path depth         │
 │                                                                        (x.f.g.h with k=3 becomes │
@@ -347,14 +362,13 @@ $ canpy --help
    canpy --input ./my-python-project --output ./out --format msgpack   # → ./out/analysis.msgpack
    ```
 
-3. **Resolve extra call edges with CodeQL:**
+3. **Enrich the call graph with PyCG (level 2):**
    ```sh
-   canpy --input ./my-python-project --codeql
+   canpy --input ./my-python-project -a 2
    ```
-   By default, edges come from Jedi's lexical analysis. Adding `--codeql` resolves additional edges
-   (including RPC / third-party / dynamically-dispatched targets) and merges them with the
-   Jedi-derived edges; CodeQL also backfills resolved callees Jedi could not resolve. CodeQL
-   integration is experimental; the CLI is downloaded into `<cache_dir>/codeql/` on first use.
+   Level 1 edges come from Jedi's lexical resolution. `-a 2` runs **PyCG** and merges its
+   flow-sensitive edges in (RPC / third-party / dynamically-dispatched targets), backfilling
+   callees Jedi could not resolve. Every edge is provenance-tagged (e.g. `jedi`, `pycg`).
 
 4. **Emit a Neo4j snapshot, or push to a live database:**
    ```sh
@@ -374,54 +388,134 @@ $ canpy --help
    canpy --input ./my-python-project --eager --cache-dir /path/to/custom-cache
    ```
 
-7. **Native dataflow graphs (level 3) — CFG/PDG/SDG + slicing:**
+7. **Dataflow graphs — intraprocedural (level 3) and interprocedural (level 4):**
    ```sh
-   canpy --input ./my-python-project -a 3 --output ./out          # + program_graphs section
+   canpy --input ./my-python-project -a 3 --output ./out          # per-callable cfg/cdg/ddg
+   canpy --input ./my-python-project -a 4 --output ./out          # + interprocedural SDG
    canpy --input ./my-python-project -a 3 --graphs cfg,pdg        # scope the emitted sections
+   canpy --input ./my-python-project -a 4 --graphs sdg            # sdg requires -a 4
    canpy --input ./my-python-project -a 3 --graph-field-depth 2   # tighter access-path k-limit
    ```
-   Level 3 also enriches the Neo4j projection (`--emit neo4j`) with the CPG overlay
-   (`:PyCFGNode` nodes and `PY_CFG_NEXT`/`PY_CDG`/`PY_DDG`/`PY_PARAM_IN`/`PY_PARAM_OUT`/
-   `PY_SUMMARY` edges — the cross-language dataflow vocabulary, PY_-namespaced like every
-   other row family so multi-language databases never mingle analyzers' edges).
+   Levels 3 and 4 also enrich the Neo4j projection (`--emit neo4j`) with the CPG overlay
+   (`:PyCFGNode` nodes wired by `PY_CFG_NEXT`/`PY_CDG`/`PY_DDG`, plus the level-4
+   `PY_PARAM_IN`/`PY_PARAM_OUT`/`PY_SUMMARY` edges — the cross-language dataflow vocabulary,
+   PY_-namespaced like every other row family so multi-language databases never mingle
+   analyzers' edges).
 
 ## Analysis levels
 
-| Level | Flag | What it adds | Cost |
-| --- | --- | --- | --- |
-| 1 | `-a 1` (default) | Symbol table + Jedi resolver call graph | Cheap |
-| 2 | `-a 2` | PyCG call-graph enrichment (provenance-merged) | Moderate |
-| 3 | `-a 3` | Native CFG/PDG/SDG (`program_graphs`) + CPG Neo4j overlay + backward slicing | Heavy, whole-program |
+Each level is the same tree grown one layer deeper, plus the edge family over that new layer. The
+levels are cumulative and additive — `analysis.json(-a 1) ⊆ … ⊆ analysis.json(-a 4)`.
 
-Levels are cumulative — `-a 3` includes level 2's call graph (the SDG is stitched over it).
-Nothing at level 3 runs unless requested: `-a 1`/`-a 2` timings and output are unaffected.
+| Level | Flag | What it adds | Where it lands |
+| --- | --- | --- | --- |
+| **1** | `-a 1` (default) | Symbol table, Jedi call graph, and `call` nodes in each callable's `body` | `body` calls (`callee: null`) |
+| **2** | `-a 2` | PyCG call-graph enrichment; each call's `callee` backfilled to a `can://` id | `call_graph`, `body` callees |
+| **3** | `-a 3` | Native **intraprocedural** CFG/CDG/DDG (syntactic, name-equality, `prov: ["ssa"]`) | `cfg`, `cdg`, `ddg`, `@entry`/`@exit` on each callable |
+| **4** | `-a 4` | **Interprocedural** SDG: synthetic param vertices, alias-aware DDG (`prov: ["points-to"]`) | `param_in`, `param_out`, `summary`, semantic `ddg` |
+
+`-a 1`/`-a 2` timings and output are unaffected by the heavier levels — nothing at level 3+ runs
+unless requested. Flag gating: `--graphs sdg` requires `-a 4`; `--graphs cfg,dfg,pdg` and
+`--graph-field-depth` require `-a 3`.
 
 ## Architecture & Tooling
 
-Locked level-3 substrate decisions
+The dataflow substrate is hand-built from the standard library so every graph node joins back to a
+symbol-table signature by construction
 ([#67](https://github.com/codellm-devkit/codeanalyzer-python/issues/67)):
 
-- **CFG source:** hand-built from the stdlib `ast` module — the same parse the symbol-table
-  builder uses, so graph nodes join back to symbol-table signatures by construction. One
-  synthetic `ENTRY`/`EXIT` per callable, statement-level nodes keyed `(signature, node_id)`
-  in source-span order, exceptional edges first-class.
-- **Def-use source:** hand-built reaching definitions (classic forward worklist) over k-limited
-  access paths (`--graph-field-depth`, default 3) — no usable SSA library exists for Python.
-- **Points-to oracle:** a **type-based may-alias MVP stub** — two access paths may alias iff
-  their suffixes are prefix-compatible and their bases' Jedi-inferred types are compatible
-  (unknown types conservatively alias). Frozen behind `may_alias()`; upgrading to a real
-  points-to substrate is staged follow-up work. Call dispatch comes from the merged
-  Jedi(+PyCG) call graph, treated as a frozen oracle.
-- **Summaries:** relational formal-in → formal-out flows composed bottom-up over the Tarjan
-  SCC condensation of the call graph, monotone fixpoint within SCCs; globals ride as extra
-  formals (`<global>:module::name`), closure captures bind at definition sites.
-- **Clients:** backward slicing ships in-process (two-phase context-sensitive HRB traversal,
-  `codeanalyzer.dataflow.slicing`). Taint is deliberately left to the CLDK SDK: once the SDG
-  is emitted it is language-independent labeled reachability.
+- **CFG source:** a hand-built **exceptional** control-flow graph from the stdlib `ast` module — the
+  same parse the symbol-table builder uses. One synthetic `@entry`/`@exit` per callable,
+  statement-level nodes keyed `line:col` in source order, with exception / `yield` / `await` edges
+  first-class.
+- **Def-use source:** hand-built **reaching definitions** (a classic forward worklist) over
+  k-limited access paths (`--graph-field-depth`, default 3) — there is no usable SSA library for
+  Python. This yields the level-3 syntactic DDG (name-equality, `prov: ["ssa"]`).
+- **Points-to oracle (level 4):** the **Scalpel** may-alias oracle — `ScalpelAliasOracle`
+  (`codeanalyzer/dataflow/scalpel_oracle.py`) — consumes Scalpel's SSA copy/const facts to answer
+  `may_alias(path_a, path_b)`, adding the alias-aware DDG edges (`prov: ["points-to"]`) and the
+  interprocedural summaries. `python-scalpel` is an **optional dependency**
+  (`pip install 'codeanalyzer-python[scalpel]'`); when it is absent or cannot resolve a construct,
+  the analyzer automatically falls back to the built-in `TypeBasedAliasOracle` (Jedi-inferred types;
+  unknown types conservatively alias), keeping the `may_alias` interface total. Call dispatch comes
+  from the merged Jedi(+PyCG) call graph, treated as a frozen oracle.
+- **Summaries:** relational formal-in → formal-out flows composed bottom-up over the Tarjan SCC
+  condensation of the call graph, a monotone fixpoint within SCCs; globals ride as extra formals,
+  closure captures bind at definition sites.
+- **Slicing and taint are the SDK's responsibility.** A backward slicer ships in-process
+  (`codeanalyzer.dataflow.slicing`), but only as an **internal validation utility** for the L3/L4
+  gates — it is not a product surface. Once the SDG is emitted, slicing and taint become
+  language-independent labeled reachability and belong to the CLDK SDK across the provider/client
+  boundary; the analyzer emits the `summary` substrate and **no `taint_flows` section**.
 - **Precision posture:** sound-leaning and over-approximate — prefer false positives to missed
   flows. **Known unsoundness (documented, not silently absorbed):** `eval`/`exec`, reflection
-  (`getattr`/`setattr` with dynamic names), monkey-patching, C extensions, `import` side
-  effects, and module top-level statements (globals are modeled as formals instead).
+  (`getattr`/`setattr` with dynamic names), monkey-patching, C extensions, `import` side effects,
+  and module top-level statements (globals are modeled as formals instead).
+
+## Output shape (canonical schema v2)
+
+Every run produces the same envelope — an `Analysis` document — regardless of level; deeper levels
+just populate more of the same tree:
+
+```jsonc
+{
+  "schema_version": "2.0.0",
+  "language": "python",
+  "max_level": 4,                 // the level this run was produced at
+  "k_limit": 3,                   // access-path depth bound (--graph-field-depth)
+  "application": {
+    "id": "can://python/<app>",
+    "kind": "application",
+    "symbol_table": {             // relative POSIX path → module
+      "pkg/mod.py": {
+        "id": "can://python/<app>/pkg/mod.py",
+        "kind": "module",
+        "source": "…full file text, stored once per module…",
+        "classes":   { "<Class>": { "id": "…", "kind": "class", "methods": { /* callables */ } } },
+        "functions": { "<sig>":   { /* callable, see below */ } }
+      }
+    },
+    "call_graph": [ { "source": "can://…/main(a)", "target": "can://…/helper(x)",
+                      "type": "CALL_DEP", "weight": 1, "provenance": ["jedi", "pycg"] } ],
+    "param_in":  [ { "src": "can://…/main(a)@6:4/actual_in:0", "dst": "can://…/helper(x)@formal_in:0" } ],
+    "param_out": [ { "src": "can://…/helper(x)@formal_out",   "dst": "can://…/main(a)@6:4/actual_out" } ]
+  }
+}
+```
+
+A **callable** (function or method) carries its own CPG, keyed by node id:
+
+```jsonc
+{
+  "id": "can://…/main(a)", "kind": "function",
+  "span": { "start": [5, 0], "end": [7, 12], "bytes": [43, 86] },  // byte offsets into module.source
+  "body": {                                       // node id → node
+    "@entry": { "kind": "entry" },
+    "6:4":    { "kind": "statement", "span": { … } },
+    "6:8":    { "kind": "call", "span": { … }, "callee": "can://…/helper(x)" },  // callee null until L2
+    "@formal_in:0":    { "kind": "formal_in", "of": "a" },              // L4 param vertices
+    "6:4/actual_in:0": { "kind": "actual_in", "of": "a", "parent": "6:4" },
+    "@exit":  { "kind": "exit" }
+  },
+  "cfg":     [ { "src": "@entry", "dst": "6:4", "kind": "fallthrough" } ],    // L3
+  "cdg":     [ { "src": "@entry", "dst": "6:4" } ],                           // L3
+  "ddg":     [ { "src": "6:4", "dst": "7:4", "var": "h", "prov": ["ssa"] } ], // L3 ssa / L4 points-to
+  "summary": [ { "src": "6:4/actual_in:0", "dst": "6:4/actual_out" } ]        // L4
+}
+```
+
+Notable properties:
+
+- **Durable `can://` ids** identify every node at callable granularity and above
+  (`can://python/<app>/<file>/<callable-sig>`); nodes below a callable use ordinal ids
+  (`@entry`, `@exit`, `line:col`, `@formal_in:N`, `line:col/actual_in:N`).
+- **`source` lives once per module**; every node's text is the `module.source[span.bytes]` slice.
+- **Cross-function edges** — `call_graph`, `param_in`, `param_out` — live at **application** scope;
+  the intraprocedural `cfg`/`cdg`/`ddg` and the `summary` edges live **on the callable**.
+- **Breaking change from v1:** there is no more flat top-level `symbol_table`/`call_graph`, and no
+  separate program-graphs section. Everything now hangs off `application`, and the dataflow graphs
+  are inlined on each callable. Read `analysis.application.symbol_table` (was
+  `analysis.symbol_table`) and `analysis.application.call_graph` (was `analysis.call_graph`).
 
 ## Output targets
 
@@ -429,26 +523,19 @@ Locked level-3 substrate decisions
 
 ### `analysis.json` (default)
 
-A `PyApplication` document — the canonical CLDK contract:
-
-```jsonc
-{
-  "symbol_table":   { /* file path → module (classes, functions, variables, imports, …) */ },
-  "call_graph":     [ /* CALL_DEP edges: { source, target, weight, provenance } keyed by callable signature */ ],
-  "program_graphs": { /* -a 3 only: schema_version, k_limit, per-callable { cfg, pdg, param_nodes }, sdg_edges */ }
-}
-```
-
-By default this is printed to stdout in JSON; with `--output` it is written to `analysis.json` (or
-`analysis.msgpack` with `--format msgpack`, a more compact binary format).
+The `Analysis` envelope described above. By default it is printed to stdout as JSON; with `--output`
+it is written to `analysis.json` (or `analysis.msgpack` with `--format msgpack`, a more compact
+binary format).
 
 ### Neo4j graph
 
-`--emit neo4j` projects the same analysis into a labeled property graph. Every node label is
-`Py`-prefixed and every relationship type is `PY_`-prefixed (e.g. `:PyClass`, `PY_CALLS`) so multiple
-language analyzers can share one database without label or relationship-type collisions. Declarations
-are keyed by their signature under a shared `:PySymbol` label; calls, imports, inheritance,
-decorators, and call sites are relationships:
+`--emit neo4j` projects the same schema v2.0.0 analysis into a labeled property graph. Every node
+label is `Py`-prefixed and every relationship type is `PY_`-prefixed (e.g. `:PyClass`, `PY_CALLS`)
+so multiple language analyzers can share one database without label or relationship-type collisions.
+Declarations are keyed by their **`can://` id** under a shared `:PySymbol` label; calls, imports,
+inheritance, decorators, and call sites are relationships. At `-a 3`/`-a 4` the projection gains the
+**CPG overlay** — `:PyCFGNode` nodes (statements, and at level 4 the parameter vertices) wired by
+`PY_CFG_NEXT`/`PY_CDG`/`PY_DDG`, plus the level-4 `PY_PARAM_IN`/`PY_PARAM_OUT`/`PY_SUMMARY` edges:
 
 - **Without `--neo4j-uri`** — writes a self-contained `graph.cypher` (constraints + indexes, a scoped
   wipe, then batched `MERGE`s). Load it with `cypher-shell < graph.cypher`. Needs no extra
@@ -475,10 +562,11 @@ canpy -i ./my-project --emit neo4j     # credentials picked up from the environm
 ### Schema contract
 
 `--emit schema` writes the machine-readable, version-stamped Neo4j schema (`schema.json`: node labels,
-relationships, properties, constraints, and indexes). It needs no project and is checked into the repo
-as `schema.neo4j.json` and bundled in every release as a GitHub Release asset, so a consumer can
-validate producer/consumer compatibility without invoking the tool. The shape of the contract matches
-the [`codeanalyzer-typescript`](https://github.com/codellm-devkit/codeanalyzer-typescript) backend.
+relationships, properties, constraints, and indexes; currently `schema_version` `2.0.0`). It needs no
+project and is checked into the repo as `schema.neo4j.json` and bundled in every release as a GitHub
+Release asset, so a consumer can validate producer/consumer compatibility without invoking the tool.
+The shape of the contract matches the
+[`codeanalyzer-typescript`](https://github.com/codellm-devkit/codeanalyzer-typescript) backend.
 
 A UML of the `analysis.json` schema (the `PyApplication` containment tree) is checked in as
 [`schema-uml.drawio`](./schema-uml.drawio), and the property-graph schema as
