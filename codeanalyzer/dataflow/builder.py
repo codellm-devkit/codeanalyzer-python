@@ -439,6 +439,16 @@ def emit_l4(
     from codeanalyzer.dataflow.identity import IdentityMap
     from codeanalyzer.schema.py_schema import BodyNode, ParamEdge, SummaryEdge
 
+    # L4 emission is additive (it *appends* summary/param edges), so it must
+    # first clear any L4 state a reused cache left on these live objects —
+    # otherwise repeated ``-a 4`` runs against the same cache_dir would keep
+    # growing the lists (1→2→3→…). L3's emit reassigns its lists and is already
+    # idempotent; L4 has to reset explicitly. App-scope lists reset once here,
+    # before the loop that appends to them; per-callable ``summary`` is reset in
+    # the (a) loop below.
+    app.param_in = []
+    app.param_out = []
+
     # Tree callables by signature: these are the live objects in ``app``'s
     # symbol table, so mutating them mutates the emitted tree.
     sig_to_callable: Dict[str, PyCallable] = {}
@@ -462,6 +472,18 @@ def emit_l4(
         pycallable = sig_to_callable.get(sig)
         if pycallable is None:
             continue
+        # Idempotency under cache reuse: drop L4 state a prior run left on this
+        # live callable before re-emitting. ``summary`` is append-built below, so
+        # reset it. The param vertices are re-added by keyed assignment (already
+        # idempotent), but a code change between runs could leave stale ones — so
+        # defensively drop any pre-existing param-kind body nodes first.
+        pycallable.summary = []
+        for k in [
+            k
+            for k, n in pycallable.body.items()
+            if n.kind in ("formal_in", "formal_out", "actual_in", "actual_out")
+        ]:
+            del pycallable.body[k]
         im = ims[sig]
         for pn in fg.param_nodes:
             parent = im.local(pn.call_node) if pn.call_node is not None else None
@@ -551,6 +573,13 @@ def emit_ddg_pointsto_delta(
             continue
         callable_id = sig_to_id.get(sig) or pycallable.id
         im = IdentityMap.for_function(callable_id, fg.pdg)
+
+        # Idempotency under cache reuse: strip any points-to edges a prior run
+        # appended, so this append is idempotent regardless of whether
+        # ``emit_l3_body`` reassigned ``ddg`` this run (it only does when the
+        # ``--graphs`` selector includes ddg). The ``ssa`` edges are left
+        # untouched — they are L3's and this delta is strictly additive over them.
+        pycallable.ddg = [e for e in pycallable.ddg if e.prov != ["points-to"]]
 
         delta = _ddg_local_set(im, fg.pdg) - _ddg_local_set(im, syn.pdg)
         for src, dst, var in sorted(delta, key=lambda t: (t[0], t[1], t[2] or "")):

@@ -306,6 +306,61 @@ def test_ddg_pointsto_delta_is_additive_over_l3_ssa(tmp_path):
     assert not (_keys(pointsto_l4) & _keys(ssa_l4))
 
 
+def test_l4_is_idempotent_under_shared_cache(tmp_path):
+    """L4 emission must be idempotent under same-level cache reuse.
+
+    Running ``-a 4`` twice against the SAME ``cache_dir`` makes the second run a
+    cache hit: it reuses the cached ``PyCallable`` objects, which already carry
+    populated ``summary``/``ddg`` lists. L4 emits by *appending* (summary edges,
+    ``param_in``/``param_out``, points-to ddg edges), so without an explicit
+    reset those lists grow 1→2→3→… on every reuse — corrupting the output (and
+    the Neo4j ``PY_SUMMARY``/``PY_PARAM_*`` projection that inherits it). This
+    pins the two runs byte-identical. Regression for the append-emission bug.
+    """
+    from codeanalyzer.schema import model_dump_json
+
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "m.py").write_text(L4_FIXTURE, encoding="utf-8")
+
+    shared_cache = tmp_path / "shared_cache"
+
+    def _counts(analysis):
+        app = analysis.application
+        by_name = {}
+        for module in app.symbol_table.values():
+            for fn in module.functions.values():
+                by_name[fn.name] = fn
+        return {
+            "caller_summary": len(by_name["caller"].summary),
+            "param_in": len(app.param_in),
+            "param_out": len(app.param_out),
+            "ddg": {name: len(fn.ddg) for name, fn in by_name.items()},
+        }
+
+    # Run 1: cold (writes the cache). Run 2: warm (reuses the cached callables).
+    a1 = _analyze(proj, 4, shared_cache)
+    c1, j1 = _counts(a1), model_dump_json(a1)
+
+    a2 = _analyze(proj, 4, shared_cache)
+    c2, j2 = _counts(a2), model_dump_json(a2)
+
+    # Sharpest check: the full serialized analysis is byte-identical.
+    assert j1 == j2, "L4 output must be byte-identical across two shared-cache runs"
+
+    # No accumulation: every append-built list keeps its length across runs.
+    assert c1["caller_summary"] == c2["caller_summary"], (
+        f"caller.summary grew {c1['caller_summary']}→{c2['caller_summary']} on reuse"
+    )
+    assert c1["param_in"] == c2["param_in"]
+    assert c1["param_out"] == c2["param_out"]
+    assert c1["ddg"] == c2["ddg"], f"ddg lengths grew on reuse: {c1['ddg']} → {c2['ddg']}"
+
+    # The fixture guarantees a pass-through summary edge, so the test would in
+    # fact catch growth (a zero-length list could pass trivially).
+    assert c1["caller_summary"] >= 1
+
+
 # CLI tests for `-a 4` and `--graphs sdg` validation
 def test_cli_a4_with_graphs_sdg_succeeds(tmp_path: Path):
     """CLI: `-a 4 --graphs sdg --no-venv -o <dir>` → exit 0 (sdg now valid at L4)."""
