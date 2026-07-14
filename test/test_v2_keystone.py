@@ -161,3 +161,28 @@ def test_param_edges_nonempty_on_interproc_chain(tmp_path: Path):
     app = payload["application"]
     assert app.get("param_in"), "entry->__init__/greet chain must produce param_in edges"
     assert app.get("param_out"), "greet returns a value: param_out must be non-empty"
+
+
+# --- self round-trip: the emitted artifact validates against the own model ----
+
+def test_emitted_json_round_trips_through_the_analysis_model(tmp_path: Path):
+    """exclude_none emission must stay re-validatable: a variable whose type
+    Jedi cannot infer (dropped `type` key) broke Analysis.model_validate_json
+    with 'Field required' at Odoo scale."""
+    from codeanalyzer.schema.py_schema import Analysis
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "m.py").write_text(
+        "import not_a_real_package\n"
+        "\n"
+        "def f():\n"
+        "    val = not_a_real_package.mystery()\n"
+        "    return val\n",
+        encoding="utf-8",
+    )
+    out = subprocess.run(
+        [sys.executable, "-m", "codeanalyzer", "-i", str(proj), "-a", "1", "--no-venv"],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    a = Analysis.model_validate_json(out)
+    assert a.schema_version == "2.0.0"

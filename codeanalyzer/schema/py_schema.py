@@ -291,7 +291,10 @@ class PyVariableDeclaration(BaseModel):
     """Represents a Python variable declaration."""
 
     name: str
-    type: Optional[str]
+    # Optional WITH a default: emission drops None (exclude_none), so a
+    # required-but-nullable field would make the emitted JSON fail its own
+    # model's validation whenever the type is uninferred.
+    type: Optional[str] = None
     initializer: Optional[str] = None
     value: Optional[Any] = None
     scope: Literal["module", "class", "function"] = "module"

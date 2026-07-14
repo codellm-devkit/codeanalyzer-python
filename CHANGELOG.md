@@ -70,6 +70,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Full-run orphan prune now removes the L3/L4 CPG overlay** of a vanished module: the
   containment closure used for pruning was missing `PY_HAS_CFG_NODE`, stranding every
   `PyCFGNode` (and its dependence edges) in the database after its module was deleted.
+- **Emitted `analysis.json` round-trips through the `Analysis` model again.**
+  `PyVariableDeclaration.type` was required-but-nullable; `exclude_none` emission drops the
+  key when Jedi cannot infer a variable's type, so re-validating the analyzer's own output
+  failed with "Field required" (43k errors on an Odoo-scale run). The field now defaults to
+  `None`; a round-trip gate rides `test_v2_keystone.py`.
 
 ## [0.3.0] - 2026-06-27
 
