@@ -14,6 +14,7 @@ from jedi.api.project import Project
 from codeanalyzer.schema.py_schema import (
     PyCallable,
     PyCallableParameter,
+    PyCallArgument,
     PyCallsite,
     PyClass,
     PyClassAttribute,
@@ -665,12 +666,21 @@ class SymbolTableBuilder:
                 for arg in node.args
             ]
 
+            arguments = [
+                PyCallArgument(
+                    ast_kind=type(arg).__name__,
+                    inferred_type=self._infer_type(script, arg.lineno, arg.col_offset),
+                )
+                for arg in node.args
+            ]
+
             call_sites.append(
                 PyCallsite.builder()
                 .method_name(method_name)
                 .receiver_expr(receiver_expr)
                 .receiver_type(receiver_type)
                 .argument_types(argument_types)
+                .arguments(arguments)
                 .return_type(return_type)
                 .callee_signature(callee_signature)
                 .is_constructor_call(is_constructor)

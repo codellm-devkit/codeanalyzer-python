@@ -139,6 +139,7 @@ NODE_LABELS: List[NodeLabel] = [
             "receiver_expr": "string",
             "receiver_type": "string",
             "argument_types": "string[]",
+            "arguments_json": "string",
             "return_type": "string",
             "callee_signature": "string",
             "is_constructor_call": "boolean",

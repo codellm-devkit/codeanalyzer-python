@@ -321,6 +321,7 @@ def _call_site_props(s: PyCallsite, file_key: str) -> Props:
             "receiver_expr": s.receiver_expr,
             "receiver_type": s.receiver_type,
             "argument_types": list(s.argument_types or []),
+            "arguments_json": _stringify_if(s.arguments),
             "return_type": s.return_type,
             "callee_signature": s.callee_signature,
             "is_constructor_call": s.is_constructor_call,

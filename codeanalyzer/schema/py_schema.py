@@ -242,6 +242,19 @@ class PyCallableParameter(BaseModel):
 
 @builder
 @msgpk
+class PyCallArgument(BaseModel):
+    """One call-site argument: AST category + inferred type, kept separate.
+
+    The legacy ``PyCallsite.argument_types`` mixed these two vocabularies
+    in one list; this model is the disambiguated replacement (#86).
+    """
+
+    ast_kind: str
+    inferred_type: Optional[str] = None
+
+
+@builder
+@msgpk
 class PyCallsite(BaseModel):
     """Represents a Python call site (function or method invocation) with contextual metadata."""
 
@@ -249,6 +262,7 @@ class PyCallsite(BaseModel):
     receiver_expr: Optional[str] = None
     receiver_type: Optional[str] = None
     argument_types: List[str] = []
+    arguments: List[PyCallArgument] = []
     return_type: Optional[str] = None
     callee_signature: Optional[str] = None
     is_constructor_call: bool = False

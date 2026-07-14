@@ -19,7 +19,7 @@ from codeanalyzer.schema import (
     PyModule,
     PyVariableDeclaration,
 )
-from codeanalyzer.schema.py_schema import PyCallEdge, PyCallsite
+from codeanalyzer.schema.py_schema import PyCallArgument, PyCallEdge, PyCallsite
 
 
 def make_sample_app() -> PyApplication:
@@ -82,6 +82,7 @@ def make_sample_app() -> PyApplication:
                 receiver_expr="Service()",
                 receiver_type="src.service.Service",
                 callee_signature="src.service.Service.announce",
+                arguments=[PyCallArgument(ast_kind="Name", inferred_type="str")],
                 start_line=18,
                 start_column=4,
                 end_line=18,
