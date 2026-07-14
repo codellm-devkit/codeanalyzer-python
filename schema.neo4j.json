@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.2.0",
+  "schema_version": "2.0.0",
   "generator": "codeanalyzer-python",
   "marker_labels": [],
   "node_labels": [
@@ -15,8 +15,9 @@
     {
       "label": "PyModule",
       "merge_label": "PyModule",
-      "key": "file_key",
+      "key": "id",
       "properties": {
+        "id": "string",
         "file_key": "string",
         "module_name": "string",
         "content_hash": "string",
@@ -28,8 +29,9 @@
     {
       "label": "PyClass",
       "merge_label": "PySymbol",
-      "key": "signature",
+      "key": "id",
       "properties": {
+        "id": "string",
         "signature": "string",
         "name": "string",
         "code": "string",
@@ -43,8 +45,9 @@
     {
       "label": "PyCallable",
       "merge_label": "PySymbol",
-      "key": "signature",
+      "key": "id",
       "properties": {
+        "id": "string",
         "signature": "string",
         "name": "string",
         "path": "string",
@@ -144,7 +147,7 @@
         "id": "string",
         "kind": "string",
         "var": "string",
-        "call_node": "integer",
+        "call_node": "string",
         "start_line": "integer",
         "end_line": "integer",
         "_module": "string"
@@ -316,7 +319,8 @@
         "PyCFGNode"
       ],
       "properties": {
-        "var": "string"
+        "var": "string",
+        "prov": "string[]"
       }
     },
     {
@@ -356,7 +360,8 @@
   ],
   "constraints": [
     "CREATE CONSTRAINT pyapplication_name IF NOT EXISTS FOR (x:PyApplication) REQUIRE x.name IS UNIQUE",
-    "CREATE CONSTRAINT pymodule_file_key IF NOT EXISTS FOR (x:PyModule) REQUIRE x.file_key IS UNIQUE",
+    "CREATE CONSTRAINT pymodule_id IF NOT EXISTS FOR (x:PyModule) REQUIRE x.id IS UNIQUE",
+    "CREATE CONSTRAINT pysymbol_id IF NOT EXISTS FOR (x:PySymbol) REQUIRE x.id IS UNIQUE",
     "CREATE CONSTRAINT pysymbol_signature IF NOT EXISTS FOR (x:PySymbol) REQUIRE x.signature IS UNIQUE",
     "CREATE CONSTRAINT pypackage_name IF NOT EXISTS FOR (x:PyPackage) REQUIRE x.name IS UNIQUE",
     "CREATE CONSTRAINT pydecorator_name IF NOT EXISTS FOR (x:PyDecorator) REQUIRE x.name IS UNIQUE",

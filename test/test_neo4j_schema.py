@@ -6,13 +6,6 @@ This is the anti-drift guard: if ``project.py`` grows a label or property that
 ``schema.neo4j.json`` honest. It also checks the checked-in ``schema.neo4j.json``
 is regenerated (run ``canpy --emit schema > schema.neo4j.json``).
 """
-import pytest
-pytest.skip(
-    "Deferred to Stage 3 v2 dataflow/neo4j test migration (see issues #73, #72). "
-    "Uses deleted graph models / pre-envelope analyze() shape.",
-    allow_module_level=True,
-)
-
 import json
 from pathlib import Path
 
@@ -20,6 +13,7 @@ from codeanalyzer.neo4j import NODE_LABELS, REL_TYPES, build_schema_document, pr
 from codeanalyzer.neo4j.schema import MARKER_LABELS
 from codeanalyzer.neo4j.cypher import render_cypher
 from codeanalyzer.schema import PyApplication, PyCallable, PyImport, PyModule
+from codeanalyzer.schema.assign_ids import assign_ids
 from codeanalyzer.schema.py_schema import PyCallEdge
 
 from sample_graph_app import make_sample_app
@@ -46,7 +40,8 @@ def _merge_labels_for(specifics):
 
 
 def test_every_emitted_node_label_and_property_is_declared():
-    rows = project(make_sample_app(), "sample-app")
+    app, sig_to_id = make_sample_app()
+    rows = project(app, "sample-app", sig_to_id)
     assert rows.nodes, "projection produced no nodes"
     for node in rows.nodes:
         specific = _specific_label(node.labels)
@@ -61,7 +56,8 @@ def test_every_emitted_node_label_and_property_is_declared():
 
 
 def test_every_emitted_relationship_type_property_and_endpoint_is_declared():
-    rows = project(make_sample_app(), "sample-app")
+    app, sig_to_id = make_sample_app()
+    rows = project(app, "sample-app", sig_to_id)
     assert rows.edges, "projection produced no edges"
     for edge in rows.edges:
         decl = _REL_BY_TYPE.get(edge.type)
@@ -79,7 +75,8 @@ def test_every_emitted_relationship_type_property_and_endpoint_is_declared():
 def test_all_catalog_node_kinds_and_relationships_are_exercised():
     """Guards the fixture itself: every schema label/rel should appear at least
     once, so the conformance asserts above actually cover the whole schema."""
-    rows = project(make_sample_app(), "sample-app")
+    app, sig_to_id = make_sample_app()
+    rows = project(app, "sample-app", sig_to_id)
     seen_labels = {_specific_label(n.labels) for n in rows.nodes}
     seen_rels = {e.type for e in rows.edges}
     assert {n.label for n in NODE_LABELS} <= seen_labels
@@ -87,9 +84,10 @@ def test_all_catalog_node_kinds_and_relationships_are_exercised():
 
 
 def test_render_cypher_is_deterministic_and_self_contained():
-    app = make_sample_app()
-    a = render_cypher(project(app, "sample-app"), "sample-app")
-    b = render_cypher(project(make_sample_app(), "sample-app"), "sample-app")
+    app, sig_to_id = make_sample_app()
+    a = render_cypher(project(app, "sample-app", sig_to_id), "sample-app")
+    app2, sig_to_id2 = make_sample_app()
+    b = render_cypher(project(app2, "sample-app", sig_to_id2), "sample-app")
     assert a == b, "cypher rendering must be deterministic"
     assert "CREATE CONSTRAINT" in a
     assert "DETACH DELETE" in a
@@ -126,7 +124,8 @@ def test_call_edge_to_imported_module_name_is_not_dropped():
             PyCallEdge(source="m.caller", target="os", weight=1, provenance=["jedi"])
         ],
     )
-    rows = project(app, "app")
+    sig_to_id = assign_ids(app, "app")
+    rows = project(app, "app", sig_to_id)
 
     calls_to_os = [
         e for e in rows.edges if e.type == "PY_CALLS" and e.to_ref.value == "os"

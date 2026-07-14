@@ -35,7 +35,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List
 
-SCHEMA_VERSION = "1.2.0"
+SCHEMA_VERSION = "2.0.0"
 
 # PropType ∈ {"string", "integer", "float", "boolean", "string[]", "integer[]"}.
 
@@ -193,7 +193,6 @@ NODE_LABELS: List[NodeLabel] = [
             "id": "string",
             "kind": "string",
             "var": "string",
-            "of": "string",
             "call_node": "string",
             **_SPAN,
             "_module": "string",
