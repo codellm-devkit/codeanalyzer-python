@@ -1,0 +1,378 @@
+{
+  "schema_version": "2.0.0",
+  "generator": "codeanalyzer-python",
+  "marker_labels": [],
+  "node_labels": [
+    {
+      "label": "PyApplication",
+      "merge_label": "PyApplication",
+      "key": "name",
+      "properties": {
+        "name": "string",
+        "schema_version": "string"
+      }
+    },
+    {
+      "label": "PyModule",
+      "merge_label": "PyModule",
+      "key": "id",
+      "properties": {
+        "id": "string",
+        "file_key": "string",
+        "module_name": "string",
+        "content_hash": "string",
+        "last_modified": "float",
+        "file_size": "integer",
+        "_module": "string"
+      }
+    },
+    {
+      "label": "PyClass",
+      "merge_label": "PySymbol",
+      "key": "id",
+      "properties": {
+        "id": "string",
+        "signature": "string",
+        "name": "string",
+        "code": "string",
+        "base_classes": "string[]",
+        "docstring": "string",
+        "start_line": "integer",
+        "end_line": "integer",
+        "_module": "string"
+      }
+    },
+    {
+      "label": "PyCallable",
+      "merge_label": "PySymbol",
+      "key": "id",
+      "properties": {
+        "id": "string",
+        "signature": "string",
+        "name": "string",
+        "path": "string",
+        "return_type": "string",
+        "cyclomatic_complexity": "integer",
+        "code": "string",
+        "code_start_line": "integer",
+        "start_line": "integer",
+        "end_line": "integer",
+        "docstring": "string",
+        "decorators": "string[]",
+        "parameters_json": "string",
+        "accessed_symbols_json": "string",
+        "_module": "string"
+      }
+    },
+    {
+      "label": "PyExternal",
+      "merge_label": "PySymbol",
+      "key": "signature",
+      "properties": {
+        "signature": "string",
+        "name": "string",
+        "module": "string"
+      }
+    },
+    {
+      "label": "PyPackage",
+      "merge_label": "PyPackage",
+      "key": "name",
+      "properties": {
+        "name": "string"
+      }
+    },
+    {
+      "label": "PyDecorator",
+      "merge_label": "PyDecorator",
+      "key": "name",
+      "properties": {
+        "name": "string"
+      }
+    },
+    {
+      "label": "PyCallSite",
+      "merge_label": "PyCallSite",
+      "key": "id",
+      "properties": {
+        "id": "string",
+        "method_name": "string",
+        "receiver_expr": "string",
+        "receiver_type": "string",
+        "argument_types": "string[]",
+        "return_type": "string",
+        "callee_signature": "string",
+        "is_constructor_call": "boolean",
+        "start_line": "integer",
+        "start_column": "integer",
+        "end_line": "integer",
+        "end_column": "integer",
+        "_module": "string"
+      }
+    },
+    {
+      "label": "PyAttribute",
+      "merge_label": "PyAttribute",
+      "key": "id",
+      "properties": {
+        "id": "string",
+        "name": "string",
+        "type": "string",
+        "docstring": "string",
+        "start_line": "integer",
+        "end_line": "integer",
+        "_module": "string"
+      }
+    },
+    {
+      "label": "PyVariable",
+      "merge_label": "PyVariable",
+      "key": "id",
+      "properties": {
+        "id": "string",
+        "name": "string",
+        "type": "string",
+        "initializer": "string",
+        "scope": "string",
+        "start_line": "integer",
+        "end_line": "integer",
+        "_module": "string"
+      }
+    },
+    {
+      "label": "PyCFGNode",
+      "merge_label": "PyCFGNode",
+      "key": "id",
+      "properties": {
+        "id": "string",
+        "kind": "string",
+        "var": "string",
+        "call_node": "string",
+        "start_line": "integer",
+        "end_line": "integer",
+        "_module": "string"
+      }
+    }
+  ],
+  "relationship_types": [
+    {
+      "type": "PY_HAS_MODULE",
+      "from": [
+        "PyApplication"
+      ],
+      "to": [
+        "PyModule"
+      ],
+      "properties": {}
+    },
+    {
+      "type": "PY_DECLARES",
+      "from": [
+        "PyModule",
+        "PyClass",
+        "PyCallable"
+      ],
+      "to": [
+        "PyClass",
+        "PyCallable"
+      ],
+      "properties": {}
+    },
+    {
+      "type": "PY_HAS_METHOD",
+      "from": [
+        "PyClass"
+      ],
+      "to": [
+        "PyCallable"
+      ],
+      "properties": {}
+    },
+    {
+      "type": "PY_HAS_ATTRIBUTE",
+      "from": [
+        "PyClass"
+      ],
+      "to": [
+        "PyAttribute"
+      ],
+      "properties": {}
+    },
+    {
+      "type": "PY_DECLARES_VAR",
+      "from": [
+        "PyModule",
+        "PyCallable"
+      ],
+      "to": [
+        "PyVariable"
+      ],
+      "properties": {}
+    },
+    {
+      "type": "PY_HAS_CALLSITE",
+      "from": [
+        "PyCallable"
+      ],
+      "to": [
+        "PyCallSite"
+      ],
+      "properties": {}
+    },
+    {
+      "type": "PY_RESOLVES_TO",
+      "from": [
+        "PyCallSite"
+      ],
+      "to": [
+        "PyCallable",
+        "PyExternal"
+      ],
+      "properties": {}
+    },
+    {
+      "type": "PY_CALLS",
+      "from": [
+        "PyCallable",
+        "PyExternal"
+      ],
+      "to": [
+        "PyCallable",
+        "PyExternal"
+      ],
+      "properties": {
+        "weight": "integer",
+        "provenance": "string[]"
+      }
+    },
+    {
+      "type": "PY_EXTENDS",
+      "from": [
+        "PyClass"
+      ],
+      "to": [
+        "PyClass"
+      ],
+      "properties": {}
+    },
+    {
+      "type": "PY_IMPORTS",
+      "from": [
+        "PyModule"
+      ],
+      "to": [
+        "PyPackage"
+      ],
+      "properties": {
+        "imported_names": "string[]",
+        "aliases": "string[]"
+      }
+    },
+    {
+      "type": "PY_DECORATED_BY",
+      "from": [
+        "PyCallable"
+      ],
+      "to": [
+        "PyDecorator"
+      ],
+      "properties": {}
+    },
+    {
+      "type": "PY_HAS_CFG_NODE",
+      "from": [
+        "PyCallable"
+      ],
+      "to": [
+        "PyCFGNode"
+      ],
+      "properties": {}
+    },
+    {
+      "type": "PY_CFG_NEXT",
+      "from": [
+        "PyCFGNode"
+      ],
+      "to": [
+        "PyCFGNode"
+      ],
+      "properties": {
+        "kind": "string"
+      }
+    },
+    {
+      "type": "PY_CDG",
+      "from": [
+        "PyCFGNode"
+      ],
+      "to": [
+        "PyCFGNode"
+      ],
+      "properties": {}
+    },
+    {
+      "type": "PY_DDG",
+      "from": [
+        "PyCFGNode"
+      ],
+      "to": [
+        "PyCFGNode"
+      ],
+      "properties": {
+        "var": "string",
+        "prov": "string[]"
+      }
+    },
+    {
+      "type": "PY_PARAM_IN",
+      "from": [
+        "PyCFGNode"
+      ],
+      "to": [
+        "PyCFGNode"
+      ],
+      "properties": {
+        "var": "string"
+      }
+    },
+    {
+      "type": "PY_PARAM_OUT",
+      "from": [
+        "PyCFGNode"
+      ],
+      "to": [
+        "PyCFGNode"
+      ],
+      "properties": {
+        "var": "string"
+      }
+    },
+    {
+      "type": "PY_SUMMARY",
+      "from": [
+        "PyCFGNode"
+      ],
+      "to": [
+        "PyCFGNode"
+      ],
+      "properties": {}
+    }
+  ],
+  "constraints": [
+    "CREATE CONSTRAINT pyapplication_name IF NOT EXISTS FOR (x:PyApplication) REQUIRE x.name IS UNIQUE",
+    "CREATE CONSTRAINT pymodule_id IF NOT EXISTS FOR (x:PyModule) REQUIRE x.id IS UNIQUE",
+    "CREATE CONSTRAINT pysymbol_id IF NOT EXISTS FOR (x:PySymbol) REQUIRE x.id IS UNIQUE",
+    "CREATE CONSTRAINT pysymbol_signature IF NOT EXISTS FOR (x:PySymbol) REQUIRE x.signature IS UNIQUE",
+    "CREATE CONSTRAINT pypackage_name IF NOT EXISTS FOR (x:PyPackage) REQUIRE x.name IS UNIQUE",
+    "CREATE CONSTRAINT pydecorator_name IF NOT EXISTS FOR (x:PyDecorator) REQUIRE x.name IS UNIQUE",
+    "CREATE CONSTRAINT pycallsite_id IF NOT EXISTS FOR (x:PyCallSite) REQUIRE x.id IS UNIQUE",
+    "CREATE CONSTRAINT pyattribute_id IF NOT EXISTS FOR (x:PyAttribute) REQUIRE x.id IS UNIQUE",
+    "CREATE CONSTRAINT pyvariable_id IF NOT EXISTS FOR (x:PyVariable) REQUIRE x.id IS UNIQUE",
+    "CREATE CONSTRAINT pycfgnode_id IF NOT EXISTS FOR (x:PyCFGNode) REQUIRE x.id IS UNIQUE"
+  ],
+  "indexes": [
+    "CREATE INDEX py_callable_name IF NOT EXISTS FOR (c:PyCallable) ON (c.name)",
+    "CREATE INDEX py_class_name IF NOT EXISTS FOR (c:PyClass) ON (c.name)",
+    "CREATE FULLTEXT INDEX py_code_fts IF NOT EXISTS FOR (c:PyCallable) ON EACH [c.code, c.docstring]"
+  ]
+}

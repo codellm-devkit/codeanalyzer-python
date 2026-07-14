@@ -1,0 +1,517 @@
+{
+  "schema_version": "2.0.0",
+  "language": "python",
+  "max_level": 2,
+  "k_limit": 3,
+  "application": {
+    "symbol_table": {
+      "service.py": {
+        "file_path": "/path/to/sample_proj/service.py",
+        "module_name": "service",
+        "id": "can://python/sample_proj/service.py",
+        "kind": "module",
+        "source": "\"\"\"A tiny sample exercising the interesting v2 shapes across L1-L4.\"\"\"\n\n\nclass BaseService:\n    pass\n\n\nclass Service(BaseService):\n    def announce(self, flag):\n        message = build(flag)\n        if flag:\n            message = message + \"!\"\n        return message\n\n\ndef build(x):\n    y = x\n    return y\n\n\ndef run(flag):\n    svc = Service()\n    return svc.announce(flag)\n",
+        "imports": [],
+        "comments": [
+          {
+            "content": "A tiny sample exercising the interesting v2 shapes across L1-L4.",
+            "start_line": 1,
+            "end_line": 1,
+            "start_column": 0,
+            "end_column": 70,
+            "is_docstring": true
+          }
+        ],
+        "classes": {
+          "service.BaseService": {
+            "name": "BaseService",
+            "signature": "service.BaseService",
+            "id": "can://python/sample_proj/service.py/BaseService",
+            "kind": "class",
+            "span": {
+              "start": [
+                4,
+                0
+              ],
+              "end": [
+                5,
+                8
+              ],
+              "bytes": [
+                73,
+                100
+              ]
+            },
+            "comments": [],
+            "base_classes": [],
+            "methods": {},
+            "attributes": {},
+            "inner_classes": {},
+            "start_line": 4,
+            "end_line": 5
+          },
+          "service.Service": {
+            "name": "Service",
+            "signature": "service.Service",
+            "id": "can://python/sample_proj/service.py/Service",
+            "kind": "class",
+            "span": {
+              "start": [
+                8,
+                0
+              ],
+              "end": [
+                13,
+                22
+              ],
+              "bytes": [
+                103,
+                266
+              ]
+            },
+            "comments": [],
+            "base_classes": [
+              "BaseService"
+            ],
+            "methods": {
+              "announce": {
+                "name": "announce",
+                "path": "/path/to/sample_proj/service.py",
+                "signature": "service.Service.announce",
+                "id": "can://python/sample_proj/service.py/Service/announce(self,flag)",
+                "kind": "function",
+                "span": {
+                  "start": [
+                    9,
+                    4
+                  ],
+                  "end": [
+                    13,
+                    22
+                  ],
+                  "bytes": [
+                    135,
+                    266
+                  ]
+                },
+                "comments": [],
+                "decorators": [],
+                "parameters": [
+                  {
+                    "name": "self",
+                    "type": "Service",
+                    "start_line": 9,
+                    "end_line": 9,
+                    "start_column": 17,
+                    "end_column": 21
+                  },
+                  {
+                    "name": "flag",
+                    "start_line": 9,
+                    "end_line": 9,
+                    "start_column": 23,
+                    "end_column": 27
+                  }
+                ],
+                "start_line": 9,
+                "end_line": 13,
+                "code_start_line": 10,
+                "accessed_symbols": [
+                  {
+                    "name": "flag",
+                    "scope": "local",
+                    "kind": "variable",
+                    "is_builtin": false,
+                    "lineno": 11,
+                    "col_offset": 11
+                  },
+                  {
+                    "name": "message",
+                    "scope": "local",
+                    "kind": "variable",
+                    "type": "str",
+                    "qualified_name": "builtins.str",
+                    "is_builtin": false,
+                    "lineno": 13,
+                    "col_offset": 15
+                  },
+                  {
+                    "name": "build",
+                    "scope": "local",
+                    "kind": "function",
+                    "type": "build",
+                    "qualified_name": "service.build",
+                    "is_builtin": false,
+                    "lineno": 10,
+                    "col_offset": 18
+                  },
+                  {
+                    "name": "flag",
+                    "scope": "local",
+                    "kind": "variable",
+                    "is_builtin": false,
+                    "lineno": 10,
+                    "col_offset": 24
+                  },
+                  {
+                    "name": "message",
+                    "scope": "local",
+                    "kind": "variable",
+                    "is_builtin": false,
+                    "lineno": 12,
+                    "col_offset": 22
+                  }
+                ],
+                "call_sites": [
+                  {
+                    "method_name": "build",
+                    "argument_types": [
+                      "Name"
+                    ],
+                    "return_type": "build",
+                    "callee_signature": "service.build",
+                    "is_constructor_call": false,
+                    "start_line": 10,
+                    "start_column": 18,
+                    "end_line": 10,
+                    "end_column": 29
+                  }
+                ],
+                "inner_callables": {},
+                "inner_classes": {},
+                "local_variables": [
+                  {
+                    "name": "message",
+                    "initializer": "build(flag)",
+                    "scope": "function",
+                    "start_line": 10,
+                    "end_line": 10,
+                    "start_column": 8,
+                    "end_column": 15
+                  },
+                  {
+                    "name": "message",
+                    "type": "str",
+                    "initializer": "message + '!'",
+                    "scope": "function",
+                    "start_line": 12,
+                    "end_line": 12,
+                    "start_column": 12,
+                    "end_column": 19
+                  }
+                ],
+                "cyclomatic_complexity": 3,
+                "body": {
+                  "10:18": {
+                    "kind": "call",
+                    "span": {
+                      "start": [
+                        10,
+                        18
+                      ],
+                      "end": [
+                        10,
+                        29
+                      ],
+                      "bytes": [
+                        179,
+                        190
+                      ]
+                    },
+                    "callee": "can://python/sample_proj/service.py/build(x)"
+                  }
+                },
+                "cfg": [],
+                "cdg": [],
+                "ddg": [],
+                "summary": []
+              }
+            },
+            "attributes": {},
+            "inner_classes": {},
+            "start_line": 8,
+            "end_line": 13
+          }
+        },
+        "functions": {
+          "build": {
+            "name": "build",
+            "path": "/path/to/sample_proj/service.py",
+            "signature": "service.build",
+            "id": "can://python/sample_proj/service.py/build(x)",
+            "kind": "function",
+            "span": {
+              "start": [
+                16,
+                0
+              ],
+              "end": [
+                18,
+                12
+              ],
+              "bytes": [
+                269,
+                305
+              ]
+            },
+            "comments": [],
+            "decorators": [],
+            "parameters": [
+              {
+                "name": "x",
+                "start_line": 16,
+                "end_line": 16,
+                "start_column": 10,
+                "end_column": 11
+              }
+            ],
+            "start_line": 16,
+            "end_line": 18,
+            "code_start_line": 17,
+            "accessed_symbols": [
+              {
+                "name": "x",
+                "scope": "local",
+                "kind": "variable",
+                "is_builtin": false,
+                "lineno": 17,
+                "col_offset": 8
+              },
+              {
+                "name": "y",
+                "scope": "local",
+                "kind": "variable",
+                "is_builtin": false,
+                "lineno": 18,
+                "col_offset": 11
+              }
+            ],
+            "call_sites": [],
+            "inner_callables": {},
+            "inner_classes": {},
+            "local_variables": [
+              {
+                "name": "y",
+                "initializer": "x",
+                "scope": "function",
+                "start_line": 17,
+                "end_line": 17,
+                "start_column": 4,
+                "end_column": 5
+              }
+            ],
+            "cyclomatic_complexity": 2,
+            "body": {},
+            "cfg": [],
+            "cdg": [],
+            "ddg": [],
+            "summary": []
+          },
+          "run": {
+            "name": "run",
+            "path": "/path/to/sample_proj/service.py",
+            "signature": "service.run",
+            "id": "can://python/sample_proj/service.py/run(flag)",
+            "kind": "function",
+            "span": {
+              "start": [
+                21,
+                0
+              ],
+              "end": [
+                23,
+                29
+              ],
+              "bytes": [
+                308,
+                372
+              ]
+            },
+            "comments": [],
+            "decorators": [],
+            "parameters": [
+              {
+                "name": "flag",
+                "start_line": 21,
+                "end_line": 21,
+                "start_column": 8,
+                "end_column": 12
+              }
+            ],
+            "start_line": 21,
+            "end_line": 23,
+            "code_start_line": 22,
+            "accessed_symbols": [
+              {
+                "name": "Service",
+                "scope": "local",
+                "kind": "class",
+                "type": "Service",
+                "qualified_name": "service.Service",
+                "is_builtin": false,
+                "lineno": 22,
+                "col_offset": 10
+              },
+              {
+                "name": "flag",
+                "scope": "local",
+                "kind": "variable",
+                "is_builtin": false,
+                "lineno": 23,
+                "col_offset": 24
+              },
+              {
+                "name": "svc",
+                "scope": "local",
+                "kind": "variable",
+                "type": "Service",
+                "qualified_name": "service.Service",
+                "is_builtin": false,
+                "lineno": 23,
+                "col_offset": 11
+              }
+            ],
+            "call_sites": [
+              {
+                "method_name": "Service",
+                "argument_types": [],
+                "return_type": "Service",
+                "callee_signature": "service.Service.__init__",
+                "is_constructor_call": true,
+                "start_line": 22,
+                "start_column": 10,
+                "end_line": 22,
+                "end_column": 19
+              },
+              {
+                "method_name": "announce",
+                "receiver_expr": "svc",
+                "receiver_type": "Service",
+                "argument_types": [
+                  "Name"
+                ],
+                "return_type": "Service",
+                "callee_signature": "service.Service",
+                "is_constructor_call": false,
+                "start_line": 23,
+                "start_column": 11,
+                "end_line": 23,
+                "end_column": 29
+              }
+            ],
+            "inner_callables": {},
+            "inner_classes": {},
+            "local_variables": [
+              {
+                "name": "svc",
+                "type": "Service",
+                "initializer": "Service()",
+                "scope": "function",
+                "start_line": 22,
+                "end_line": 22,
+                "start_column": 4,
+                "end_column": 7
+              }
+            ],
+            "cyclomatic_complexity": 2,
+            "body": {
+              "22:10": {
+                "kind": "call",
+                "span": {
+                  "start": [
+                    22,
+                    10
+                  ],
+                  "end": [
+                    22,
+                    19
+                  ],
+                  "bytes": [
+                    333,
+                    342
+                  ]
+                },
+                "callee": "service.Service.__init__"
+              },
+              "23:11": {
+                "kind": "call",
+                "span": {
+                  "start": [
+                    23,
+                    11
+                  ],
+                  "end": [
+                    23,
+                    29
+                  ],
+                  "bytes": [
+                    354,
+                    372
+                  ]
+                },
+                "callee": "can://python/sample_proj/service.py/Service"
+              }
+            },
+            "cfg": [],
+            "cdg": [],
+            "ddg": [],
+            "summary": []
+          }
+        },
+        "variables": [],
+        "content_hash": "2f3e79bcf69502b60a39cecd31206d6c5e3c6b3419dc2add4de955f2fe87ede2",
+        "last_modified": 1784029827.2876227,
+        "file_size": 373
+      }
+    },
+    "id": "can://python/sample_proj",
+    "kind": "application",
+    "call_graph": [
+      {
+        "source": "can://python/sample_proj/service.py/run(flag)",
+        "target": "service.Service.__init__",
+        "type": "CALL_DEP",
+        "weight": 1,
+        "provenance": [
+          "jedi"
+        ]
+      },
+      {
+        "source": "can://python/sample_proj/service.py/run(flag)",
+        "target": "can://python/sample_proj/service.py/Service",
+        "type": "CALL_DEP",
+        "weight": 1,
+        "provenance": [
+          "jedi"
+        ]
+      },
+      {
+        "source": "can://python/sample_proj/service.py/Service/announce(self,flag)",
+        "target": "can://python/sample_proj/service.py/build(x)",
+        "type": "CALL_DEP",
+        "weight": 2,
+        "provenance": [
+          "jedi",
+          "pycg"
+        ]
+      },
+      {
+        "source": "can://python/sample_proj/service.py/run(flag)",
+        "target": "can://python/sample_proj/service.py/Service/announce(self,flag)",
+        "type": "CALL_DEP",
+        "weight": 1,
+        "provenance": [
+          "pycg"
+        ]
+      }
+    ],
+    "external_symbols": {
+      "service.Service.__init__": {
+        "name": "__init__",
+        "module": "service.Service"
+      }
+    },
+    "param_in": [],
+    "param_out": []
+  }
+}
