@@ -64,3 +64,9 @@ def whole_applications__flask() -> Path:
 def whole_applications__requests() -> Path:
     """Requests 2.31.0 application directory."""
     return Path(__file__).parent.resolve().joinpath("fixtures", "whole_applications", "requests")
+
+
+@pytest.fixture
+def single_functionalities__method_call_resolution() -> Path:
+    """Attribute-call callee resolution (issue #80): subscript receiver, inherited method, bare calls."""
+    return Path(__file__).parent.resolve().joinpath("fixtures", "single_functionalities", "method_call_resolution")

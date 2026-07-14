@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- Attribute-call callees (`receiver.method(...)`) now resolve to the invoked method instead of the receiver's type — Jedi inference was anchored at the call expression's first character, i.e. the receiver token, so nearly every method call's `callee_signature` (and the Neo4j `PY_RESOLVES_TO` edge) pointed at the receiver's class ([#80](https://github.com/codellm-devkit/codeanalyzer-python/issues/80)).
+- `PyCallsite.return_type` now holds the inferred type of the call *result* (the callee's inferred return type, or the instance for a constructor call), and is absent when Jedi cannot tell. Previously it held the type inferred at the call expression's start — effectively the receiver's type ([#80](https://github.com/codellm-devkit/codeanalyzer-python/issues/80)).
+
 ## [0.3.0] - 2026-06-27
 
 ### Added
