@@ -44,7 +44,10 @@ from codeanalyzer.neo4j.rows import EdgeRow, GraphRows, NodeRow, chunk
 from codeanalyzer.neo4j.schema import CONSTRAINTS, INDEXES
 from codeanalyzer.utils import logger
 
-DESCENDANTS = "[:PY_DECLARES|PY_HAS_METHOD|PY_HAS_ATTRIBUTE|PY_DECLARES_VAR|PY_HAS_CALLSITE*1..]"
+DESCENDANTS = (
+    "[:PY_DECLARES|PY_HAS_METHOD|PY_HAS_ATTRIBUTE|PY_DECLARES_VAR"
+    "|PY_HAS_CALLSITE|PY_HAS_CFG_NODE*1..]"
+)
 BATCH = 1000
 
 
@@ -193,21 +196,33 @@ def _upsert_nodes(session, neo4j, nodes: List[NodeRow]) -> None:
 def _upsert_edges(session, neo4j, edges: List[EdgeRow]) -> None:
     groups: Dict[str, List[EdgeRow]] = {}
     for e in edges:
-        key = f"{e.type}|{e.from_ref.label}.{e.from_ref.key_prop}|{e.to_ref.label}.{e.to_ref.key_prop}"
+        key = (
+            f"{e.type}|{e.from_ref.label}.{e.from_ref.key_prop}"
+            f"|{e.to_ref.label}.{e.to_ref.key_prop}|{e.key is not None}"
+        )
         groups.setdefault(key, []).append(e)
 
     for group in groups.values():
         first = group[0]
         from_ref, to_ref = first.from_ref, first.to_ref
+        # Discriminated relationships MERGE on ``{_k}`` so several distinct
+        # edges of one type coexist between the same endpoint pair (per-var
+        # PY_DDG, the true/false PY_CFG_NEXT pair). See EdgeRow.key.
+        rel_key = " {_k: row.k}" if first.key is not None else ""
         cypher = (
             f"UNWIND $rows AS row "
             f"MATCH (a:{from_ref.label} {{{from_ref.key_prop}: row.f}}) "
             f"MATCH (b:{to_ref.label} {{{to_ref.key_prop}: row.t}}) "
-            f"MERGE (a)-[r:{first.type}]->(b) SET r += row.p"
+            f"MERGE (a)-[r:{first.type}{rel_key}]->(b) SET r += row.p"
         )
         for batch in chunk(group, BATCH):
             payload = [
-                {"f": e.from_ref.value, "t": e.to_ref.value, "p": _to_params(e.props, neo4j)}
+                {
+                    "f": e.from_ref.value,
+                    "t": e.to_ref.value,
+                    "k": e.key,
+                    "p": _to_params(e.props, neo4j),
+                }
                 for e in batch
             ]
             with session() as s:

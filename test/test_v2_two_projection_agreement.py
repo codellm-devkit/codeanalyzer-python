@@ -111,9 +111,9 @@ def _sig_to_id_from_tree(app) -> dict:
     (app_name-independent — no re-stamp that could drift from the analyze() run)."""
     m: dict = {}
     for mod in app.symbol_table.values():
-        for cl in (mod.classes or {}).values():
+        for cl in (mod.types or {}).values():
             m[cl.signature] = cl.id
-            for meth in (cl.methods or {}).values():
+            for meth in (cl.callables or {}).values():
                 m[meth.signature] = meth.id
         for fn in (mod.functions or {}).values():
             m[fn.signature] = fn.id

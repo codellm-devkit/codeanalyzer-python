@@ -8,5 +8,5 @@ from codeanalyzer.schema.py_schema import PyApplication
 
 def reidentify_call_graph(app: PyApplication, sig_to_id: dict) -> None:
     for edge in app.call_graph or []:
-        edge.source = sig_to_id.get(edge.source, edge.source)
-        edge.target = sig_to_id.get(edge.target, edge.target)
+        edge.src = sig_to_id.get(edge.src, edge.src)
+        edge.dst = sig_to_id.get(edge.dst, edge.dst)

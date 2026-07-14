@@ -121,7 +121,7 @@ def builder(cls):
     annotations = cls.__annotations__
     # Get default values for the fields in the model. `inspect.signature` is
     # unreliable for models carrying forward references (e.g. PyCallable's
-    # self-referential ``inner_callables``): Pydantic falls back to a generic
+    # self-referential ``callables``): Pydantic falls back to a generic
     # ``(**data)`` signature that drops the per-field defaults, so the builder
     # would seed those fields with ``None`` and fail validation. Read the declared
     # defaults straight off the model instead. Required fields are intentionally
@@ -353,8 +353,8 @@ class PyCallable(BaseModel):
     code_start_line: int = -1
     accessed_symbols: List[PySymbol] = []
     call_sites: List[PyCallsite] = []
-    inner_callables: Dict[str, "PyCallable"] = {}
-    inner_classes: Dict[str, "PyClass"] = {}
+    callables: Dict[str, "PyCallable"] = {}  # nested callables (closures)
+    types: Dict[str, "PyClass"] = {}  # nested (local) classes
     local_variables: List[PyVariableDeclaration] = []
     cyclomatic_complexity: int = 0
     body: Dict[str, BodyNode] = {}
@@ -394,9 +394,9 @@ class PyClass(BaseModel):
     span: Optional[Span] = None
     comments: List[PyComment] = []
     base_classes: List[str] = []
-    methods: Dict[str, PyCallable] = {}
+    callables: Dict[str, PyCallable] = {}  # methods, keystone containment name
     attributes: Dict[str, PyClassAttribute] = {}
-    inner_classes: Dict[str, "PyClass"] = {}
+    types: Dict[str, "PyClass"] = {}  # inner classes, keystone containment name
     start_line: int = -1
     end_line: int = -1
 
@@ -417,7 +417,7 @@ class PyModule(BaseModel):
     source: str = ""
     imports: List[PyImport] = []
     comments: List[PyComment] = []
-    classes: Dict[str, PyClass] = {}
+    types: Dict[str, PyClass] = {}  # classes, keystone containment name
     functions: Dict[str, PyCallable] = {}
     variables: List[PyVariableDeclaration] = []
     # Metadata for caching
@@ -429,29 +429,30 @@ class PyModule(BaseModel):
 @builder
 @msgpk
 class PyCallEdge(BaseModel):
-    """Identity-only call-graph edge with weight.
+    """Identity-only call-graph edge with weight (keystone shape: the list name
+    IS the edge type, so there is no ``type`` field).
 
-    Mirrors Java's ``CallDependency``. ``source`` and ``target`` are
-    ``PyCallable.signature`` strings — nodes of the graph are the existing
-    ``PyCallable`` entries in the symbol table, not a separate vertex type.
+    ``src`` and ``dst`` are node ids — the caller's ``can://`` id and the
+    callee's ``can://`` id (a symbol-table callable or an ``@external`` home).
     Rich per-call metadata (receiver, arguments, location, ...) lives on
     ``PyCallsite`` inside the source ``PyCallable.call_sites``.
     """
 
-    source: str  # caller's PyCallable.signature
-    target: str  # callee's PyCallable.signature
-    type: Literal["CALL_DEP"] = "CALL_DEP"
+    src: str  # caller callable id
+    dst: str  # callee callable (or external) id
     weight: int = 1
-    provenance: List[Literal["jedi", "pycg", "joern"]] = []
+    prov: List[Literal["jedi", "pycg", "joern"]] = []
 
 
 @builder
 @msgpk
 class PyExternalSymbol(BaseModel):
     """A call-graph target outside the analyzed project -- an imported library or
-    builtin member. Mirrors codeanalyzer-typescript's ``TSExternalSymbol`` and is
-    keyed in ``PyApplication.external_symbols`` by its call-graph signature."""
+    builtin member. An edge-endpoint id home, not a tree node: keyed in
+    ``PyApplication.external_symbols`` by its ``can://…/@external/…`` id."""
 
+    id: str = ""  # can://python/<app>/@external/<module>/<name>
+    kind: str = "external"
     name: str  # the member/short name, e.g. "get" for "requests.get"
     module: Optional[str] = None  # best-effort owning module, e.g. "requests"
 
@@ -476,10 +477,21 @@ class PyApplication(BaseModel):
 
 @builder
 @msgpk
+class PyAnalyzerInfo(BaseModel):
+    """Analyzer identity — correlates an ``analysis.json`` with the tool/version
+    that emitted it."""
+    name: str = "codeanalyzer-python"
+    version: str = "unknown"
+
+
+@builder
+@msgpk
 class Analysis(BaseModel):
-    """v2 payload root: envelope + the application tree node."""
+    """v2 payload root: envelope + the application tree node. ``k_limit`` is an
+    L3+ envelope key (None below the dataflow levels; exclude_none drops it)."""
     schema_version: str = "2.0.0"
     language: str = "python"
     max_level: int = 1
-    k_limit: int = 3
+    k_limit: Optional[int] = None
+    analyzer: PyAnalyzerInfo = PyAnalyzerInfo()
     application: PyApplication

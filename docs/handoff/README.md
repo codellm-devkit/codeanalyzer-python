@@ -38,21 +38,26 @@ The authoritative contract for consuming these outputs is, in order:
   merge keys, property types, and relationship types. Byte-identical to the repo-root
   `schema.neo4j.json` and to `python -m codeanalyzer --emit schema`.
 
-### Field-name divergence to encode
+### Containment vocabulary (keystone-conformant as of 0.4.0)
 
-The `analysis.json` symbol tree keeps `codeanalyzer-python`'s **legacy member field
-names**, which diverge from a canonical/uniform naming — the SDK model must map them
-as-is:
+The `analysis.json` symbol tree uses the **canonical keystone member names** —
+no per-language mapping layer is needed (issue #98 closed the old
+`classes`/`methods` divergence):
 
-- `PyModule` nests members under **`classes`** and **`functions`** (dicts keyed by
+- `PyModule` nests members under **`types`** and **`functions`** (dicts keyed by
   dotted signature).
-- `PyClass` nests its members under **`methods`** (plus `attributes`, `inner_classes`,
-  `base_classes`).
-- A callable (`PyCallable`) carries `inner_callables`/`inner_classes` for nesting, and
-  the per-level graph slots inline on the callable: `body`, `cfg`, `cdg`, `ddg`,
+- `PyClass` nests its members under **`callables`** (plus `attributes`, nested
+  **`types`**, `base_classes`).
+- A callable (`PyCallable`) carries `callables`/`types` for nesting, and the
+  per-level graph slots inline on the callable: `body`, `cfg`, `cdg`, `ddg`,
   `summary`, `parameters`, `call_sites`.
+- `call_graph` edges are `{src, dst, prov, weight}` (the list name IS the type);
+  every endpoint joins the id space — imported/builtin targets are homed as
+  `can://…/@external/<module>/<name>` entries in `external_symbols` (keyed by id,
+  `kind:"external"`).
 
-Root envelope keys: `schema_version`, `language`, `max_level`, `k_limit`, `application`.
+Root envelope keys: `schema_version`, `language`, `max_level`,
+`analyzer{name,version}`, `k_limit` (present at L3+ only), `application`.
 `application` keys: `symbol_table`, `id`, `kind`, `call_graph`, `external_symbols`,
 `param_in`, `param_out`.
 

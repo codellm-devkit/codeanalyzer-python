@@ -67,9 +67,9 @@
     {
       "label": "PyExternal",
       "merge_label": "PySymbol",
-      "key": "signature",
+      "key": "id",
       "properties": {
-        "signature": "string",
+        "id": "string",
         "name": "string",
         "module": "string"
       }
@@ -242,7 +242,7 @@
       ],
       "properties": {
         "weight": "integer",
-        "provenance": "string[]"
+        "prov": "string[]"
       }
     },
     {
@@ -297,7 +297,8 @@
         "PyCFGNode"
       ],
       "properties": {
-        "kind": "string"
+        "kind": "string",
+        "_k": "string"
       }
     },
     {
@@ -320,7 +321,8 @@
       ],
       "properties": {
         "var": "string",
-        "prov": "string[]"
+        "prov": "string[]",
+        "_k": "string"
       }
     },
     {
@@ -362,7 +364,6 @@
     "CREATE CONSTRAINT pyapplication_name IF NOT EXISTS FOR (x:PyApplication) REQUIRE x.name IS UNIQUE",
     "CREATE CONSTRAINT pymodule_id IF NOT EXISTS FOR (x:PyModule) REQUIRE x.id IS UNIQUE",
     "CREATE CONSTRAINT pysymbol_id IF NOT EXISTS FOR (x:PySymbol) REQUIRE x.id IS UNIQUE",
-    "CREATE CONSTRAINT pysymbol_signature IF NOT EXISTS FOR (x:PySymbol) REQUIRE x.signature IS UNIQUE",
     "CREATE CONSTRAINT pypackage_name IF NOT EXISTS FOR (x:PyPackage) REQUIRE x.name IS UNIQUE",
     "CREATE CONSTRAINT pydecorator_name IF NOT EXISTS FOR (x:PyDecorator) REQUIRE x.name IS UNIQUE",
     "CREATE CONSTRAINT pycallsite_id IF NOT EXISTS FOR (x:PyCallSite) REQUIRE x.id IS UNIQUE",

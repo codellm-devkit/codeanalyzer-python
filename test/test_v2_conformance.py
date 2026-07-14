@@ -12,8 +12,8 @@ from codeanalyzer.schema.py_schema import PyApplication, PyModule, PyClass, PyCa
 def test_ids_assigned_down_the_tree():
     fn = PyCallable(name="hash", path="m.py", signature="m.Hasher.hash",
                     parameters=[])
-    cl = PyClass(name="Hasher", signature="m.Hasher", methods={"hash": fn})
-    mod = PyModule(file_path="pkg/m.py", module_name="m", classes={"m.Hasher": cl})
+    cl = PyClass(name="Hasher", signature="m.Hasher", callables={"hash": fn})
+    mod = PyModule(file_path="pkg/m.py", module_name="m", types={"m.Hasher": cl})
     app = PyApplication(symbol_table={"pkg/m.py": mod})
     assign_ids(app, "myapp")
     assert app.id == "can://python/myapp"

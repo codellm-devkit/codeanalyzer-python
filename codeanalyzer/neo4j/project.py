@@ -70,10 +70,10 @@ def project(app: PyApplication, app_name: str, sig_to_id: dict) -> GraphRows:
 
     # The aggregated :PY_CALLS twin.
     for e in app.call_graph:
-        src = _call_endpoint(b, e.source, externals, sig_to_id)
-        tgt = _call_endpoint(b, e.target, externals, sig_to_id)
+        src = _call_endpoint(b, e.src, externals, sig_to_id)
+        tgt = _call_endpoint(b, e.dst, externals, sig_to_id)
         b.edge(
-            "PY_CALLS", src, tgt, _call_edge_props(e.weight, list(e.provenance or []))
+            "PY_CALLS", src, tgt, _call_edge_props(e.weight, list(e.prov or []))
         )
 
     # Level-3 CPG overlay: each callable's v2 body/cfg/cdg/ddg. Idempotent under
@@ -159,20 +159,28 @@ def _project_program_graphs(b: RowBuilder, app: PyApplication) -> None:
                 )
                 b.edge("PY_HAS_CFG_NODE", owner, ref)
             for e in c.cfg or []:
+                # kind-discriminated: a conditional's true/false pair between one
+                # endpoint pair must stay two relationships, not one MERGE.
                 b.edge(
                     "PY_CFG_NEXT",
                     _cfg_ref(c.id, e.src),
                     _cfg_ref(c.id, e.dst),
                     {"kind": e.kind},
+                    key=e.kind,
                 )
             for e in c.cdg or []:
                 b.edge("PY_CDG", _cfg_ref(c.id, e.src), _cfg_ref(c.id, e.dst))
             for e in c.ddg or []:
+                # (var, prov)-discriminated: the DDG legitimately carries several
+                # edges between one statement pair (one per variable, and the
+                # ssa/points-to split) — a plain endpoint-pair MERGE collapses
+                # them and silently drops dependences.
                 b.edge(
                     "PY_DDG",
                     _cfg_ref(c.id, e.src),
                     _cfg_ref(c.id, e.dst),
                     prune({"var": e.var, "prov": list(e.prov) if e.prov else None}),
+                    key=f"{e.var or ''}|{','.join(e.prov or [])}",
                 )
             # L4 intraprocedural summaries (transitive actual_in → actual_out
             # pass-throughs); LOCAL ids resolved to global PyCFGNode refs.
@@ -219,27 +227,36 @@ def _call_endpoint(
     canonical ``can://`` id, resolved through ``sig_to_id``), or an external symbol
     (imported library / builtin member) materialized as a :PyExternal ghost.
 
-    Classification is authoritative -- it comes from ``app.external_symbols``, not a
-    "present in the graph" heuristic -- so an imported module name (which exists only
-    as a :PyPackage) can never shadow the call target. A declared endpoint resolves to
-    its ``can://`` id; anything neither declared nor listed falls back to a
-    signature-keyed :PyExternal ghost rather than raising."""
+    Classification is authoritative -- it comes from ``app.external_symbols``
+    (keyed by ``can://…/@external/…`` id), not a "present in the graph" heuristic --
+    so an imported module name (which exists only as a :PyPackage) can never shadow
+    the call target. A declared endpoint resolves to its ``can://`` id (either
+    already re-identified on the edge, or resolved through ``sig_to_id``); anything
+    neither declared nor listed falls back to an id-keyed :PyExternal ghost rather
+    than raising."""
     ext = externals.get(signature)
     if ext is None:
         can_id = sig_to_id.get(signature)
         if can_id is not None:
-            return _sym(can_id)
-    name = (
-        ext.name
-        if ext is not None
-        else (signature.rsplit(".", 1)[-1] if "." in signature else signature)
-    )
-    module = ext.module if ext is not None else None
+            ext = externals.get(can_id)
+            if ext is None:
+                return _sym(can_id)
+        elif signature.startswith("can://") and "/@external/" not in signature:
+            # An already re-identified declared endpoint (post reidentify_call_graph).
+            return _sym(signature)
+    if ext is not None:
+        return b.node(
+            ["PySymbol", "PyExternal"],
+            "id",
+            ext.id or signature,
+            prune({"name": ext.name, "module": ext.module}),
+        )
+    name = signature.rsplit(".", 1)[-1] if "." in signature else signature
     return b.node(
         ["PySymbol", "PyExternal"],
-        "signature",
+        "id",
         signature,
-        prune({"name": name, "module": module}),
+        prune({"name": name}),
     )
 
 
@@ -254,7 +271,7 @@ def _project_module_body(
 ) -> None:
     for fn in (mod.functions or {}).values():
         _project_callable(b, file_key, mod_ref, "PY_DECLARES", fn, externals, sig_to_id)
-    for cl in (mod.classes or {}).values():
+    for cl in (mod.types or {}).values():
         _project_class(b, file_key, mod_ref, "PY_DECLARES", cl, externals, sig_to_id)
     for v in mod.variables or []:
         _project_variable(b, file_key, mod_ref, file_key, v)
@@ -306,11 +323,11 @@ def _project_class(
         if base:
             b.edge_to_symbol("PY_EXTENDS", ref, _symbol_ref(base, externals, sig_to_id))
 
-    for m in (cl.methods or {}).values():
+    for m in (cl.callables or {}).values():
         _project_callable(b, file_key, ref, "PY_HAS_METHOD", m, externals, sig_to_id)
     for a in (cl.attributes or {}).values():
         _project_attribute(b, file_key, ref, cl.signature, a)
-    for ic in (cl.inner_classes or {}).values():
+    for ic in (cl.types or {}).values():
         _project_class(b, file_key, ref, "PY_DECLARES", ic, externals, sig_to_id)
 
 
@@ -344,9 +361,9 @@ def _project_callable(
 
     for v in c.local_variables or []:
         _project_variable(b, file_key, ref, c.signature, v)
-    for ic in (c.inner_callables or {}).values():
+    for ic in (c.callables or {}).values():
         _project_callable(b, file_key, ref, "PY_DECLARES", ic, externals, sig_to_id)
-    for cl in (c.inner_classes or {}).values():
+    for cl in (c.types or {}).values():
         _project_class(b, file_key, ref, "PY_DECLARES", cl, externals, sig_to_id)
 
 
@@ -482,8 +499,8 @@ def _call_site_props(s: PyCallsite, file_key: str) -> Props:
     )
 
 
-def _call_edge_props(weight: int, provenance: List[str]) -> Props:
-    return prune({"weight": weight, "provenance": list(provenance)})
+def _call_edge_props(weight: int, prov: List[str]) -> Props:
+    return prune({"weight": weight, "prov": list(prov)})
 
 
 def _docstring_of(comments: Optional[List[PyComment]]) -> Optional[str]:

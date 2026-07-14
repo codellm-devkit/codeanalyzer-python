@@ -171,8 +171,8 @@ def test_decorators_hof_level2(cli_runner, single_functionalities__decorators_an
     assert len(obj["call_graph"]) >= 20, \
         f"Expected >=20 edges for decorators_and_hof, got {len(obj['call_graph'])}"
 
-    pycg_edges = [(e["source"], e["target"]) for e in obj["call_graph"]
-                  if "pycg" in e["provenance"]]
+    pycg_edges = [(e["src"], e["dst"]) for e in obj["call_graph"]
+                  if "pycg" in e["prov"]]
     assert len(pycg_edges) >= 10, \
         f"Expected >=10 PyCG edges, got {len(pycg_edges)}"
 
@@ -192,7 +192,7 @@ def test_class_hierarchy_level1(cli_runner, single_functionalities__class_hierar
                         analysis_level=1, file_name=main_py)
     assert len(obj["call_graph"]) > 0, "Level 1 must populate call_graph with Jedi edges"
     classes = {cls for mod in obj["symbol_table"].values()
-               for cls in mod.get("classes", {}).keys()}
+               for cls in mod.get("types", {}).keys()}
     assert any("Animal" in c for c in classes)
     assert any("Dog" in c for c in classes)
     assert any("Cat" in c for c in classes)
@@ -213,8 +213,8 @@ def test_class_hierarchy_level2(cli_runner, single_functionalities__class_hierar
     assert len(obj["call_graph"]) >= 30, \
         f"Expected >=30 edges for class_hierarchy, got {len(obj['call_graph'])}"
 
-    pycg_edges = [(e["source"], e["target"]) for e in obj["call_graph"]
-                  if "pycg" in e["provenance"]]
+    pycg_edges = [(e["src"], e["dst"]) for e in obj["call_graph"]
+                  if "pycg" in e["prov"]]
     assert len(pycg_edges) >= 15, \
         f"Expected >=15 PyCG edges, got {len(pycg_edges)}"
 
@@ -223,7 +223,7 @@ def test_class_hierarchy_level2(cli_runner, single_functionalities__class_hierar
     assert any("speak" in t for t in describe_targets), \
         "PyCG must find Animal.describe->*.speak virtual dispatch"
 
-    targets = {e["target"] for e in obj["call_graph"]}
+    targets = {e["dst"] for e in obj["call_graph"]}
     assert any("__init__" in t for t in targets), "Expected __init__ edges in class hierarchy"
 
 
@@ -254,8 +254,8 @@ def test_async_patterns_level2(cli_runner, single_functionalities__async_pattern
     assert len(obj["call_graph"]) >= 15, \
         f"Expected >=15 edges for async_patterns, got {len(obj['call_graph'])}"
 
-    pycg_edges = [(e["source"], e["target"]) for e in obj["call_graph"]
-                  if "pycg" in e["provenance"]]
+    pycg_edges = [(e["src"], e["dst"]) for e in obj["call_graph"]
+                  if "pycg" in e["prov"]]
     assert len(pycg_edges) >= 8, \
         f"Expected >=8 PyCG edges, got {len(pycg_edges)}"
 
@@ -263,7 +263,7 @@ def test_async_patterns_level2(cli_runner, single_functionalities__async_pattern
     assert any("asyncio" in t or "sleep" in t for t in pycg_targets), \
         "PyCG must resolve asyncio.sleep calls in async functions"
 
-    all_edges = {(e["source"], e["target"]) for e in obj["call_graph"]}
+    all_edges = {(e["src"], e["dst"]) for e in obj["call_graph"]}
     assert any("pipeline" in s and "fetch_all" in t for s, t in all_edges), \
         "pipeline->fetch_all edge must be present"
     assert any("process_url" in s and "fetch_data" in t for s, t in all_edges), \
@@ -293,7 +293,7 @@ def test_flask_level2(cli_runner, whole_applications__flask):
     assert len(obj["symbol_table"]) > 0
     assert len(obj["call_graph"]) >= 500, \
         f"Expected >=500 edges for Flask, got {len(obj['call_graph'])}"
-    pycg_edges = [e for e in obj["call_graph"] if "pycg" in e["provenance"]]
+    pycg_edges = [e for e in obj["call_graph"] if "pycg" in e["prov"]]
     assert len(pycg_edges) >= 200, \
         f"Expected >=200 PyCG edges for Flask, got {len(pycg_edges)}"
 
@@ -315,7 +315,7 @@ def test_requests_level2(cli_runner, whole_applications__requests):
     assert len(obj["symbol_table"]) > 0
     assert len(obj["call_graph"]) >= 400, \
         f"Expected >=400 edges for requests, got {len(obj['call_graph'])}"
-    pycg_edges = [e for e in obj["call_graph"] if "pycg" in e["provenance"]]
+    pycg_edges = [e for e in obj["call_graph"] if "pycg" in e["prov"]]
     assert len(pycg_edges) >= 150, \
         f"Expected >=150 PyCG edges for requests, got {len(pycg_edges)}"
 
@@ -329,24 +329,24 @@ def _all_callables(module_dict: dict) -> list:
     result = []
     for fn in module_dict.get("functions", {}).values():
         result.extend(_flatten_callable(fn))
-    for cls in module_dict.get("classes", {}).values():
+    for cls in module_dict.get("types", {}).values():
         result.extend(_flatten_class(cls))
     return result
 
 
 def _flatten_callable(c: dict) -> list:
     result = [c]
-    for inner in c.get("inner_callables", {}).values():
+    for inner in c.get("callables", {}).values():
         result.extend(_flatten_callable(inner))
-    for inner_cls in c.get("inner_classes", {}).values():
+    for inner_cls in c.get("types", {}).values():
         result.extend(_flatten_class(inner_cls))
     return result
 
 
 def _flatten_class(cls: dict) -> list:
     result = []
-    for method in cls.get("methods", {}).values():
+    for method in cls.get("callables", {}).values():
         result.extend(_flatten_callable(method))
-    for inner in cls.get("inner_classes", {}).values():
+    for inner in cls.get("types", {}).values():
         result.extend(_flatten_class(inner))
     return result

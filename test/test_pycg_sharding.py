@@ -44,8 +44,8 @@ def test_adaptive_decomposition_splits_runaways(tmp_path, monkeypatch):
             functions={"f": PyCallable(signature=f"m{i}.f", name="f", path=path)},
         )
         if i:
-            jedi.append(PyCallEdge(source=f"m{i-1}.f", target=f"m{i}.f", weight=1,
-                                   provenance=["jedi"]))
+            jedi.append(PyCallEdge(src=f"m{i-1}.f", dst=f"m{i}.f", weight=1,
+                                   prov=["jedi"]))
 
     # threshold >= the decomposition floor (10) so pieces can shrink enough to converge.
     pycg = PyCG(tmp_path, shard_ceiling=40)
@@ -59,7 +59,7 @@ def test_adaptive_decomposition_splits_runaways(tmp_path, monkeypatch):
             if len(files) > threshold:
                 runaways.append(files)
             else:
-                edges += [PyCallEdge(source=f, target="x", weight=1, provenance=["pycg"])
+                edges += [PyCallEdge(src=f, dst="x", weight=1, prov=["pycg"])
                           for f in files]
         return edges, runaways
 
@@ -70,7 +70,7 @@ def test_adaptive_decomposition_splits_runaways(tmp_path, monkeypatch):
     # Every shard that was finally accepted is within the convergence threshold.
     assert all(sz <= threshold for sz in rounds_seen[-1])
     # No files lost: one pycg edge per file across all 16 modules.
-    assert len({e.source for e in edges}) == 40
+    assert len({e.src for e in edges}) == 40
 
 
 def test_pycg_does_not_follow_into_in_tree_dependency(tmp_path):
@@ -102,10 +102,10 @@ def test_pycg_does_not_follow_into_in_tree_dependency(tmp_path):
     with _shard_symlink_root(entry_points, proj) as (root, eps):
         edges = pycg._run_pycg_batch(eps, root, resolver, prefix="")
 
-    nodes = {n for e in edges for n in (e.source, e.target)}
+    nodes = {n for e in edges for n in (e.src, e.dst)}
     # bigdep is reachable as a ghost target ...
     assert any(n.startswith("bigdep") for n in nodes)
     # ... but none of its internals were analysed.
     assert not [n for n in nodes if n.startswith("bigdep.f")]
     # and the real app edge is present.
-    assert any(e.source == "app.main.run" and e.target == "bigdep.work" for e in edges)
+    assert any(e.src == "app.main.run" and e.dst == "bigdep.work" for e in edges)

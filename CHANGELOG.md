@@ -38,13 +38,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **BREAKING: canonical schema v2** (`analysis.json`). Structure is now a single additive CPG
-  tree under an `Analysis` envelope (`schema_version`, `language`, `max_level`, `k_limit`,
-  `application`). The old flat `symbol_table` + `call_graph` + separate `program_graphs` is
-  replaced: consumers must read `application.symbol_table`, `application.call_graph` (now nested
-  under `application`), and inline `body`/`cfg`/`cdg`/`ddg` on each callable. Nodes carry
-  canonical `can://` identifiers. Module `source` is stored once with byte-offset spans;
-  per-node `code` is dropped. Upgrade: pin `codeanalyzer-python==0.4.0` and update any code
-  that read top-level `symbol_table`/`call_graph` to go through `application`.
+  tree under an `Analysis` envelope (`schema_version`, `language`, `max_level`,
+  `analyzer{name,version}`, `k_limit` at L3+, `application`). The old flat `symbol_table` +
+  `call_graph` + separate `program_graphs` is replaced: consumers must read
+  `application.symbol_table`, `application.call_graph` (now nested under `application`), and
+  inline `body`/`cfg`/`cdg`/`ddg` on each callable. Nodes carry canonical `can://` identifiers.
+  Module `source` is stored once with byte-offset spans; per-node `code` is dropped. Upgrade:
+  pin `codeanalyzer-python==0.4.0` and update any code that read top-level
+  `symbol_table`/`call_graph` to go through `application`.
+- **BREAKING: keystone conformance sweep** (#98, part of the schema-v2 change above; key-for-key
+  parity with the canonical CPG keystone shared by every analyzer):
+  - Containment uses the shared canonical names: modules nest `types`/`functions`, classes nest
+    `callables`/`types`, callables nest `callables`/`types`. The historical
+    `classes`/`methods`/`inner_classes`/`inner_callables` keys are gone.
+  - `call_graph` edges are `{src, dst, prov, weight}` — the list name is the edge type, so the
+    `type: "CALL_DEP"` field and the old `source`/`target`/`provenance` keys are gone.
+  - No dangling edge endpoints: imported/builtin call targets are homed as
+    `can://<lang>/<app>/@external/<module>/<name>` entries in `application.external_symbols`
+    (keyed by that id, `kind:"external"`); first-party endpoints always resolve to their tree id.
+  - Envelope carries `analyzer: {name, version}`; `k_limit` is emitted only at L3+ (it is a
+    dataflow bound and was meaningless at L1/L2).
+  - Neo4j projection follows: `:PyExternal` ghosts merge on `id` (the `@external` id, not the
+    dotted signature) and `PY_CALLS` carries `prov` (was `provenance`).
+
+### Fixed
+- **Neo4j edge identity no longer collapses distinct edges** between the same endpoint pair:
+  `PY_DDG` merges per `(var, prov)` and `PY_CFG_NEXT` per `kind` via an internal `_k`
+  relationship discriminant. Previously a plain endpoint-pair `MERGE` silently dropped
+  per-variable data dependences (and could collapse a conditional's true/false CFG pair),
+  so a live Bolt push materialized fewer relationships than the projection produced.
+- **Full-run orphan prune now removes the L3/L4 CPG overlay** of a vanished module: the
+  containment closure used for pruning was missing `PY_HAS_CFG_NODE`, stranding every
+  `PyCFGNode` (and its dependence edges) in the database after its module was deleted.
 
 ## [0.3.0] - 2026-06-27
 

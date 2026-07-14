@@ -96,8 +96,8 @@ def _qualify_base_classes(module) -> None:
     (``BaseService`` → ``service.BaseService``), mirroring what a semantic
     resolution pass does, so the Neo4j PY_EXTENDS edge lands on the declared base
     class's ``can://`` id rather than dangling on an unresolved bare name."""
-    name_to_sig = {cls.name: cls.signature for cls in (module.classes or {}).values()}
-    for cls in (module.classes or {}).values():
+    name_to_sig = {cls.name: cls.signature for cls in (module.types or {}).values()}
+    for cls in (module.types or {}).values():
         cls.base_classes = [name_to_sig.get(b, b) for b in (cls.base_classes or [])]
 
 
@@ -129,24 +129,26 @@ def make_sample_app() -> Tuple[PyApplication, Dict[str, str]]:
     # target is a third-party member — materialized as a :PyExternal node.
     app.call_graph = [
         PyCallEdge(
-            source="service.helper",
-            target="service.Service.announce",
+            src="service.helper",
+            dst="service.Service.announce",
             weight=1,
-            provenance=["jedi"],
+            prov=["jedi"],
         ),
         PyCallEdge(
-            source="service.helper",
-            target="os.getcwd",
+            src="service.helper",
+            dst="os.getcwd",
             weight=2,
-            provenance=["jedi", "pycg"],
+            prov=["jedi", "pycg"],
         ),
     ]
-    app.external_symbols = {
-        "os.getcwd": PyExternalSymbol(name="getcwd", module="os")
-    }
 
     # Identity + L1 bodies, then the intraprocedural (syntactic) L3 overlay.
     sig_to_id = assign_ids(app, "sample-app")
+    ext_id = "can://python/sample-app/@external/os/getcwd"
+    app.external_symbols = {
+        ext_id: PyExternalSymbol(id=ext_id, name="getcwd", module="os")
+    }
+    sig_to_id["os.getcwd"] = ext_id
     populate_l1_body(app)
     syntactic_infos, _func_asts = build_function_pdgs(
         app, k=3, oracle_factory=lambda c, fast: SyntacticOracle()

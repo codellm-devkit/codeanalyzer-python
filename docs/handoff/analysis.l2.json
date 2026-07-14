@@ -2,27 +2,21 @@
   "schema_version": "2.0.0",
   "language": "python",
   "max_level": 2,
-  "k_limit": 3,
+  "analyzer": {
+    "name": "codeanalyzer-python",
+    "version": "0.4.0"
+  },
   "application": {
     "symbol_table": {
       "service.py": {
-        "file_path": "/path/to/sample_proj/service.py",
+        "file_path": "/private/tmp/claude-501/-Users-rkrsn-workspace-codellm-devkit-codeanalyzer-python/679d9d16-db02-445a-9e18-8e43de0e0565/scratchpad/sample_proj/service.py",
         "module_name": "service",
         "id": "can://python/sample_proj/service.py",
         "kind": "module",
-        "source": "\"\"\"A tiny sample exercising the interesting v2 shapes across L1-L4.\"\"\"\n\n\nclass BaseService:\n    pass\n\n\nclass Service(BaseService):\n    def announce(self, flag):\n        message = build(flag)\n        if flag:\n            message = message + \"!\"\n        return message\n\n\ndef build(x):\n    y = x\n    return y\n\n\ndef run(flag):\n    svc = Service()\n    return svc.announce(flag)\n",
+        "source": "class BaseService:\n    pass\n\nclass Service(BaseService):\n    def announce(self, flag):\n        message = build(flag)\n        if flag:\n            message = message + \"!\"\n        return message\n\ndef build(x):\n    y = x\n    return y\n\ndef run(flag):\n    svc = Service()\n    return svc.announce(flag)\n",
         "imports": [],
-        "comments": [
-          {
-            "content": "A tiny sample exercising the interesting v2 shapes across L1-L4.",
-            "start_line": 1,
-            "end_line": 1,
-            "start_column": 0,
-            "end_column": 70,
-            "is_docstring": true
-          }
-        ],
-        "classes": {
+        "comments": [],
+        "types": {
           "service.BaseService": {
             "name": "BaseService",
             "signature": "service.BaseService",
@@ -30,25 +24,25 @@
             "kind": "class",
             "span": {
               "start": [
-                4,
+                1,
                 0
               ],
               "end": [
-                5,
+                2,
                 8
               ],
               "bytes": [
-                73,
-                100
+                0,
+                27
               ]
             },
             "comments": [],
             "base_classes": [],
-            "methods": {},
+            "callables": {},
             "attributes": {},
-            "inner_classes": {},
-            "start_line": 4,
-            "end_line": 5
+            "types": {},
+            "start_line": 1,
+            "end_line": 2
           },
           "service.Service": {
             "name": "Service",
@@ -57,41 +51,41 @@
             "kind": "class",
             "span": {
               "start": [
-                8,
+                4,
                 0
               ],
               "end": [
-                13,
+                9,
                 22
               ],
               "bytes": [
-                103,
-                266
+                29,
+                192
               ]
             },
             "comments": [],
             "base_classes": [
               "BaseService"
             ],
-            "methods": {
+            "callables": {
               "announce": {
                 "name": "announce",
-                "path": "/path/to/sample_proj/service.py",
+                "path": "/private/tmp/claude-501/-Users-rkrsn-workspace-codellm-devkit-codeanalyzer-python/679d9d16-db02-445a-9e18-8e43de0e0565/scratchpad/sample_proj/service.py",
                 "signature": "service.Service.announce",
                 "id": "can://python/sample_proj/service.py/Service/announce(self,flag)",
                 "kind": "function",
                 "span": {
                   "start": [
-                    9,
+                    5,
                     4
                   ],
                   "end": [
-                    13,
+                    9,
                     22
                   ],
                   "bytes": [
-                    135,
-                    266
+                    61,
+                    192
                   ]
                 },
                 "comments": [],
@@ -100,29 +94,29 @@
                   {
                     "name": "self",
                     "type": "Service",
-                    "start_line": 9,
-                    "end_line": 9,
+                    "start_line": 5,
+                    "end_line": 5,
                     "start_column": 17,
                     "end_column": 21
                   },
                   {
                     "name": "flag",
-                    "start_line": 9,
-                    "end_line": 9,
+                    "start_line": 5,
+                    "end_line": 5,
                     "start_column": 23,
                     "end_column": 27
                   }
                 ],
-                "start_line": 9,
-                "end_line": 13,
-                "code_start_line": 10,
+                "start_line": 5,
+                "end_line": 9,
+                "code_start_line": 6,
                 "accessed_symbols": [
                   {
                     "name": "flag",
                     "scope": "local",
                     "kind": "variable",
                     "is_builtin": false,
-                    "lineno": 11,
+                    "lineno": 7,
                     "col_offset": 11
                   },
                   {
@@ -132,7 +126,7 @@
                     "type": "str",
                     "qualified_name": "builtins.str",
                     "is_builtin": false,
-                    "lineno": 13,
+                    "lineno": 9,
                     "col_offset": 15
                   },
                   {
@@ -142,7 +136,7 @@
                     "type": "build",
                     "qualified_name": "service.build",
                     "is_builtin": false,
-                    "lineno": 10,
+                    "lineno": 6,
                     "col_offset": 18
                   },
                   {
@@ -150,7 +144,7 @@
                     "scope": "local",
                     "kind": "variable",
                     "is_builtin": false,
-                    "lineno": 10,
+                    "lineno": 6,
                     "col_offset": 24
                   },
                   {
@@ -158,7 +152,7 @@
                     "scope": "local",
                     "kind": "variable",
                     "is_builtin": false,
-                    "lineno": 12,
+                    "lineno": 8,
                     "col_offset": 22
                   }
                 ],
@@ -171,21 +165,21 @@
                     "return_type": "build",
                     "callee_signature": "service.build",
                     "is_constructor_call": false,
-                    "start_line": 10,
+                    "start_line": 6,
                     "start_column": 18,
-                    "end_line": 10,
+                    "end_line": 6,
                     "end_column": 29
                   }
                 ],
-                "inner_callables": {},
-                "inner_classes": {},
+                "callables": {},
+                "types": {},
                 "local_variables": [
                   {
                     "name": "message",
                     "initializer": "build(flag)",
                     "scope": "function",
-                    "start_line": 10,
-                    "end_line": 10,
+                    "start_line": 6,
+                    "end_line": 6,
                     "start_column": 8,
                     "end_column": 15
                   },
@@ -194,28 +188,28 @@
                     "type": "str",
                     "initializer": "message + '!'",
                     "scope": "function",
-                    "start_line": 12,
-                    "end_line": 12,
+                    "start_line": 8,
+                    "end_line": 8,
                     "start_column": 12,
                     "end_column": 19
                   }
                 ],
                 "cyclomatic_complexity": 3,
                 "body": {
-                  "10:18": {
+                  "6:18": {
                     "kind": "call",
                     "span": {
                       "start": [
-                        10,
+                        6,
                         18
                       ],
                       "end": [
-                        10,
+                        6,
                         29
                       ],
                       "bytes": [
-                        179,
-                        190
+                        105,
+                        116
                       ]
                     },
                     "callee": "can://python/sample_proj/service.py/build(x)"
@@ -228,30 +222,30 @@
               }
             },
             "attributes": {},
-            "inner_classes": {},
-            "start_line": 8,
-            "end_line": 13
+            "types": {},
+            "start_line": 4,
+            "end_line": 9
           }
         },
         "functions": {
           "build": {
             "name": "build",
-            "path": "/path/to/sample_proj/service.py",
+            "path": "/private/tmp/claude-501/-Users-rkrsn-workspace-codellm-devkit-codeanalyzer-python/679d9d16-db02-445a-9e18-8e43de0e0565/scratchpad/sample_proj/service.py",
             "signature": "service.build",
             "id": "can://python/sample_proj/service.py/build(x)",
             "kind": "function",
             "span": {
               "start": [
-                16,
+                11,
                 0
               ],
               "end": [
-                18,
+                13,
                 12
               ],
               "bytes": [
-                269,
-                305
+                194,
+                230
               ]
             },
             "comments": [],
@@ -259,22 +253,22 @@
             "parameters": [
               {
                 "name": "x",
-                "start_line": 16,
-                "end_line": 16,
+                "start_line": 11,
+                "end_line": 11,
                 "start_column": 10,
                 "end_column": 11
               }
             ],
-            "start_line": 16,
-            "end_line": 18,
-            "code_start_line": 17,
+            "start_line": 11,
+            "end_line": 13,
+            "code_start_line": 12,
             "accessed_symbols": [
               {
                 "name": "x",
                 "scope": "local",
                 "kind": "variable",
                 "is_builtin": false,
-                "lineno": 17,
+                "lineno": 12,
                 "col_offset": 8
               },
               {
@@ -282,20 +276,20 @@
                 "scope": "local",
                 "kind": "variable",
                 "is_builtin": false,
-                "lineno": 18,
+                "lineno": 13,
                 "col_offset": 11
               }
             ],
             "call_sites": [],
-            "inner_callables": {},
-            "inner_classes": {},
+            "callables": {},
+            "types": {},
             "local_variables": [
               {
                 "name": "y",
                 "initializer": "x",
                 "scope": "function",
-                "start_line": 17,
-                "end_line": 17,
+                "start_line": 12,
+                "end_line": 12,
                 "start_column": 4,
                 "end_column": 5
               }
@@ -309,22 +303,22 @@
           },
           "run": {
             "name": "run",
-            "path": "/path/to/sample_proj/service.py",
+            "path": "/private/tmp/claude-501/-Users-rkrsn-workspace-codellm-devkit-codeanalyzer-python/679d9d16-db02-445a-9e18-8e43de0e0565/scratchpad/sample_proj/service.py",
             "signature": "service.run",
             "id": "can://python/sample_proj/service.py/run(flag)",
             "kind": "function",
             "span": {
               "start": [
-                21,
+                15,
                 0
               ],
               "end": [
-                23,
+                17,
                 29
               ],
               "bytes": [
-                308,
-                372
+                232,
+                296
               ]
             },
             "comments": [],
@@ -332,15 +326,15 @@
             "parameters": [
               {
                 "name": "flag",
-                "start_line": 21,
-                "end_line": 21,
+                "start_line": 15,
+                "end_line": 15,
                 "start_column": 8,
                 "end_column": 12
               }
             ],
-            "start_line": 21,
-            "end_line": 23,
-            "code_start_line": 22,
+            "start_line": 15,
+            "end_line": 17,
+            "code_start_line": 16,
             "accessed_symbols": [
               {
                 "name": "Service",
@@ -349,7 +343,7 @@
                 "type": "Service",
                 "qualified_name": "service.Service",
                 "is_builtin": false,
-                "lineno": 22,
+                "lineno": 16,
                 "col_offset": 10
               },
               {
@@ -357,7 +351,7 @@
                 "scope": "local",
                 "kind": "variable",
                 "is_builtin": false,
-                "lineno": 23,
+                "lineno": 17,
                 "col_offset": 24
               },
               {
@@ -367,7 +361,7 @@
                 "type": "Service",
                 "qualified_name": "service.Service",
                 "is_builtin": false,
-                "lineno": 23,
+                "lineno": 17,
                 "col_offset": 11
               }
             ],
@@ -378,9 +372,9 @@
                 "return_type": "Service",
                 "callee_signature": "service.Service.__init__",
                 "is_constructor_call": true,
-                "start_line": 22,
+                "start_line": 16,
                 "start_column": 10,
-                "end_line": 22,
+                "end_line": 16,
                 "end_column": 19
               },
               {
@@ -393,60 +387,60 @@
                 "return_type": "Service",
                 "callee_signature": "service.Service",
                 "is_constructor_call": false,
-                "start_line": 23,
+                "start_line": 17,
                 "start_column": 11,
-                "end_line": 23,
+                "end_line": 17,
                 "end_column": 29
               }
             ],
-            "inner_callables": {},
-            "inner_classes": {},
+            "callables": {},
+            "types": {},
             "local_variables": [
               {
                 "name": "svc",
                 "type": "Service",
                 "initializer": "Service()",
                 "scope": "function",
-                "start_line": 22,
-                "end_line": 22,
+                "start_line": 16,
+                "end_line": 16,
                 "start_column": 4,
                 "end_column": 7
               }
             ],
             "cyclomatic_complexity": 2,
             "body": {
-              "22:10": {
+              "16:10": {
                 "kind": "call",
                 "span": {
                   "start": [
-                    22,
+                    16,
                     10
                   ],
                   "end": [
-                    22,
+                    16,
                     19
                   ],
                   "bytes": [
-                    333,
-                    342
+                    257,
+                    266
                   ]
                 },
-                "callee": "service.Service.__init__"
+                "callee": "can://python/sample_proj/@external/service.Service/__init__"
               },
-              "23:11": {
+              "17:11": {
                 "kind": "call",
                 "span": {
                   "start": [
-                    23,
+                    17,
                     11
                   ],
                   "end": [
-                    23,
+                    17,
                     29
                   ],
                   "bytes": [
-                    354,
-                    372
+                    278,
+                    296
                   ]
                 },
                 "callee": "can://python/sample_proj/service.py/Service"
@@ -459,54 +453,52 @@
           }
         },
         "variables": [],
-        "content_hash": "2f3e79bcf69502b60a39cecd31206d6c5e3c6b3419dc2add4de955f2fe87ede2",
-        "last_modified": 1784029827.2876227,
-        "file_size": 373
+        "content_hash": "7097c745b302b502071549264a3eab63d8ba4db7c11174aca96a06d023db62e9",
+        "last_modified": 1784055599.9118228,
+        "file_size": 297
       }
     },
     "id": "can://python/sample_proj",
     "kind": "application",
     "call_graph": [
       {
-        "source": "can://python/sample_proj/service.py/run(flag)",
-        "target": "service.Service.__init__",
-        "type": "CALL_DEP",
+        "src": "can://python/sample_proj/service.py/run(flag)",
+        "dst": "can://python/sample_proj/@external/service.Service/__init__",
         "weight": 1,
-        "provenance": [
+        "prov": [
           "jedi"
         ]
       },
       {
-        "source": "can://python/sample_proj/service.py/run(flag)",
-        "target": "can://python/sample_proj/service.py/Service",
-        "type": "CALL_DEP",
+        "src": "can://python/sample_proj/service.py/run(flag)",
+        "dst": "can://python/sample_proj/service.py/Service",
         "weight": 1,
-        "provenance": [
+        "prov": [
           "jedi"
         ]
       },
       {
-        "source": "can://python/sample_proj/service.py/Service/announce(self,flag)",
-        "target": "can://python/sample_proj/service.py/build(x)",
-        "type": "CALL_DEP",
+        "src": "can://python/sample_proj/service.py/Service/announce(self,flag)",
+        "dst": "can://python/sample_proj/service.py/build(x)",
         "weight": 2,
-        "provenance": [
+        "prov": [
           "jedi",
           "pycg"
         ]
       },
       {
-        "source": "can://python/sample_proj/service.py/run(flag)",
-        "target": "can://python/sample_proj/service.py/Service/announce(self,flag)",
-        "type": "CALL_DEP",
+        "src": "can://python/sample_proj/service.py/run(flag)",
+        "dst": "can://python/sample_proj/service.py/Service/announce(self,flag)",
         "weight": 1,
-        "provenance": [
+        "prov": [
           "pycg"
         ]
       }
     ],
     "external_symbols": {
-      "service.Service.__init__": {
+      "can://python/sample_proj/@external/service.Service/__init__": {
+        "id": "can://python/sample_proj/@external/service.Service/__init__",
+        "kind": "external",
         "name": "__init__",
         "module": "service.Service"
       }

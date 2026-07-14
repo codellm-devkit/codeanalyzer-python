@@ -28,7 +28,7 @@ def _module(name: str, file_path: str, func_names: List[str]) -> PyModule:
 
 
 def _edge(src: str, dst: str, w: int = 1) -> PyCallEdge:
-    return PyCallEdge(source=src, target=dst, weight=w, provenance=["jedi"])
+    return PyCallEdge(src=src, dst=dst, weight=w, prov=["jedi"])
 
 
 def _cut_ratio(g: nx.DiGraph, file_shards: List[List[str]]) -> float:

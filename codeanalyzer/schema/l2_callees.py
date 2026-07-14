@@ -15,16 +15,16 @@ def _do_callable(c: PyCallable, sig_to_id: dict) -> None:
         if node is None or node.kind != "call":
             continue
         node.callee = sig_to_id.get(cs.callee_signature, cs.callee_signature)
-    for ic in (c.inner_callables or {}).values():
+    for ic in (c.callables or {}).values():
         _do_callable(ic, sig_to_id)
-    for icl in (c.inner_classes or {}).values():
+    for icl in (c.types or {}).values():
         _do_class(icl, sig_to_id)
 
 
 def _do_class(cl: PyClass, sig_to_id: dict) -> None:
-    for m in (cl.methods or {}).values():
+    for m in (cl.callables or {}).values():
         _do_callable(m, sig_to_id)
-    for ic in (cl.inner_classes or {}).values():
+    for ic in (cl.types or {}).values():
         _do_class(ic, sig_to_id)
 
 
@@ -32,5 +32,5 @@ def backfill_callees(app: PyApplication, sig_to_id: dict) -> None:
     for mod in app.symbol_table.values():
         for fn in (mod.functions or {}).values():
             _do_callable(fn, sig_to_id)
-        for cl in (mod.classes or {}).values():
+        for cl in (mod.types or {}).values():
             _do_class(cl, sig_to_id)

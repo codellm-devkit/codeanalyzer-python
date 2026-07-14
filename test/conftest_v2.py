@@ -12,21 +12,21 @@ def _assert_no_nulls(obj, path="$"):
 def _iter_callables(app):
     def walk_callable(c):
         yield c
-        for ic in (c.get("inner_callables") or {}).values():
+        for ic in (c.get("callables") or {}).values():
             yield from walk_callable(ic)
-        for cl in (c.get("inner_classes") or {}).values():
+        for cl in (c.get("types") or {}).values():
             yield from walk_class(cl)
 
     def walk_class(cl):
-        for m in (cl.get("methods") or {}).values():
+        for m in (cl.get("callables") or {}).values():
             yield from walk_callable(m)
-        for ic in (cl.get("inner_classes") or {}).values():
+        for ic in (cl.get("types") or {}).values():
             yield from walk_class(ic)
 
     for mod in app["symbol_table"].values():
         for fn in (mod.get("functions") or {}).values():
             yield mod, fn
-        for cl in (mod.get("classes") or {}).values():
+        for cl in (mod.get("types") or {}).values():
             for m in walk_class(cl):
                 yield mod, m
 
@@ -46,9 +46,13 @@ def assert_conformant(payload: dict, max_level: int) -> None:
             if node.get("kind") == "call" and "callee" in node:
                 assert isinstance(node["callee"], str), "resolved callee must be a string id"
     if max_level >= 2:
+        joinable = {c["id"] for _, c in _iter_callables(app)} | set(app.get("external_symbols") or {})
+        for mod in app["symbol_table"].values():
+            joinable.add(mod["id"])
         for e in app.get("call_graph", []):
-            assert isinstance(e["source"], str), f"call_graph edge source must be string: {e}"
-            assert isinstance(e["target"], str), f"call_graph edge target must be string: {e}"
+            assert set(e) == {"src", "dst", "prov", "weight"}, f"non-keystone edge keys: {sorted(e)}"
+            assert e["src"] in joinable or e["src"].startswith("can://"), f"dangling edge src: {e}"
+            assert e["dst"] in joinable or e["dst"].startswith("can://"), f"dangling edge dst: {e}"
     for mod, c in _iter_callables(app):
         node_ids = set(c.get("body", {}).keys())
         for lst in ("cfg", "cdg", "ddg", "summary"):

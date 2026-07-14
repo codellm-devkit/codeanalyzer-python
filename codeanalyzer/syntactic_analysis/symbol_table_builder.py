@@ -129,7 +129,7 @@ class SymbolTableBuilder:
             .comments(self._pycomments(module, source))
             .imports(self._imports(module))
             .variables(self._module_variables(module, script))
-            .classes(self._add_class(module, script, source))
+            .types(self._add_class(module, script, source))
             .functions(self._callables(module, script, source))
             .content_hash(content_hash)
             .last_modified(last_modified)
@@ -231,9 +231,9 @@ class SymbolTableBuilder:
                     for base in child.bases
                     if isinstance(base, ast.expr)
                 ])
-                .methods(self._callables(child, script, source, prefix=signature))  # Pass class signature as prefix
+                .callables(self._callables(child, script, source, prefix=signature))  # Pass class signature as prefix
                 .attributes(self._class_attributes(child, script))
-                .inner_classes(self._add_class(child, script, source, prefix=signature))  # Pass class signature as prefix
+                .types(self._add_class(child, script, source, prefix=signature))  # Pass class signature as prefix
                 .build()
             )
 
@@ -299,8 +299,8 @@ class SymbolTableBuilder:
                         if child.returns else self._infer_type(script, child.lineno, child.col_offset)
                     )
                     .comments(self._pycomments(child, code))
-                    .inner_callables(self._callables(child, script, source, signature))  # Pass current signature as prefix
-                    .inner_classes(self._add_class(child, script, source, signature))    # Pass current signature as prefix
+                    .callables(self._callables(child, script, source, signature))  # Pass current signature as prefix
+                    .types(self._add_class(child, script, source, signature))    # Pass current signature as prefix
                     .build()
                 )
 

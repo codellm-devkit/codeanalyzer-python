@@ -151,3 +151,43 @@ Scalpel → fallback, not a hard failure), and confirm the build across the repo
 supported 3.9–3.13+ range; `compute_SSA`'s return contract is discovered from
 source (not a documented public API) — wrap it behind `ScalpelAliasOracle` to
 contain upstream drift.
+
+## Stage 5 — keystone conformance sweep (issue #98, schema_version 2.0.0)
+
+The stage-5 pre-release conformance check against the canonical schema-v2
+keystone (paired-fixture parity with codeanalyzer-typescript-v2) found five
+deviations; all landed before the 0.4.0 tag so no per-language special cases
+bake into the SDK's shared `cpg` models:
+
+1. **Edge keys.** `call_graph` edges are `{src, dst, prov, weight}` — the
+   containing list's name IS the edge type, so the `type: "CALL_DEP"` field is
+   gone (with `source`/`target`/`provenance`). `ParamEdge`/`DdgEdge`/
+   `SummaryEdge` were already keystone-shaped.
+2. **No dangling endpoints.** Every call-graph endpoint joins the id space.
+   Declared endpoints re-identify to their `can://` tree id; imported/builtin
+   targets are homed as `can://python/<app>/@external/<module>/<name>` entries
+   in `application.external_symbols` — keyed by that id, `kind:"external"`
+   (mirrors TS `homeExternals`). The homed ids also enter `sig_to_id`, so L2
+   `callee` backfill resolves external callees too.
+3. **Containment vocabulary.** `PyModule.types`/`.functions`,
+   `PyClass.callables`/`.types`, `PyCallable.callables`/`.types` — the
+   historical `classes`/`methods`/`inner_classes`/`inner_callables` attribute
+   names were renamed (attribute = wire key; no alias layer). This supersedes
+   the earlier "field-name divergence, SDK maps at the boundary" decision.
+4. **param_in/param_out emptiness** on the paired fixture was downstream of
+   (2): once first-party endpoints stopped dangling, the interprocedural
+   linking produced both edge families (regression-gated by
+   `test_v2_keystone.py::test_param_edges_nonempty_on_interproc_chain`).
+5. **Envelope.** `analyzer: {name, version}` added (version read from package
+   metadata); `k_limit` is emitted at L3+ only (`Optional`, dropped by
+   `exclude_none` below the dataflow levels).
+
+Neo4j projection follow-through (same contract version 2.0.0, pre-release):
+`:PyExternal` ghosts merge on `id` (the `@external` id) instead of the dotted
+`signature`; `PY_CALLS` carries `prov` (was `provenance`); and relationship
+identity gained an internal `_k` discriminant — `PY_DDG` merges per
+`(var, prov)` and `PY_CFG_NEXT` per `kind`, because a plain endpoint-pair
+MERGE collapses legitimately-distinct edges (per-variable dependences; a
+conditional's true/false pair) and a live Bolt push then materializes fewer
+relationships than the projection produced (caught by the opt-in
+`test_neo4j_bolt.py` count gates).

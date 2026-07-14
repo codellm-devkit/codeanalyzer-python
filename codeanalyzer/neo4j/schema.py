@@ -122,8 +122,8 @@ NODE_LABELS: List[NodeLabel] = [
     NodeLabel(
         "PyExternal",
         "PySymbol",
-        "signature",
-        {"signature": "string", "name": "string", "module": "string"},
+        "id",
+        {"id": "string", "name": "string", "module": "string"},
     ),
     NodeLabel("PyPackage", "PyPackage", "name", {"name": "string"}),
     NodeLabel(
@@ -215,7 +215,7 @@ REL_TYPES: List[RelType] = [
         "PY_CALLS",
         ["PyCallable", "PyExternal"],
         ["PyCallable", "PyExternal"],
-        {"weight": "integer", "provenance": "string[]"},
+        {"weight": "integer", "prov": "string[]"},
     ),
     RelType("PY_EXTENDS", ["PyClass"], ["PyClass"]),
     RelType(
@@ -228,9 +228,14 @@ REL_TYPES: List[RelType] = [
     # Level-3 CPG overlay (-a 3 only): the cross-language dataflow vocabulary,
     # PY_-namespaced so per-language SDK backends can scope their queries.
     RelType("PY_HAS_CFG_NODE", ["PyCallable"], ["PyCFGNode"]),
-    RelType("PY_CFG_NEXT", ["PyCFGNode"], ["PyCFGNode"], {"kind": "string"}),
+    # ``_k`` is the relationship-identity discriminant (internal, underscore-
+    # prefixed like ``_module``): PY_CFG_NEXT merges per ``kind`` (a conditional's
+    # true/false pair), PY_DDG per ``(var, prov)`` (one dependence per variable,
+    # and the ssa/points-to split) — a plain endpoint-pair MERGE would collapse
+    # legitimately-distinct edges.
+    RelType("PY_CFG_NEXT", ["PyCFGNode"], ["PyCFGNode"], {"kind": "string", "_k": "string"}),
     RelType("PY_CDG", ["PyCFGNode"], ["PyCFGNode"]),
-    RelType("PY_DDG", ["PyCFGNode"], ["PyCFGNode"], {"var": "string", "prov": "string[]"}),
+    RelType("PY_DDG", ["PyCFGNode"], ["PyCFGNode"], {"var": "string", "prov": "string[]", "_k": "string"}),
     RelType("PY_PARAM_IN", ["PyCFGNode"], ["PyCFGNode"], {"var": "string"}),
     RelType("PY_PARAM_OUT", ["PyCFGNode"], ["PyCFGNode"], {"var": "string"}),
     RelType("PY_SUMMARY", ["PyCFGNode"], ["PyCFGNode"]),

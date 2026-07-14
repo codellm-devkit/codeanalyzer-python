@@ -16,21 +16,21 @@ def _all_callables(app):
     """Yield every PyCallable in the application tree (pydantic objects)."""
     def walk_callable(c):
         yield c
-        for ic in (c.inner_callables or {}).values():
+        for ic in (c.callables or {}).values():
             yield from walk_callable(ic)
-        for cl in (c.inner_classes or {}).values():
+        for cl in (c.types or {}).values():
             yield from walk_class(cl)
 
     def walk_class(cl):
-        for m in (cl.methods or {}).values():
+        for m in (cl.callables or {}).values():
             yield from walk_callable(m)
-        for ic in (cl.inner_classes or {}).values():
+        for ic in (cl.types or {}).values():
             yield from walk_class(ic)
 
     for mod in app.symbol_table.values():
         for fn in (mod.functions or {}).values():
             yield from walk_callable(fn)
-        for cl in (mod.classes or {}).values():
+        for cl in (mod.types or {}).values():
             yield from walk_class(cl)
 
 

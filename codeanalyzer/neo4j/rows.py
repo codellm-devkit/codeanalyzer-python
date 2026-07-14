@@ -58,6 +58,12 @@ class EdgeRow:
     from_ref: NodeRef
     to_ref: NodeRef
     props: Props
+    # Optional relationship discriminant: when set, the MERGE is on
+    # ``{_k: key}`` so several legitimately-distinct edges of one type may
+    # coexist between the same endpoint pair (e.g. per-variable PY_DDG edges,
+    # or the true/false PY_CFG_NEXT pair of a conditional). ``None`` keeps the
+    # plain endpoint-pair MERGE.
+    key: Optional[str] = None
 
 
 @dataclass
@@ -105,9 +111,11 @@ class RowBuilder:
         self._keys.add((labels[0], value))
         return NodeRef(labels[0], key_prop, value)
 
-    def edge(self, type_: str, from_ref: NodeRef, to_ref: NodeRef, props: Optional[Props] = None) -> None:
-        """An edge whose endpoints are known to exist (both ends emitted this run)."""
-        self._edges.append(EdgeRow(type_, from_ref, to_ref, dict(props or {})))
+    def edge(self, type_: str, from_ref: NodeRef, to_ref: NodeRef, props: Optional[Props] = None,
+             key: Optional[str] = None) -> None:
+        """An edge whose endpoints are known to exist (both ends emitted this run).
+        ``key`` sets the relationship discriminant (see :class:`EdgeRow`)."""
+        self._edges.append(EdgeRow(type_, from_ref, to_ref, dict(props or {}), key))
 
     def edge_to_symbol(
         self, type_: str, from_ref: NodeRef, target_ref: NodeRef, props: Optional[Props] = None

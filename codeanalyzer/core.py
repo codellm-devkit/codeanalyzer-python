@@ -3,6 +3,7 @@ import os
 import shutil
 import subprocess
 import sys
+from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from pathlib import Path
 from typing import Any, Dict, Optional, Union, List
 
@@ -18,6 +19,15 @@ from codeanalyzer.schema import (
     model_dump_json,
     model_validate_json,
 )
+from codeanalyzer.schema.py_schema import PyAnalyzerInfo
+
+
+def _analyzer_version() -> str:
+    """Installed package version for the envelope's analyzer identity."""
+    try:
+        return _pkg_version("codeanalyzer-python")
+    except PackageNotFoundError:
+        return "unknown"
 from codeanalyzer.schema.assign_ids import assign_ids
 from codeanalyzer.schema.l1_body import populate_l1_body
 from codeanalyzer.schema.l2_callees import backfill_callees
@@ -374,40 +384,25 @@ class Codeanalyzer:
             shutil.rmtree(self.cache_dir)
 
     @staticmethod
-    def _compute_external_symbols(symbol_table, call_graph):
-        """Build the external-symbol map: every call-graph endpoint whose signature
-        is not a declared class/callable in the symbol table is an external (an
-        imported library or builtin member). ``name``/``module`` are derived from
-        the signature (best effort: split on the last dot)."""
-        declared = set()
-
-        def walk_callable(c):
-            declared.add(c.signature)
-            for ic in (c.inner_callables or {}).values():
-                walk_callable(ic)
-            for cl in (c.inner_classes or {}).values():
-                walk_class(cl)
-
-        def walk_class(cl):
-            declared.add(cl.signature)
-            for m in (cl.methods or {}).values():
-                walk_callable(m)
-            for ic in (cl.inner_classes or {}).values():
-                walk_class(ic)
-
-        for mod in symbol_table.values():
-            for c in (mod.functions or {}).values():
-                walk_callable(c)
-            for cl in (mod.classes or {}).values():
-                walk_class(cl)
-
+    def _home_external_symbols(app, app_id, sig_to_id):
+        """Home every call-graph endpoint that is not a declared class/callable
+        onto a ``can://…/@external/<module>/<name>`` id (the keystone edge-endpoint
+        id home). Registers each homed id in ``sig_to_id`` so callee backfill and
+        call-graph re-identity map the dotted signature to it, and returns the
+        id-keyed external-symbol map. ``name``/``module`` are derived from the
+        signature (best effort: split on the last dot)."""
         externals: Dict[str, PyExternalSymbol] = {}
-        for edge in call_graph:
-            for sig in (edge.source, edge.target):
-                if sig in declared or sig in externals:
+        for edge in app.call_graph:
+            for sig in (edge.src, edge.dst):
+                if sig in sig_to_id:
                     continue
-                module, name = sig.rsplit(".", 1) if "." in sig else (sig, sig)
-                externals[sig] = PyExternalSymbol(name=name, module=module)
+                module, name = sig.rsplit(".", 1) if "." in sig else (None, sig)
+                ext_id = f"{app_id}/@external/{module}/{name}" if module else \
+                    f"{app_id}/@external/{name}"
+                sig_to_id[sig] = ext_id
+                externals[ext_id] = PyExternalSymbol(
+                    id=ext_id, name=name, module=module
+                )
         return externals
 
     def analyze(self) -> Analysis:
@@ -447,22 +442,21 @@ class Codeanalyzer:
 
         call_graph = filter_external_edges(call_graph, symbol_table)
 
-        # Classify call-graph endpoints that are not declared in the symbol table
-        # (imported library / builtin members) once, so the JSON and Neo4j backends
-        # share one authoritative external-symbol set.
-        external_symbols = self._compute_external_symbols(symbol_table, call_graph)
-
         # Recreate pyapplication
         app = (
             PyApplication.builder()
             .symbol_table(symbol_table)
             .call_graph(call_graph)
-            .external_symbols(external_symbols)
             .build()
         )
 
         app_name = self.options.app_name or self.project_dir.name
         sig_to_id = assign_ids(app, app_name)
+        # Home call-graph endpoints that are not declared in the symbol table
+        # (imported library / builtin members) onto @external ids once, so the
+        # JSON and Neo4j backends share one authoritative external-symbol set
+        # and every edge endpoint joins the id space (no dangling endpoints).
+        app.external_symbols = self._home_external_symbols(app, app.id, sig_to_id)
         populate_l1_body(app)
         if self.analysis_level >= 2:
             backfill_callees(app, sig_to_id)
@@ -510,9 +504,12 @@ class Codeanalyzer:
 
         # Build the v2 envelope, then persist it (the cache stores the full
         # ``Analysis`` envelope so a reused cache round-trips schema_version).
+        # k_limit is an L3+ envelope key: below the dataflow levels it stays
+        # None and exclude_none drops it from the payload.
         analysis = Analysis(
             max_level=self.analysis_level,
-            k_limit=self.options.graph_field_depth,
+            k_limit=self.options.graph_field_depth if self.analysis_level >= 3 else None,
+            analyzer=PyAnalyzerInfo(version=_analyzer_version()),
             application=app,
         )
         self._save_analysis_cache(analysis, cache_file)
@@ -752,7 +749,7 @@ class Codeanalyzer:
         """Build PyCG-resolved call edges.
 
         Runs PyCG's iterative name-pointer analysis over the whole project
-        and returns edges with ``provenance=["pycg"]``.  Falls back to an
+        and returns edges with ``prov=["pycg"]``.  Falls back to an
         empty list and logs a warning on any failure so the caller can
         continue with Jedi-only edges.
 

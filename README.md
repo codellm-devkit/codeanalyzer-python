@@ -54,8 +54,8 @@ needs.
 ## Features
 
 - **Canonical schema v2** — one additive Code Property Graph tree (`schema_version` `2.0.0`),
-  stamped with `language`, `max_level`, and `k_limit`, rooted at a single `application` node with
-  durable `can://` ids on every callable and above.
+  stamped with `language`, `max_level`, `analyzer{name,version}`, and (at L3+) `k_limit`, rooted
+  at a single `application` node with durable `can://` ids on every callable and above.
 - **Symbol table** — modules, classes, functions, methods, variables, decorators, imports, and
   docstrings, with precise byte-offset source spans; each module carries its `source` once.
 - **Call graph** — Jedi's lexical resolver at level 1, enriched with **PyCG**-resolved edges at
@@ -462,7 +462,8 @@ just populate more of the same tree:
   "schema_version": "2.0.0",
   "language": "python",
   "max_level": 4,                 // the level this run was produced at
-  "k_limit": 3,                   // access-path depth bound (--graph-field-depth)
+  "k_limit": 3,                   // access-path depth bound (--graph-field-depth); L3+ only
+  "analyzer": { "name": "codeanalyzer-python", "version": "0.4.0" },
   "application": {
     "id": "can://python/<app>",
     "kind": "application",
@@ -471,12 +472,17 @@ just populate more of the same tree:
         "id": "can://python/<app>/pkg/mod.py",
         "kind": "module",
         "source": "…full file text, stored once per module…",
-        "classes":   { "<Class>": { "id": "…", "kind": "class", "methods": { /* callables */ } } },
+        "types":     { "<Class>": { "id": "…", "kind": "class", "callables": { /* methods */ } } },
         "functions": { "<sig>":   { /* callable, see below */ } }
       }
     },
-    "call_graph": [ { "source": "can://…/main(a)", "target": "can://…/helper(x)",
-                      "type": "CALL_DEP", "weight": 1, "provenance": ["jedi", "pycg"] } ],
+    "call_graph": [ { "src": "can://…/main(a)", "dst": "can://…/helper(x)",
+                      "weight": 1, "prov": ["jedi", "pycg"] } ],
+    "external_symbols": {         // imported/builtin call targets, keyed by id
+      "can://python/<app>/@external/os/getcwd":
+        { "id": "can://python/<app>/@external/os/getcwd", "kind": "external",
+          "name": "getcwd", "module": "os" }
+    },
     "param_in":  [ { "src": "can://…/main(a)@6:4/actual_in:0", "dst": "can://…/helper(x)@formal_in:0" } ],
     "param_out": [ { "src": "can://…/helper(x)@formal_out",   "dst": "can://…/main(a)@6:4/actual_out" } ]
   }
@@ -512,6 +518,9 @@ Notable properties:
 - **`source` lives once per module**; every node's text is the `module.source[span.bytes]` slice.
 - **Cross-function edges** — `call_graph`, `param_in`, `param_out` — live at **application** scope;
   the intraprocedural `cfg`/`cdg`/`ddg` and the `summary` edges live **on the callable**.
+- **No dangling endpoints** — every `call_graph` `src`/`dst` joins the id space: declared
+  callables by their tree id, imported/builtin targets by a `…/@external/<module>/<name>` id
+  homed in `application.external_symbols`.
 - **Breaking change from v1:** there is no more flat top-level `symbol_table`/`call_graph`, and no
   separate program-graphs section. Everything now hangs off `application`, and the dataflow graphs
   are inlined on each callable. Read `analysis.application.symbol_table` (was

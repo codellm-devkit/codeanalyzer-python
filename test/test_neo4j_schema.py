@@ -91,7 +91,7 @@ def test_render_cypher_is_deterministic_and_self_contained():
     assert a == b, "cypher rendering must be deterministic"
     assert "CREATE CONSTRAINT" in a
     assert "DETACH DELETE" in a
-    assert "MERGE (n:PySymbol {signature: row.k})" in a
+    assert "MERGE (n:PySymbol {id: row.k})" in a
 
 
 def test_call_edge_to_imported_module_name_is_not_dropped():
@@ -121,7 +121,7 @@ def test_call_edge_to_imported_module_name_is_not_dropped():
     app = PyApplication(
         symbol_table={"m.py": mod},
         call_graph=[
-            PyCallEdge(source="m.caller", target="os", weight=1, provenance=["jedi"])
+            PyCallEdge(src="m.caller", dst="os", weight=1, prov=["jedi"])
         ],
     )
     sig_to_id = assign_ids(app, "app")

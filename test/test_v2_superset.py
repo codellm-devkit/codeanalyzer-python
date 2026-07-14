@@ -17,21 +17,21 @@ def _run(proj, level):
 def _callables(app):
     def wc(c):
         yield c
-        for ic in (c.get("inner_callables") or {}).values():
+        for ic in (c.get("callables") or {}).values():
             yield from wc(ic)
-        for cl in (c.get("inner_classes") or {}).values():
+        for cl in (c.get("types") or {}).values():
             yield from wcl(cl)
 
     def wcl(cl):
-        for m in (cl.get("methods") or {}).values():
+        for m in (cl.get("callables") or {}).values():
             yield from wc(m)
-        for ic in (cl.get("inner_classes") or {}).values():
+        for ic in (cl.get("types") or {}).values():
             yield from wcl(ic)
 
     for mod in app["symbol_table"].values():
         for fn in (mod.get("functions") or {}).values():
             yield from wc(fn)
-        for cl in (mod.get("classes") or {}).values():
+        for cl in (mod.get("types") or {}).values():
             yield from wcl(cl)
 
 

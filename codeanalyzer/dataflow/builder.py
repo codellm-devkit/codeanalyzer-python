@@ -57,20 +57,20 @@ def _walk_callables(
 
     def from_callable(c: PyCallable, chain: Tuple[PyCallable, ...]) -> None:
         out.append((c, chain))
-        for inner in (c.inner_callables or {}).values():
+        for inner in (c.callables or {}).values():
             from_callable(inner, chain + (c,))
-        for cls in (c.inner_classes or {}).values():
+        for cls in (c.types or {}).values():
             from_class(cls, chain + (c,))
 
     def from_class(cls: PyClass, chain: Tuple[PyCallable, ...]) -> None:
-        for m in (cls.methods or {}).values():
+        for m in (cls.callables or {}).values():
             from_callable(m, chain)
-        for inner in (cls.inner_classes or {}).values():
+        for inner in (cls.types or {}).values():
             from_class(inner, chain)
 
     for fn in (module.functions or {}).values():
         from_callable(fn, ())
-    for cls in (module.classes or {}).values():
+    for cls in (module.types or {}).values():
         from_class(cls, ())
     return out
 
@@ -393,9 +393,9 @@ def build_program_graphs(
                     info.nested_defs.append((node.id, nested_sig))
 
     call_edges = [
-        (e.source, e.target)
+        (e.src, e.dst)
         for e in app.call_graph
-        if e.source in infos and e.target in infos
+        if e.src in infos and e.dst in infos
     ]
     # Callsite resolutions are part of the same oracle (they may include
     # constructor retargets the edge list lacks).

@@ -46,13 +46,16 @@ analysis.json(-a 1) ⊆ analysis.json(-a 2) ⊆ analysis.json(-a 3) ⊆ analysis
 The payload root is the `Analysis` envelope (`codeanalyzer/schema/py_schema.py`):
 
 ```
-Analysis                         # envelope: schema_version, language, max_level, k_limit, application
+Analysis                         # envelope: schema_version, language, max_level,
+│                                #   analyzer{name,version}, k_limit (L3+ only), application
 └─ application (PyApplication)   # id, kind:"application"
    ├─ symbol_table: {<file>: PyModule}         # the node tree
-   │    PyModule    → id, kind:"module", source, classes{…}, functions{…}
-   │    PyClass     → id, kind:"class", span, methods{…}, inner_classes{…}
-   │    PyCallable  → id, kind, span, body{…}, cfg[], cdg[], ddg[], summary[]
-   ├─ call_graph: [PyCallEdge]    # cross-function overlay, app scope (L2)
+   │    PyModule    → id, kind:"module", source, types{…}, functions{…}
+   │    PyClass     → id, kind:"class", span, callables{…}, types{…}
+   │    PyCallable  → id, kind, span, body{…}, callables{…}, types{…},
+   │                  cfg[], cdg[], ddg[], summary[]
+   ├─ call_graph: [PyCallEdge]    # {src, dst, prov, weight} — the list name IS the type
+   ├─ external_symbols: {<id>: PyExternalSymbol}  # edge-endpoint id homes (L2)
    ├─ param_in:   [ParamEdge]     # cross-function overlay, app scope (L4)
    └─ param_out:  [ParamEdge]     # cross-function overlay, app scope (L4)
 ```
@@ -61,10 +64,16 @@ Intra-callable graphs (`cfg`/`cdg`/`ddg`/`summary`) hang off each callable; the
 truly cross-function overlays (`call_graph`/`param_in`/`param_out`) live at
 application scope because their endpoints span callables.
 
-**Field-name divergence (documented).** The canonical schema names the containers
-`types` and `callables`; this analyzer keeps its historical names — `PyModule.classes`,
-`PyModule.functions`, and `PyClass.methods`. Same shape, different keys; the SDK
-frontend maps them at the boundary.
+**Keystone containment vocabulary (issue #98).** The containers use the shared
+canonical names — `PyModule.types`/`.functions`, `PyClass.callables`/`.types`,
+`PyCallable.callables`/`.types` — never per-language renames, so one SDK model
+set parses every analyzer's output. (The historical `classes`/`methods`/
+`inner_classes` names are gone as of 0.4.0.)
+
+**No dangling edge endpoints.** Every `call_graph` endpoint joins the id space:
+declared callables by their `can://` tree id, imported/builtin targets by a
+`can://python/<app>/@external/<module>/<name>` id homed in
+`application.external_symbols` (keyed by that id, `kind:"external"`).
 
 ### Identity
 
@@ -129,12 +138,18 @@ frontend maps them at the boundary.
    same `can://` / global ordinal ids: containment → typed `PY_HAS_*` /
    `PY_DECLARES` edges (`PY_HAS_MODULE`, `PY_DECLARES`, `PY_HAS_METHOD`,
    `PY_HAS_CALLSITE`, `PY_HAS_CFG_NODE`, …); overlays → typed `PY_*` relationships
-   (`PY_CALLS`, `PY_CFG_NEXT`, `PY_CDG`, `PY_DDG` with a `prov` property,
-   `PY_PARAM_IN`, `PY_PARAM_OUT`, `PY_SUMMARY`). CFG statements and param vertices
-   share one `PyCFGNode` label, distinguished by `kind`. Neo4j is **always
-   full-depth** — `--emit neo4j` combined with `-a`/`--graphs` is an explicit
-   error. The vocabulary is `PY_`-prefixed by design (per-language namespacing in a
-   shared graph DB). Neo4j `SCHEMA_VERSION` = `2.0.0` (`neo4j/schema.py`).
+   (`PY_CALLS` with `weight`/`prov`, `PY_CFG_NEXT`, `PY_CDG`, `PY_DDG` with a
+   `prov` property, `PY_PARAM_IN`, `PY_PARAM_OUT`, `PY_SUMMARY`). CFG statements
+   and param vertices share one `PyCFGNode` label, distinguished by `kind`.
+   External call targets are `:PyExternal` ghosts merged on their
+   `can://…/@external/…` `id` (same key as the JSON `external_symbols`).
+   Relationship identity: `PY_DDG` merges per `(var, prov)` and `PY_CFG_NEXT`
+   per `kind` via the internal `_k` discriminant — a plain endpoint-pair MERGE
+   would collapse legitimately-distinct edges (per-variable dependences, a
+   conditional's true/false pair). Neo4j is **always full-depth** — `--emit
+   neo4j` combined with `-a`/`--graphs` is an explicit error. The vocabulary is
+   `PY_`-prefixed by design (per-language namespacing in a shared graph DB).
+   Neo4j `SCHEMA_VERSION` = `2.0.0` (`neo4j/schema.py`).
 
 ### Provider/client boundary
 
