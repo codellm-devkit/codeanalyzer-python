@@ -105,7 +105,16 @@ def make_sample_app() -> PyApplication:
     service_mod = PyModule(
         file_path="src/service.py",
         module_name="src.service",
-        imports=[PyImport(module="os", name="path", alias="p")],
+        imports=[
+            PyImport(module="os", name="path", alias="p"),
+            # Internal import, pre-resolved (issue #82): exercises the
+            # PY_IMPORTS -> :PyModule edge alongside the :PyPackage one above.
+            PyImport(
+                module="src.util",
+                name="src.util",
+                resolved_module="src/util.py",
+            ),
+        ],
         classes={"Service": service, "BaseService": base_service},
         functions={"helper": helper},
         variables=[

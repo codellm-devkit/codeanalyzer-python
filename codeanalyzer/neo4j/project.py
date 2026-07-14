@@ -136,25 +136,34 @@ def _project_module_body(
 
 
 def _project_imports(b: RowBuilder, mod_ref: NodeRef, mod: PyModule) -> None:
-    # Per-target-module aggregation: collapse all bindings for a given imported
-    # module into one PY_IMPORTS edge to a shared :PyPackage node.
+    # One PY_IMPORTS edge per (spelling, resolved target). Resolved internal
+    # imports point at the real :PyModule; externals keep the shared
+    # :PyPackage. Unresolved *relative* spellings (".", ".foo") name no
+    # package — they are dropped from the graph (the spelling survives in
+    # analysis.json), instead of minting bogus :PyPackage{name: "."} nodes.
     agg: dict = {}
     for im in mod.imports or []:
         if not im.module:
-            continue  # relative `from . import x` — no resolvable package
-        a = agg.setdefault(im.module, {"names": set(), "aliases": set()})
+            continue
+        if im.resolved_module is None and im.module.startswith("."):
+            continue
+        a = agg.setdefault((im.module, im.resolved_module), {"names": set(), "aliases": set()})
         if im.name:
             a["names"].add(im.name)
         if im.alias:
             a["aliases"].add(im.alias)
-    for module_name, a in agg.items():
-        pkg = b.node(["PyPackage"], "name", module_name, {})
+    for (spelling, resolved), a in agg.items():
+        if resolved is not None:
+            target = NodeRef("PyModule", "file_key", resolved)
+        else:
+            target = b.node(["PyPackage"], "name", spelling, {})
         b.edge(
             "PY_IMPORTS",
             mod_ref,
-            pkg,
+            target,
             prune(
                 {
+                    "module": spelling,
                     "imported_names": sorted(a["names"]) or None,
                     "aliases": sorted(a["aliases"]) or None,
                 }

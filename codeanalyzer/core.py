@@ -26,6 +26,7 @@ from codeanalyzer.semantic_analysis.call_graph import (
 )
 from codeanalyzer.semantic_analysis.pycg import PyCG, PyCGExceptions
 from codeanalyzer.syntactic_analysis.exceptions import SymbolTableBuilderRayError
+from codeanalyzer.syntactic_analysis.import_resolver import resolve_imports
 from codeanalyzer.syntactic_analysis.symbol_table_builder import SymbolTableBuilder
 from codeanalyzer.utils import ProgressBar
 from codeanalyzer.options import AnalysisOptions
@@ -455,6 +456,11 @@ class Codeanalyzer:
             .external_symbols(external_symbols)
             .build()
         )
+
+        # Every run re-resolves import spellings against the analyzed module
+        # set -- pure and cheap; cached modules from older caches default to
+        # resolved_module=None and get stamped here (issue #82).
+        resolve_imports(app, self.project_dir)
 
         # Single choke point for provenance: every produced app (fresh symbol
         # table or reused-from-cache) passes through here before being cached

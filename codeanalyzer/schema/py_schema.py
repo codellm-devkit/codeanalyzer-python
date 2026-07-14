@@ -176,6 +176,7 @@ class PyImport(BaseModel):
     module: str
     name: str
     alias: Optional[str] = None
+    resolved_module: Optional[str] = None
     start_line: int = -1
     end_line: int = -1
     start_column: int = -1

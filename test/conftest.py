@@ -70,3 +70,9 @@ def whole_applications__requests() -> Path:
 def single_functionalities__method_call_resolution() -> Path:
     """Attribute-call callee resolution (issue #80): subscript receiver, inherited method, bare calls."""
     return Path(__file__).parent.resolve().joinpath("fixtures", "single_functionalities", "method_call_resolution")
+
+
+@pytest.fixture
+def single_functionalities__internal_imports() -> Path:
+    """Absolute/relative internal import resolution fixture (issue #82)."""
+    return Path(__file__).parent.resolve().joinpath("fixtures", "single_functionalities", "internal_imports")

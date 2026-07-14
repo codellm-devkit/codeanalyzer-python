@@ -251,9 +251,11 @@
         "PyModule"
       ],
       "to": [
+        "PyModule",
         "PyPackage"
       ],
       "properties": {
+        "module": "string",
         "imported_names": "string[]",
         "aliases": "string[]"
       }
