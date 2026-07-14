@@ -144,6 +144,9 @@ $ canpy --help
  Static Analysis on Python source code using Jedi, PyCG and Tree sitter.
 
 ╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --version                                                   Show the canpy   │
+│                                                             version and      │
+│                                                             exit.            │
 │ --input            -i                     PATH              Path to the      │
 │                                                             project root     │
 │                                                             directory (not   │
