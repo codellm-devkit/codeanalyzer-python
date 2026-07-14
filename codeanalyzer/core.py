@@ -413,8 +413,8 @@ class Codeanalyzer:
         Uses caching to avoid re-analyzing unchanged files.
         """
         cache_file = self.cache_dir / "analysis_cache.json"
-        
-        # Try to load existing cached analysis 
+
+        # Try to load existing cached analysis
         cached_pyapplication = None
         if not self.rebuild_analysis and cache_file.exists():
             try:
@@ -423,6 +423,12 @@ class Codeanalyzer:
             except Exception as e:
                 logger.warning(f"Failed to load cache: {e}. Rebuilding analysis.")
                 cached_pyapplication = None
+
+        if cached_pyapplication is not None and not self._cache_analyzer_matches(
+            cached_pyapplication, analyzer_info(self.analysis_level).version
+        ):
+            logger.info("Analysis cache written by a different analyzer version; rebuilding.")
+            cached_pyapplication = None
 
         # Build symbol table from cached application if available (if no available, the build a new one)
         symbol_table = self._build_symbol_table(cached_pyapplication.symbol_table if cached_pyapplication else {})
@@ -473,6 +479,17 @@ class Codeanalyzer:
         self._save_analysis_cache(app, cache_file)
         
         return app
+
+    @staticmethod
+    def _cache_analyzer_matches(cached_app: Optional[PyApplication], current_version: str) -> bool:
+        """A cache written by another analyzer version (or before versions were
+        recorded) may lack fields the current models populate — pydantic fills
+        silent defaults, which would masquerade as analyzed absence."""
+        return (
+            cached_app is not None
+            and cached_app.analyzer is not None
+            and cached_app.analyzer.version == current_version
+        )
 
     def _load_pyapplication_from_cache(self, cache_file: Path) -> PyApplication:
         """Load cached analysis from file.

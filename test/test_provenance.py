@@ -1,7 +1,9 @@
 import subprocess
 from pathlib import Path
 
+from codeanalyzer.core import Codeanalyzer
 from codeanalyzer.provenance import analyzer_info, repository_info
+from codeanalyzer.schema.py_schema import PyAnalyzerInfo, PyApplication
 
 
 def _run_git(cwd: Path, *args: str) -> None:
@@ -90,3 +92,24 @@ def test_untracked_files_do_not_mark_the_checkout_dirty(tmp_path):
 
     info = repository_info(tmp_path)
     assert info.dirty is False
+
+
+def test_cache_analyzer_matches_none_app_is_false():
+    assert Codeanalyzer._cache_analyzer_matches(None, "0.3.1") is False
+
+
+def test_cache_analyzer_matches_no_analyzer_is_false():
+    app = PyApplication(symbol_table={})
+    assert Codeanalyzer._cache_analyzer_matches(app, "0.3.1") is False
+
+
+def test_cache_analyzer_matches_version_mismatch_is_false():
+    app = PyApplication(symbol_table={})
+    app.analyzer = PyAnalyzerInfo(name="codeanalyzer-python", version="0.3.0", config={})
+    assert Codeanalyzer._cache_analyzer_matches(app, "0.3.1") is False
+
+
+def test_cache_analyzer_matches_version_match_is_true():
+    app = PyApplication(symbol_table={})
+    app.analyzer = PyAnalyzerInfo(name="codeanalyzer-python", version="0.3.1", config={})
+    assert Codeanalyzer._cache_analyzer_matches(app, "0.3.1") is True

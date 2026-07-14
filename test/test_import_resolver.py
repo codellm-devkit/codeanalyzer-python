@@ -151,3 +151,17 @@ def test_same_spelling_to_different_targets_keeps_two_edges(single_functionaliti
     assert len(to_consumer) == 1
     assert "pkg" in to_util[0].props.get("spellings")
     assert "pkg" in to_consumer[0].props.get("spellings")
+
+
+def test_relative_import_above_the_project_root_degrades_to_none():
+    from codeanalyzer.syntactic_analysis.import_resolver import _resolve_one
+
+    assert _resolve_one("..util", "util", ("main.py",), {"util": "util.py"}) is None
+
+
+def test_init_importer_resolves_relative_to_its_own_package():
+    from codeanalyzer.syntactic_analysis.import_resolver import _resolve_one
+
+    candidates = {"pkg": "pkg/__init__.py", "pkg.util": "pkg/util.py"}
+    assert _resolve_one(".util", "helper", ("pkg", "__init__.py"), candidates) == "pkg/util.py"
+    assert _resolve_one(".", "util", ("pkg", "__init__.py"), candidates) == "pkg/util.py"
