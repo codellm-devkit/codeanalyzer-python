@@ -255,7 +255,7 @@
         "PyPackage"
       ],
       "properties": {
-        "module": "string",
+        "spellings": "string[]",
         "imported_names": "string[]",
         "aliases": "string[]"
       }

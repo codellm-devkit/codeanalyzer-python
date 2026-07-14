@@ -136,34 +136,47 @@ def _project_module_body(
 
 
 def _project_imports(b: RowBuilder, mod_ref: NodeRef, mod: PyModule) -> None:
-    # One PY_IMPORTS edge per (spelling, resolved target). Resolved internal
-    # imports point at the real :PyModule; externals keep the shared
-    # :PyPackage. Unresolved *relative* spellings (".", ".foo") name no
-    # package — they are dropped from the graph (the spelling survives in
-    # analysis.json), instead of minting bogus :PyPackage{name: "."} nodes.
+    # At most one PY_IMPORTS edge per (module, target) pair -- mirrors PY_CALLS,
+    # which pre-aggregates for the same reason: both writers MERGE edges on
+    # (type, from, to) and SET their props, so a second row for the same pair
+    # would silently overwrite the first in Neo4j instead of adding an edge.
+    # Buckets key on the edge's target identity (the resolved module, or the
+    # spelling itself for unresolved/external imports), so the SAME target
+    # imported under different spellings (``from pkg import util``,
+    # ``from . import util as u``, ``from .util import helper``) collapses
+    # onto one edge; the raw spellings ride along as a ``spellings`` array.
+    # Resolved internal imports point at the real :PyModule; externals keep
+    # the shared :PyPackage. Unresolved *relative* spellings (".", ".foo")
+    # name no package -- they are dropped from the graph (the spelling
+    # survives in analysis.json), instead of minting bogus
+    # :PyPackage{name: "."} nodes.
     agg: dict = {}
     for im in mod.imports or []:
         if not im.module:
             continue
         if im.resolved_module is None and im.module.startswith("."):
             continue
-        a = agg.setdefault((im.module, im.resolved_module), {"names": set(), "aliases": set()})
+        key = im.resolved_module or im.module
+        a = agg.setdefault(
+            key, {"spellings": set(), "names": set(), "aliases": set(), "resolved": im.resolved_module}
+        )
+        a["spellings"].add(im.module)
         if im.name:
             a["names"].add(im.name)
         if im.alias:
             a["aliases"].add(im.alias)
-    for (spelling, resolved), a in agg.items():
-        if resolved is not None:
-            target = NodeRef("PyModule", "file_key", resolved)
+    for key, a in agg.items():
+        if a["resolved"] is not None:
+            target = NodeRef("PyModule", "file_key", a["resolved"])
         else:
-            target = b.node(["PyPackage"], "name", spelling, {})
+            target = b.node(["PyPackage"], "name", key, {})
         b.edge(
             "PY_IMPORTS",
             mod_ref,
             target,
             prune(
                 {
-                    "module": spelling,
+                    "spellings": sorted(a["spellings"]),
                     "imported_names": sorted(a["names"]) or None,
                     "aliases": sorted(a["aliases"]) or None,
                 }

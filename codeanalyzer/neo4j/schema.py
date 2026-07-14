@@ -210,7 +210,7 @@ REL_TYPES: List[RelType] = [
         "PY_IMPORTS",
         ["PyModule"],
         ["PyModule", "PyPackage"],
-        {"module": "string", "imported_names": "string[]", "aliases": "string[]"},
+        {"spellings": "string[]", "imported_names": "string[]", "aliases": "string[]"},
     ),
     RelType("PY_DECORATED_BY", ["PyCallable"], ["PyDecorator"]),
 ]
