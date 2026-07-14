@@ -1,7 +1,7 @@
 [project]
 name = "codeanalyzer-python"
 version = "0.4.0"
-description = "Static Analysis on Python source code using Jedi, CodeQL and Treesitter — emits analysis.json or a Neo4j property graph."
+description = "Static analysis for Python — canonical schema v2 (symbol table, call graph, and native CFG/PDG/SDG dataflow) as analysis.json or a Neo4j property graph."
 readme = "README.md"
 authors = [
   { name = "Rahul Krishna", email = "i.m.ralk@gmail.com" }
