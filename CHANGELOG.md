@@ -35,6 +35,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `-a/--analysis-level` now accepts `3`; levels stay cumulative (level 3 includes PyCG
   enrichment). `-a 1`/`-a 2` output and timings are unchanged.
 
+## [0.4.0] - 2026-07-14
+
+### Added
+- **Four analysis levels** (`-a 1|2|3|4`): L1 is symbol table and Jedi call graph; L2 adds
+  PyCG call-graph edges (`--pycg-shard` scales to large apps); L3 adds intraprocedural dataflow
+  (CFG/CDG/DDG, syntactic, `prov:["ssa"]`); L4 adds interprocedural SDG with synthetic
+  parameter-in/out and summary edges, alias-aware DDG (`prov:["points-to"]`).
+- **Scalpel points-to oracle** for L4 alias analysis (optional `python-scalpel` dependency:
+  `pip install "codeanalyzer-python[scalpel]"`). Automatic type-based fallback when absent.
+- **Neo4j schema v2.0.0** — the property graph is re-keyed onto canonical `can://` node IDs.
+  New `PY_PARAM_IN`, `PY_PARAM_OUT`, `PY_SUMMARY` edges. `PY_DDG` carries `prov` property
+  to distinguish syntactic (ssa) from semantic (points-to) dependence.
+
+### Changed
+- **BREAKING: canonical schema v2** (`analysis.json`). Structure is now a single additive CPG
+  tree under an `Analysis` envelope (`schema_version`, `language`, `max_level`, `k_limit`,
+  `application`). The old flat `symbol_table` + `call_graph` + separate `program_graphs` is
+  replaced: consumers must read `application.symbol_table`, `application.call_graph` (now nested
+  under `application`), and inline `body`/`cfg`/`cdg`/`ddg` on each callable. Nodes carry
+  canonical `can://` identifiers. Module `source` is stored once with byte-offset spans;
+  per-node `code` is dropped. Upgrade: pin `codeanalyzer-python==0.4.0` and update any code
+  that read top-level `symbol_table`/`call_graph` to go through `application`.
+
 ## [0.3.0] - 2026-06-27
 
 ### Added
