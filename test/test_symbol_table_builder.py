@@ -32,3 +32,12 @@ def test_bare_name_calls_keep_their_resolution(single_functionalities__method_ca
     assert call_sites["len"].is_constructor_call is False
     assert call_sites["str"].callee_signature == "builtins.str.__init__"
     assert call_sites["str"].is_constructor_call is True
+
+
+def test_call_return_types_reflect_the_call_result(single_functionalities__method_call_resolution):
+    call_sites = _action_post_call_sites(single_functionalities__method_call_resolution)
+
+    assert call_sites["search"].return_type == "list"
+    assert call_sites["helper"].return_type == "int"
+    assert call_sites["len"].return_type == "int"
+    assert call_sites["str"].return_type == "str"

@@ -114,6 +114,27 @@ class SymbolTableBuilder:
             return func_expr.end_lineno, func_expr.end_col_offset - 1
         return node.lineno, node.col_offset
 
+    @staticmethod
+    def _infer_call_return_type(script: Script, line: int, column: int) -> Optional[str]:
+        """Inferred type of the call's *result*, not of the callee itself.
+
+        ``Script.infer`` at the callee name yields the function/class
+        being called; executing that definition yields what the call
+        evaluates to — a function's inferred return type, or the
+        instance for a constructor call. Returns ``None`` when Jedi
+        can't tell, so an unknown stays absent instead of masquerading
+        as the callee's own name.
+        """
+        try:
+            definitions = script.infer(line=line, column=column)
+            if definitions:
+                results = definitions[0].execute()
+                if results:
+                    return results[0].name
+        except Exception:
+            pass
+        return None
+
     def build_pymodule_from_file(self, py_file: Path) -> PyModule:
         """Builds a PyModule from a Python file.
 
@@ -609,7 +630,7 @@ class SymbolTableBuilder:
             callee_signature, is_constructor = self._infer_callee(
                 script, anchor_line, anchor_col
             )
-            return_type = self._infer_type(script, anchor_line, anchor_col)
+            return_type = self._infer_call_return_type(script, anchor_line, anchor_col)
 
             receiver_expr = None
             receiver_type = None
