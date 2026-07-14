@@ -97,6 +97,23 @@ class SymbolTableBuilder:
         except Exception:
             return None, False
 
+    @staticmethod
+    def _callee_anchor(node: ast.Call) -> Tuple[int, int]:
+        """Position of the callee *name* for Jedi inference.
+
+        An ``ast.Call``'s own ``lineno``/``col_offset`` is the first
+        character of the whole call expression — for an attribute call
+        ``receiver.method(...)`` that is the receiver token, and Jedi
+        would infer the receiver's type instead of the invoked method
+        (issue #80). Anchor attribute calls inside the attribute name —
+        its last character, so one-character names stay in range; other
+        callee shapes keep the call-expression start.
+        """
+        func_expr = node.func
+        if isinstance(func_expr, ast.Attribute):
+            return func_expr.end_lineno, func_expr.end_col_offset - 1
+        return node.lineno, node.col_offset
+
     def build_pymodule_from_file(self, py_file: Path) -> PyModule:
         """Builds a PyModule from a Python file.
 
@@ -588,10 +605,11 @@ class SymbolTableBuilder:
             func_expr = node.func
 
             method_name = "<unknown>"
+            anchor_line, anchor_col = self._callee_anchor(node)
             callee_signature, is_constructor = self._infer_callee(
-                script, node.lineno, node.col_offset
+                script, anchor_line, anchor_col
             )
-            return_type = self._infer_type(script, node.lineno, node.col_offset)
+            return_type = self._infer_type(script, anchor_line, anchor_col)
 
             receiver_expr = None
             receiver_type = None
