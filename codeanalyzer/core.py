@@ -37,6 +37,22 @@ from codeanalyzer.utils import ProgressBar
 from codeanalyzer.options import AnalysisOptions
 from codeanalyzer.provenance import analyzer_info, repository_info
 
+def _ensure_ray() -> None:
+    """Initialize Ray with the driver's pinned hash seed in the workers.
+
+    An implicit auto-init would not carry PYTHONHASHSEED into worker
+    interpreters, so PyCG shards (and Jedi inference) run there with random
+    set-iteration order and the emitted edges vary run to run (issue #99)."""
+    if not ray.is_initialized():
+        ray.init(
+            runtime_env={
+                "env_vars": {
+                    "PYTHONHASHSEED": os.environ.get("PYTHONHASHSEED", "0")
+                }
+            },
+        )
+
+
 @ray.remote
 def _process_file_with_ray(py_file: Union[Path, str], project_dir: Union[Path, str], virtualenv: Union[Path, str, None]) -> Dict[str, PyModule]:
     """Processes files in the project directory using Ray for distributed processing.
@@ -438,6 +454,11 @@ class Codeanalyzer:
             call_graph = merge_edges(call_graph, pycg_edges)
 
         call_graph = filter_external_edges(call_graph, symbol_table)
+        # Canonical edge order: backend iteration order (PyCG dicts, Counter
+        # insertion) is not a contract — sort so identical edge SETS always
+        # serialize identically (issue #99 determinism gate), and so the
+        # external-symbol homing below assigns ids in a stable order.
+        call_graph.sort(key=lambda e: (e.src, e.dst))
 
         # Recreate pyapplication
         app = (
@@ -716,6 +737,7 @@ class Codeanalyzer:
             
             # Process only new/changed files with Ray
             if files_to_process:
+                _ensure_ray()
                 futures = [_process_file_with_ray.remote(py_file, self.project_dir, str(self.virtualenv) if self.virtualenv else None) for py_file in files_to_process]
                 
                 with ProgressBar(len(futures), "Building symbol table (parallel)") as progress:
