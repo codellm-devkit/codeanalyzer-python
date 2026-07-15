@@ -164,19 +164,19 @@ $ canpy --help
 │ --version                                                   Show the canpy   │
 │                                                             version and      │
 │                                                             exit.            │
-│ --input            -i                     PATH              Path to the      │
+│ --input            -i                     <path>            Path to the      │
 │                                                             project root     │
 │                                                             directory (not   │
 │                                                             required for     │
 │                                                             --emit schema).  │
-│ --output           -o                     PATH              Output directory │
+│ --output           -o                     <path>            Output directory │
 │                                                             for artifacts.   │
-│ --format           -f                     [json|msgpack]    Output format    │
+│ --format           -f                     <json|msgpack>    Output format    │
 │                                                             for --emit json: │
 │                                                             json or msgpack. │
 │                                                             [default: json]  │
-│ --emit                                    [json|neo4j|sche  Output target:   │
-│                                           ma]               json             │
+│ --emit                                    <json|neo4j|sche  Output target:   │
+│                                           ma>               json             │
 │                                                             (analysis.json,  │
 │                                                             default) | neo4j │
 │                                                             (graph.cypher or │
@@ -186,13 +186,13 @@ $ canpy --help
 │                                                             schema.json      │
 │                                                             contract).       │
 │                                                             [default: json]  │
-│ --app-name                                TEXT              Logical          │
+│ --app-name                                <str>             Logical          │
 │                                                             application name │
 │                                                             for the graph    │
 │                                                             :PyApplication   │
 │                                                             anchor (default: │
 │                                                             input dir name). │
-│ --neo4j-uri                               TEXT              Push the graph   │
+│ --neo4j-uri                               <str>             Push the graph   │
 │                                                             to a live Neo4j  │
 │                                                             over Bolt        │
 │                                                             (incremental);   │
@@ -200,11 +200,11 @@ $ canpy --help
 │                                                             graph.cypher.    │
 │                                                             [env var:        │
 │                                                             NEO4J_URI]       │
-│ --neo4j-user                              TEXT              Neo4j username.  │
+│ --neo4j-user                              <str>             Neo4j username.  │
 │                                                             [env var:        │
 │                                                             NEO4J_USERNAME]  │
 │                                                             [default: neo4j] │
-│ --neo4j-password                          TEXT              Neo4j password.  │
+│ --neo4j-password                          <str>             Neo4j password.  │
 │                                                             Prefer the env   │
 │                                                             var over the     │
 │                                                             flag (the flag   │
@@ -214,12 +214,12 @@ $ canpy --help
 │                                                             [env var:        │
 │                                                             NEO4J_PASSWORD]  │
 │                                                             [default: neo4j] │
-│ --neo4j-database                          TEXT              Neo4j database   │
+│ --neo4j-database                          <str>             Neo4j database   │
 │                                                             name (default:   │
 │                                                             server default). │
 │                                                             [env var:        │
 │                                                             NEO4J_DATABASE]  │
-│ --analysis-level   -a                     INTEGER RANGE     Analysis depth:  │
+│ --analysis-level   -a                     <int range>       Analysis depth:  │
 │                                           [1<=x<=4]         1=symbol         │
 │                                                             table+Jedi call  │
 │                                                             graph, 2=+PyCG   │
@@ -235,7 +235,7 @@ $ canpy --help
 │                                                             alias-aware      │
 │                                                             DDG).            │
 │                                                             [default: 1]     │
-│ --graphs                                  TEXT              Level 3+ only:   │
+│ --graphs                                  <str>             Level 3+ only:   │
 │                                                             comma-separated  │
 │                                                             program-graph    │
 │                                                             sections to emit │
@@ -248,7 +248,7 @@ $ canpy --help
 │                                                             requires -a 4.   │
 │                                                             [default:        │
 │                                                             cfg,dfg,pdg]     │
-│ --graph-field-de…                         INTEGER RANGE     Level 3 only:    │
+│ --graph-field-de…                         <int range>       Level 3 only:    │
 │                                           [x>=1]            k-limit on       │
 │                                                             access-path      │
 │                                                             depth (x.f.g.h   │
@@ -285,12 +285,12 @@ $ canpy --help
 │                                                             environment      │
 │                                                             instead.         │
 │                                                             [default: venv]  │
-│ --file-name                               PATH              Analyze only the │
+│ --file-name                               <path>            Analyze only the │
 │                                                             specified file   │
 │                                                             (relative to     │
 │                                                             input            │
 │                                                             directory).      │
-│ --cache-dir        -c                     PATH              Directory to     │
+│ --cache-dir        -c                     <path>            Directory to     │
 │                                                             store analysis   │
 │                                                             cache. Defaults  │
 │                                                             to               │
@@ -304,7 +304,7 @@ $ canpy --help
 │                                                             retained.        │
 │                                                             [default:        │
 │                                                             keep-cache]      │
-│                    -v                     INTEGER           Increase         │
+│                    -v                     <int>             Increase         │
 │                                                             verbosity: -v,   │
 │                                                             -vv, -vvv        │
 │                                                             [default: 0]     │
@@ -331,7 +331,7 @@ $ canpy --help
 │                                                             Jedi-only edges. │
 │                                                             [default:        │
 │                                                             no-pycg-shard]   │
-│ --pycg-shard-cei…                         INTEGER RANGE     Maximum files    │
+│ --pycg-shard-cei…                         <int range>       Maximum files    │
 │                                           [x>=1]            per shard when   │
 │                                                             --pycg-shard is  │
 │                                                             active (default  │
@@ -353,7 +353,7 @@ $ canpy --help
 │                                                             heavy import     │
 │                                                             graphs.          │
 │                                                             [default: 100]   │
-│ --pycg-shard-tim…                         INTEGER RANGE     Per-shard        │
+│ --pycg-shard-tim…                         <int range>       Per-shard        │
 │                                           [x>=0]            wall-clock       │
 │                                                             timeout in       │
 │                                                             seconds when     │
@@ -381,7 +381,7 @@ $ canpy --help
 │                                                             ignored on       │
 │                                                             Windows.         │
 │                                                             [default: 120]   │
-│ --pycg-shard-str…                         [jedi|package]    How --pycg-shard │
+│ --pycg-shard-str…                         <jedi|package>    How --pycg-shard │
 │                                                             groups files     │
 │                                                             (level 2 only).  │
 │                                                             'jedi' (default) │
@@ -403,7 +403,7 @@ $ canpy --help
 │                                                             one-shard-per-p… │
 │                                                             grouping.        │
 │                                                             [default: jedi]  │
-│ --pycg-max-iter                           INTEGER RANGE     Cap on PyCG's    │
+│ --pycg-max-iter                           <int range>       Cap on PyCG's    │
 │                                           [x>=-1]           fixpoint passes  │
 │                                                             per              │
 │                                                             shard/project    │
