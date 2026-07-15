@@ -431,14 +431,14 @@ class PyCG:
         """Sum weights of duplicate ``(source, target)`` pairs across shards."""
         merged: Dict[tuple, PyCallEdge] = {}
         for edge in edges:
-            key = (edge.source, edge.target)
+            key = (edge.src, edge.dst)
             if key in merged:
                 existing = merged[key]
                 merged[key] = PyCallEdge(
                     source=existing.source,
                     target=existing.target,
                     weight=existing.weight + edge.weight,
-                    provenance=existing.provenance,
+                    prov=existing.prov,
                 )
             else:
                 merged[key] = edge
@@ -564,7 +564,7 @@ class PyCG:
             edge_counts[(resolver.resolve(src), resolver.resolve(dst))] += 1
 
         return [
-            PyCallEdge(source=src, target=dst, weight=count, provenance=["pycg"])
+            PyCallEdge(src=src, dst=dst, weight=count, prov=["pycg"])
             for (src, dst), count in edge_counts.items()
         ]
 
@@ -751,7 +751,7 @@ class PyCG:
                     try:
                         triples = ray.get(fut)
                         edges_all.extend(
-                            PyCallEdge(source=s, target=t, weight=w, provenance=["pycg"])
+                            PyCallEdge(src=s, dst=t, weight=w, prov=["pycg"])
                             for s, t, w in triples
                         )
                     except Exception:
@@ -841,14 +841,14 @@ class PyCG:
         # Merge duplicate (source, target) pairs that appear in multiple shards.
         merged: Dict[tuple, PyCallEdge] = {}
         for edge in all_edges:
-            key = (edge.source, edge.target)
+            key = (edge.src, edge.dst)
             if key in merged:
                 existing = merged[key]
                 merged[key] = PyCallEdge(
                     source=existing.source,
                     target=existing.target,
                     weight=existing.weight + edge.weight,
-                    provenance=existing.provenance,
+                    prov=existing.prov,
                 )
             else:
                 merged[key] = edge
@@ -923,7 +923,7 @@ class PyCG:
                 try:
                     triples = ray.get(fut)
                     edges = [
-                        PyCallEdge(source=s, target=t, weight=w, provenance=["pycg"])
+                        PyCallEdge(src=s, dst=t, weight=w, prov=["pycg"])
                         for s, t, w in triples
                     ]
                     all_edges.extend(edges)
@@ -956,14 +956,14 @@ class PyCG:
 
         merged: Dict[tuple, PyCallEdge] = {}
         for edge in all_edges:
-            key = (edge.source, edge.target)
+            key = (edge.src, edge.dst)
             if key in merged:
                 existing = merged[key]
                 merged[key] = PyCallEdge(
                     source=existing.source,
                     target=existing.target,
                     weight=existing.weight + edge.weight,
-                    provenance=existing.provenance,
+                    prov=existing.prov,
                 )
             else:
                 merged[key] = edge
@@ -984,7 +984,7 @@ class PyCG:
         symbol_table: Dict[str, PyModule],
         jedi_edges: Optional[List[PyCallEdge]] = None,
     ) -> List[PyCallEdge]:
-        """Run PyCG and return ``PyCallEdge`` entries with ``provenance=["pycg"]``.
+        """Run PyCG and return ``PyCallEdge`` entries with ``prov=["pycg"]``.
 
         Edges are coalesced on ``(source, target)`` — ``weight`` equals the
         number of times PyCG reports the same (caller, callee) pair (always 1

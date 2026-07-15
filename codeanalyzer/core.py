@@ -11,12 +11,17 @@ import time
 import ray
 from codeanalyzer.utils import logger
 from codeanalyzer.schema import (
+    Analysis,
     PyApplication,
     PyExternalSymbol,
     PyModule,
     model_dump_json,
     model_validate_json,
 )
+from codeanalyzer.schema.assign_ids import assign_ids
+from codeanalyzer.schema.l1_body import populate_l1_body
+from codeanalyzer.schema.l2_callees import backfill_callees
+from codeanalyzer.schema.call_graph_ids import reidentify_call_graph
 from codeanalyzer.schema.py_schema import PyCallEdge
 from codeanalyzer.semantic_analysis.call_graph import (
     filter_external_edges,
@@ -49,7 +54,7 @@ def _process_file_with_ray(py_file: Union[Path, str], project_dir: Union[Path, s
     try:
         py_file = Path(py_file)
         symbol_table_builder = SymbolTableBuilder(project_dir, virtualenv)
-        module_map[str(py_file)] = symbol_table_builder.build_pymodule_from_file(py_file)
+        module_map[str(py_file.relative_to(Path(project_dir)))] = symbol_table_builder.build_pymodule_from_file(py_file)
     except Exception as e:
         console.log(f"❌ Failed to process {py_file}: {e}")
         raise SymbolTableBuilderRayError(f"Ray processing error for {py_file}: {e}")
@@ -371,67 +376,52 @@ class Codeanalyzer:
             shutil.rmtree(self.cache_dir)
 
     @staticmethod
-    def _compute_external_symbols(symbol_table, call_graph):
-        """Build the external-symbol map: every call-graph endpoint whose signature
-        is not a declared class/callable in the symbol table is an external (an
-        imported library or builtin member). ``name``/``module`` are derived from
-        the signature (best effort: split on the last dot)."""
-        declared = set()
-
-        def walk_callable(c):
-            declared.add(c.signature)
-            for ic in (c.inner_callables or {}).values():
-                walk_callable(ic)
-            for cl in (c.inner_classes or {}).values():
-                walk_class(cl)
-
-        def walk_class(cl):
-            declared.add(cl.signature)
-            for m in (cl.methods or {}).values():
-                walk_callable(m)
-            for ic in (cl.inner_classes or {}).values():
-                walk_class(ic)
-
-        for mod in symbol_table.values():
-            for c in (mod.functions or {}).values():
-                walk_callable(c)
-            for cl in (mod.classes or {}).values():
-                walk_class(cl)
-
+    def _home_external_symbols(app, app_id, sig_to_id):
+        """Home every call-graph endpoint that is not a declared class/callable
+        onto a ``can://…/@external/<module>/<name>`` id (the keystone edge-endpoint
+        id home). Registers each homed id in ``sig_to_id`` so callee backfill and
+        call-graph re-identity map the dotted signature to it, and returns the
+        id-keyed external-symbol map. ``name``/``module`` are derived from the
+        signature (best effort: split on the last dot)."""
         externals: Dict[str, PyExternalSymbol] = {}
-        for edge in call_graph:
-            for sig in (edge.source, edge.target):
-                if sig in declared or sig in externals:
+        for edge in app.call_graph:
+            for sig in (edge.src, edge.dst):
+                if sig in sig_to_id:
                     continue
-                module, name = sig.rsplit(".", 1) if "." in sig else (sig, sig)
-                externals[sig] = PyExternalSymbol(name=name, module=module)
+                module, name = sig.rsplit(".", 1) if "." in sig else (None, sig)
+                ext_id = f"{app_id}/@external/{module}/{name}" if module else \
+                    f"{app_id}/@external/{name}"
+                sig_to_id[sig] = ext_id
+                externals[ext_id] = PyExternalSymbol(
+                    id=ext_id, name=name, module=module
+                )
         return externals
 
-    def analyze(self) -> PyApplication:
-        """Analyze the project and return a PyApplication with symbol table.
-        
+    def analyze(self) -> Analysis:
+        """Analyze the project and return the v2 ``Analysis`` envelope.
+
         Uses caching to avoid re-analyzing unchanged files.
         """
         cache_file = self.cache_dir / "analysis_cache.json"
 
         # Try to load existing cached analysis
-        cached_pyapplication = None
+        cached = None
         if not self.rebuild_analysis and cache_file.exists():
             try:
-                cached_pyapplication = self._load_pyapplication_from_cache(cache_file)
-                logger.info("Loaded cached analysis")
+                cached = self._load_pyapplication_from_cache(cache_file)
+                if cached is not None:
+                    logger.info("Loaded cached analysis")
             except Exception as e:
                 logger.warning(f"Failed to load cache: {e}. Rebuilding analysis.")
-                cached_pyapplication = None
+                cached = None
 
-        if cached_pyapplication is not None and not self._cache_analyzer_matches(
-            cached_pyapplication, analyzer_info(self.analysis_level).version
-        ):
-            logger.info("Analysis cache written by a different analyzer version; rebuilding.")
-            cached_pyapplication = None
+        if not self._cache_analyzer_matches(cached, analyzer_info(self.analysis_level).version):
+            if cached is not None:
+                logger.info("Analysis cache written by a different analyzer version; rebuilding.")
+            cached = None
 
         # Build symbol table from cached application if available (if no available, the build a new one)
-        symbol_table = self._build_symbol_table(cached_pyapplication.symbol_table if cached_pyapplication else {})
+        symbol_table = self._build_symbol_table(cached.application.symbol_table if cached else {})
 
         resolve_unresolved_constructors(symbol_table)
 
@@ -449,17 +439,11 @@ class Codeanalyzer:
 
         call_graph = filter_external_edges(call_graph, symbol_table)
 
-        # Classify call-graph endpoints that are not declared in the symbol table
-        # (imported library / builtin members) once, so the JSON and Neo4j backends
-        # share one authoritative external-symbol set.
-        external_symbols = self._compute_external_symbols(symbol_table, call_graph)
-
         # Recreate pyapplication
         app = (
             PyApplication.builder()
             .symbol_table(symbol_table)
             .call_graph(call_graph)
-            .external_symbols(external_symbols)
             .build()
         )
 
@@ -470,52 +454,139 @@ class Codeanalyzer:
 
         # Single choke point for provenance: every produced app (fresh symbol
         # table or reused-from-cache) passes through here before being cached
-        # or returned, so analyzer/repository always reflect *this* run/checkout
-        # even when the symbol table itself came from the on-disk cache.
-        app.analyzer = analyzer_info(self.analysis_level)
+        # or returned, so repository provenance always reflects *this* checkout
+        # even when the symbol table itself came from the on-disk cache. The
+        # analyzer identity rides the envelope below (keystone home).
         app.repository = repository_info(self.project_dir)
 
-        # Save to cache
-        self._save_analysis_cache(app, cache_file)
-        
-        return app
+        app_name = self.options.app_name or self.project_dir.name
+        sig_to_id = assign_ids(app, app_name)
+        # Home call-graph endpoints that are not declared in the symbol table
+        # (imported library / builtin members) onto @external ids once, so the
+        # JSON and Neo4j backends share one authoritative external-symbol set
+        # and every edge endpoint joins the id space (no dangling endpoints).
+        app.external_symbols = self._home_external_symbols(app, app.id, sig_to_id)
+        populate_l1_body(app)
+        if self.analysis_level >= 2:
+            backfill_callees(app, sig_to_id)
+        reidentify_call_graph(app, sig_to_id)
+
+        # L3: intraprocedural dataflow (CFG/CDG/DDG) emitted onto the v2 tree.
+        if self.analysis_level >= 3:
+            from codeanalyzer.dataflow.builder import (
+                build_function_pdgs,
+                emit_l3_body,
+            )
+            from codeanalyzer.dataflow.syntactic import SyntacticOracle
+
+            infos, _func_asts = build_function_pdgs(
+                app,
+                k=self.options.graph_field_depth,
+                oracle_factory=lambda c, fast: SyntacticOracle(),
+            )
+            emit_l3_body(app, infos, sig_to_id, set(self.options.graphs.split(",")))
+
+        # L4: interprocedural dataflow (param vertices + summary + param_in/out)
+        # layered on top of the L3 syntactic overlay (L3 ⊆ L4). Scalpel is the
+        # primary may-alias oracle, with the type-based total fallback.
+        if self.analysis_level >= 4:
+            from codeanalyzer.dataflow.builder import (
+                _base_types,
+                build_program_graphs,
+                emit_ddg_pointsto_delta,
+                emit_l4,
+            )
+            from codeanalyzer.dataflow.scalpel_oracle import make_alias_oracle
+
+            ir = build_program_graphs(
+                app,
+                k=self.options.graph_field_depth,
+                oracle_factory=lambda c, fast: make_alias_oracle(
+                    c, fast, _base_types(c)
+                ),
+            )
+            emit_l4(app, ir, sig_to_id)
+            # Semantic ddg delta: the alias-derived def-use edges the real
+            # oracle adds beyond the L3 syntactic set, tagged prov=["points-to"].
+            # ``infos`` are the syntactic (L3) PDGs from the >=3 block above.
+            emit_ddg_pointsto_delta(app, infos, ir, sig_to_id)
+
+        # Build the v2 envelope, then persist it (the cache stores the full
+        # ``Analysis`` envelope so a reused cache round-trips schema_version).
+        # k_limit is an L3+ envelope key: below the dataflow levels it stays
+        # None and exclude_none drops it from the payload.
+        analysis = Analysis(
+            max_level=self.analysis_level,
+            k_limit=self.options.graph_field_depth if self.analysis_level >= 3 else None,
+            analyzer=analyzer_info(self.analysis_level),
+            application=app,
+        )
+        self._save_analysis_cache(analysis, cache_file)
+
+        return analysis
 
     @staticmethod
-    def _cache_analyzer_matches(cached_app: Optional[PyApplication], current_version: str) -> bool:
+    def _cache_analyzer_matches(cached: Optional[Analysis], current_version: str) -> bool:
         """A cache written by another analyzer version (or before versions were
         recorded) may lack fields the current models populate — pydantic fills
-        silent defaults, which would masquerade as analyzed absence."""
+        silent defaults, which would masquerade as analyzed absence. The
+        analyzer identity lives on the envelope (keystone home)."""
         return (
-            cached_app is not None
-            and cached_app.analyzer is not None
-            and cached_app.analyzer.version == current_version
+            cached is not None
+            and cached.analyzer is not None
+            and cached.analyzer.version == current_version
         )
 
-    def _load_pyapplication_from_cache(self, cache_file: Path) -> PyApplication:
-        """Load cached analysis from file.
-        
+    def _load_pyapplication_from_cache(self, cache_file: Path) -> Optional[Analysis]:
+        """Load a cached v2 ``Analysis`` envelope from file.
+
+        A cache written by an older (v1) analyzer stored a bare
+        ``PyApplication`` with no ``schema_version``; such a payload no longer
+        validates as an ``Analysis`` (or carries the wrong ``schema_version``).
+        In that case we log and return ``None`` so the caller treats it as a
+        cache miss and rebuilds from scratch — rather than crashing.
+
         Args:
             cache_file: Path to the cache file
-            
+
         Returns:
-            PyApplication: The cached application data
+            Optional[Analysis]: The cached envelope, or ``None`` if the cache is
+            stale/incompatible and should be rebuilt.
         """
         with cache_file.open('r') as f:
             data = f.read()
-        return model_validate_json(PyApplication, data)
-    
-    def _save_analysis_cache(self, app: PyApplication, cache_file: Path) -> None:
-        """Save analysis to cache file.
-        
+        try:
+            cached = model_validate_json(Analysis, data)
+        except Exception:
+            logger.info("stale/incompatible analysis cache — rebuilding")
+            return None
+        if getattr(cached, "schema_version", None) != "2.0.0":
+            logger.info("stale/incompatible analysis cache (schema_version) — rebuilding")
+            return None
+        # The cache keys only on file hash/mtime/size, not on level, so a cache
+        # built at a different analysis_level would leak higher-level body/edge
+        # content (or omit content when the cached level is lower). Reject the
+        # mismatch and force a full rebuild at the requested level.
+        if cached.max_level != self.analysis_level:
+            logger.info(
+                f"cache built at level {cached.max_level} != requested "
+                f"{self.analysis_level} — rebuilding"
+            )
+            return None
+        return cached
+
+    def _save_analysis_cache(self, analysis: Analysis, cache_file: Path) -> None:
+        """Save the v2 ``Analysis`` envelope to the cache file.
+
         Args:
-            app: The PyApplication to cache
+            analysis: The Analysis envelope to cache
             cache_file: Path to save the cache file
         """
         # Ensure cache directory exists
         cache_file.parent.mkdir(parents=True, exist_ok=True)
-        
+
         with cache_file.open('w') as f:
-            f.write(model_dump_json(app, indent=2))
+            f.write(model_dump_json(analysis, indent=2))
 
         logger.info(f"Analysis cached to {cache_file}")
 
@@ -583,9 +654,9 @@ class Codeanalyzer:
         if self.file_name is not None:
             single_file = self.project_dir / self.file_name
             logger.info(f"Analyzing single file: {single_file}")
-            
+
             # Check if file is in cache and unchanged
-            file_key = str(single_file)
+            file_key = str(single_file.relative_to(self.project_dir))
             if file_key in cached_symbol_table and not self.rebuild_analysis:
                 # Compute file checksum to see if it changed
                 if self._file_unchanged(single_file, cached_symbol_table[file_key]):
@@ -635,7 +706,7 @@ class Codeanalyzer:
             # Separate files into cached and new/changed
             files_to_process = []
             for py_file in py_files:
-                file_key = str(py_file)
+                file_key = str(py_file.relative_to(self.project_dir))
                 if file_key in cached_symbol_table and not self.rebuild_analysis:
                     if self._file_unchanged(py_file, cached_symbol_table[file_key]):
                         # Use cached version
@@ -663,7 +734,7 @@ class Codeanalyzer:
             
             with ProgressBar(len(py_files), "Building symbol table") as progress:
                 for py_file in py_files:
-                    file_key = str(py_file)
+                    file_key = str(py_file.relative_to(self.project_dir))
                     
                     # Check if file is cached and unchanged
                     if file_key in cached_symbol_table and not self.rebuild_analysis:
@@ -699,7 +770,7 @@ class Codeanalyzer:
         """Build PyCG-resolved call edges.
 
         Runs PyCG's iterative name-pointer analysis over the whole project
-        and returns edges with ``provenance=["pycg"]``.  Falls back to an
+        and returns edges with ``prov=["pycg"]``.  Falls back to an
         empty list and logs a warning on any failure so the caller can
         continue with Jedi-only edges.
 

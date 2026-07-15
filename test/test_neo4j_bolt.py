@@ -16,12 +16,14 @@ import pytest
 from codeanalyzer.neo4j import project
 from codeanalyzer.neo4j.bolt import BoltConfig, bolt_writer
 from codeanalyzer.schema import PyApplication, PyCallable, PyModule
+from codeanalyzer.schema.assign_ids import assign_ids
 
 from sample_graph_app import make_sample_app
 
 
-def _single_module_app(file_key: str = "appb/main.py") -> PyApplication:
-    """A minimal second application with its own (distinct) module file_key."""
+def _single_module_app(file_key: str = "appb/main.py"):
+    """A minimal second application (with its own distinct module file_key) and
+    its ``sig_to_id`` map — returns ``(app, sig_to_id)`` like ``make_sample_app``."""
     fn = PyCallable(
         name="main", path=file_key, signature="appb.main", return_type="None",
         code="def main():\n    ...", start_line=1, end_line=2,
@@ -31,7 +33,8 @@ def _single_module_app(file_key: str = "appb/main.py") -> PyApplication:
         file_path=file_key, module_name="appb.main", functions={"main": fn},
         content_hash="h-b", last_modified=1.0, file_size=10,
     )
-    return PyApplication(symbol_table={file_key: mod}, call_graph=[])
+    app = PyApplication(symbol_table={file_key: mod}, call_graph=[])
+    return app, assign_ids(app, "app-b")
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("RUN_CONTAINER_TESTS"),
@@ -86,7 +89,8 @@ def _clean_db(driver):
 
 
 def test_full_push_materializes_the_whole_graph_and_schema(driver, cfg):
-    rows = project(make_sample_app(), "sample-app")
+    app, sig_to_id = make_sample_app()
+    rows = project(app, "sample-app", sig_to_id)
     bolt_writer(rows, cfg, full_run=True)
 
     # Every projected node/edge lands.
@@ -123,12 +127,14 @@ def test_full_push_materializes_the_whole_graph_and_schema(driver, cfg):
 def test_full_run_does_not_prune_another_applications_modules(driver, cfg):
     """Regression for #45: a full-run push for one application must not prune the
     modules of a *different* application sharing the database."""
-    bolt_writer(project(make_sample_app(), "app-a"), cfg, full_run=True)
+    app_a, sig_to_id_a = make_sample_app()
+    bolt_writer(project(app_a, "app-a", sig_to_id_a), cfg, full_run=True)
     before = _num(driver, "MATCH (:PyApplication {name:'app-a'})-[:PY_HAS_MODULE]->(m) RETURN count(m)")
     assert before > 0
 
     # A full-run push for a different application must leave app-a untouched.
-    bolt_writer(project(_single_module_app(), "app-b"), cfg, full_run=True)
+    app_b, sig_to_id_b = _single_module_app()
+    bolt_writer(project(app_b, "app-b", sig_to_id_b), cfg, full_run=True)
 
     after = _num(driver, "MATCH (:PyApplication {name:'app-a'})-[:PY_HAS_MODULE]->(m) RETURN count(m)")
     assert after == before, "full-run push for app-b pruned app-a's modules (#45)"
@@ -136,7 +142,8 @@ def test_full_run_does_not_prune_another_applications_modules(driver, cfg):
 
 
 def test_re_pushing_identical_analysis_is_idempotent(driver, cfg):
-    rows = project(make_sample_app(), "sample-app")
+    app, sig_to_id = make_sample_app()
+    rows = project(app, "sample-app", sig_to_id)
     bolt_writer(rows, cfg, full_run=True)
     bolt_writer(rows, cfg, full_run=True)
     assert _num(driver, "MATCH (n) RETURN count(n)") == len(rows.nodes)
@@ -144,13 +151,14 @@ def test_re_pushing_identical_analysis_is_idempotent(driver, cfg):
 
 
 def test_a_full_run_prunes_a_module_whose_source_vanished(driver, cfg):
-    bolt_writer(project(make_sample_app(), "sample-app"), cfg, full_run=True)
+    app0, sig_to_id0 = make_sample_app()
+    bolt_writer(project(app0, "sample-app", sig_to_id0), cfg, full_run=True)
 
     # Drop one module from a fresh app and re-push as a full run.
-    app = make_sample_app()
+    app, sig_to_id = make_sample_app()
     victim = sorted(app.symbol_table.keys())[0]
     del app.symbol_table[victim]
-    rows = project(app, "sample-app")
+    rows = project(app, "sample-app", sig_to_id)
     bolt_writer(rows, cfg, full_run=True)
 
     # The victim's module-scoped nodes are gone.

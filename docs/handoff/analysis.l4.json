@@ -1,0 +1,962 @@
+{
+  "schema_version": "2.0.0",
+  "language": "python",
+  "max_level": 4,
+  "k_limit": 3,
+  "analyzer": {
+    "name": "codeanalyzer-python",
+    "version": "1.0.0"
+  },
+  "application": {
+    "symbol_table": {
+      "service.py": {
+        "file_path": "/private/tmp/claude-501/-Users-rkrsn-workspace-codellm-devkit-codeanalyzer-python/679d9d16-db02-445a-9e18-8e43de0e0565/scratchpad/sample_proj/service.py",
+        "module_name": "service",
+        "id": "can://python/sample_proj/service.py",
+        "kind": "module",
+        "source": "class BaseService:\n    pass\n\nclass Service(BaseService):\n    def announce(self, flag):\n        message = build(flag)\n        if flag:\n            message = message + \"!\"\n        return message\n\ndef build(x):\n    y = x\n    return y\n\ndef run(flag):\n    svc = Service()\n    return svc.announce(flag)\n",
+        "imports": [],
+        "comments": [],
+        "types": {
+          "service.BaseService": {
+            "name": "BaseService",
+            "signature": "service.BaseService",
+            "id": "can://python/sample_proj/service.py/BaseService",
+            "kind": "class",
+            "span": {
+              "start": [
+                1,
+                0
+              ],
+              "end": [
+                2,
+                8
+              ],
+              "bytes": [
+                0,
+                27
+              ]
+            },
+            "comments": [],
+            "base_classes": [],
+            "callables": {},
+            "attributes": {},
+            "types": {},
+            "start_line": 1,
+            "end_line": 2
+          },
+          "service.Service": {
+            "name": "Service",
+            "signature": "service.Service",
+            "id": "can://python/sample_proj/service.py/Service",
+            "kind": "class",
+            "span": {
+              "start": [
+                4,
+                0
+              ],
+              "end": [
+                9,
+                22
+              ],
+              "bytes": [
+                29,
+                192
+              ]
+            },
+            "comments": [],
+            "base_classes": [
+              "BaseService"
+            ],
+            "callables": {
+              "announce": {
+                "name": "announce",
+                "path": "/private/tmp/claude-501/-Users-rkrsn-workspace-codellm-devkit-codeanalyzer-python/679d9d16-db02-445a-9e18-8e43de0e0565/scratchpad/sample_proj/service.py",
+                "signature": "service.Service.announce",
+                "id": "can://python/sample_proj/service.py/Service/announce(self,flag)",
+                "kind": "function",
+                "span": {
+                  "start": [
+                    5,
+                    4
+                  ],
+                  "end": [
+                    9,
+                    22
+                  ],
+                  "bytes": [
+                    61,
+                    192
+                  ]
+                },
+                "comments": [],
+                "decorators": [],
+                "parameters": [
+                  {
+                    "name": "self",
+                    "type": "Service",
+                    "start_line": 5,
+                    "end_line": 5,
+                    "start_column": 17,
+                    "end_column": 21
+                  },
+                  {
+                    "name": "flag",
+                    "start_line": 5,
+                    "end_line": 5,
+                    "start_column": 23,
+                    "end_column": 27
+                  }
+                ],
+                "start_line": 5,
+                "end_line": 9,
+                "code_start_line": 6,
+                "accessed_symbols": [
+                  {
+                    "name": "flag",
+                    "scope": "local",
+                    "kind": "variable",
+                    "is_builtin": false,
+                    "lineno": 7,
+                    "col_offset": 11
+                  },
+                  {
+                    "name": "message",
+                    "scope": "local",
+                    "kind": "variable",
+                    "type": "str",
+                    "qualified_name": "builtins.str",
+                    "is_builtin": false,
+                    "lineno": 9,
+                    "col_offset": 15
+                  },
+                  {
+                    "name": "build",
+                    "scope": "local",
+                    "kind": "function",
+                    "type": "build",
+                    "qualified_name": "service.build",
+                    "is_builtin": false,
+                    "lineno": 6,
+                    "col_offset": 18
+                  },
+                  {
+                    "name": "flag",
+                    "scope": "local",
+                    "kind": "variable",
+                    "is_builtin": false,
+                    "lineno": 6,
+                    "col_offset": 24
+                  },
+                  {
+                    "name": "message",
+                    "scope": "local",
+                    "kind": "variable",
+                    "is_builtin": false,
+                    "lineno": 8,
+                    "col_offset": 22
+                  }
+                ],
+                "call_sites": [
+                  {
+                    "method_name": "build",
+                    "argument_types": [
+                      "Name"
+                    ],
+                    "return_type": "build",
+                    "callee_signature": "service.build",
+                    "is_constructor_call": false,
+                    "start_line": 6,
+                    "start_column": 18,
+                    "end_line": 6,
+                    "end_column": 29
+                  }
+                ],
+                "callables": {},
+                "types": {},
+                "local_variables": [
+                  {
+                    "name": "message",
+                    "initializer": "build(flag)",
+                    "scope": "function",
+                    "start_line": 6,
+                    "end_line": 6,
+                    "start_column": 8,
+                    "end_column": 15
+                  },
+                  {
+                    "name": "message",
+                    "type": "str",
+                    "initializer": "message + '!'",
+                    "scope": "function",
+                    "start_line": 8,
+                    "end_line": 8,
+                    "start_column": 12,
+                    "end_column": 19
+                  }
+                ],
+                "cyclomatic_complexity": 3,
+                "body": {
+                  "6:18": {
+                    "kind": "call",
+                    "span": {
+                      "start": [
+                        6,
+                        18
+                      ],
+                      "end": [
+                        6,
+                        29
+                      ],
+                      "bytes": [
+                        105,
+                        116
+                      ]
+                    },
+                    "callee": "can://python/sample_proj/service.py/build(x)"
+                  },
+                  "@entry": {
+                    "kind": "entry"
+                  },
+                  "6:8": {
+                    "kind": "statement",
+                    "span": {
+                      "start": [
+                        6,
+                        8
+                      ],
+                      "end": [
+                        6,
+                        29
+                      ],
+                      "bytes": [
+                        95,
+                        116
+                      ]
+                    }
+                  },
+                  "7:11": {
+                    "kind": "branch",
+                    "span": {
+                      "start": [
+                        7,
+                        11
+                      ],
+                      "end": [
+                        7,
+                        15
+                      ],
+                      "bytes": [
+                        128,
+                        132
+                      ]
+                    }
+                  },
+                  "8:12": {
+                    "kind": "statement",
+                    "span": {
+                      "start": [
+                        8,
+                        12
+                      ],
+                      "end": [
+                        8,
+                        35
+                      ],
+                      "bytes": [
+                        146,
+                        169
+                      ]
+                    }
+                  },
+                  "9:8": {
+                    "kind": "return",
+                    "span": {
+                      "start": [
+                        9,
+                        8
+                      ],
+                      "end": [
+                        9,
+                        22
+                      ],
+                      "bytes": [
+                        178,
+                        192
+                      ]
+                    }
+                  },
+                  "@exit": {
+                    "kind": "exit"
+                  },
+                  "@formal_in:0": {
+                    "kind": "formal_in",
+                    "of": "self"
+                  },
+                  "@formal_in:1": {
+                    "kind": "formal_in",
+                    "of": "flag"
+                  },
+                  "@formal_in:2": {
+                    "kind": "formal_in",
+                    "of": "<global>:service::build"
+                  },
+                  "@formal_out:0": {
+                    "kind": "formal_out",
+                    "of": "<return>"
+                  },
+                  "@formal_out:1": {
+                    "kind": "formal_out",
+                    "of": "flag"
+                  },
+                  "6:8/actual_in:0": {
+                    "kind": "actual_in",
+                    "of": "x",
+                    "parent": "6:8"
+                  },
+                  "6:8/actual_out": {
+                    "kind": "actual_out",
+                    "of": "<return>",
+                    "parent": "6:8"
+                  }
+                },
+                "cfg": [
+                  {
+                    "src": "@entry",
+                    "dst": "6:8",
+                    "kind": "fallthrough"
+                  },
+                  {
+                    "src": "6:8",
+                    "dst": "7:11",
+                    "kind": "fallthrough"
+                  },
+                  {
+                    "src": "6:8",
+                    "dst": "@exit",
+                    "kind": "exception"
+                  },
+                  {
+                    "src": "7:11",
+                    "dst": "8:12",
+                    "kind": "true"
+                  },
+                  {
+                    "src": "7:11",
+                    "dst": "9:8",
+                    "kind": "false"
+                  },
+                  {
+                    "src": "8:12",
+                    "dst": "9:8",
+                    "kind": "fallthrough"
+                  },
+                  {
+                    "src": "9:8",
+                    "dst": "@exit",
+                    "kind": "return"
+                  }
+                ],
+                "cdg": [
+                  {
+                    "src": "@entry",
+                    "dst": "6:8"
+                  },
+                  {
+                    "src": "6:8",
+                    "dst": "7:11"
+                  },
+                  {
+                    "src": "6:8",
+                    "dst": "9:8"
+                  },
+                  {
+                    "src": "7:11",
+                    "dst": "8:12"
+                  }
+                ],
+                "ddg": [
+                  {
+                    "src": "@entry",
+                    "dst": "6:8",
+                    "var": "flag",
+                    "prov": [
+                      "ssa"
+                    ]
+                  },
+                  {
+                    "src": "@entry",
+                    "dst": "6:8",
+                    "var": "service::build",
+                    "prov": [
+                      "ssa"
+                    ]
+                  },
+                  {
+                    "src": "@entry",
+                    "dst": "7:11",
+                    "var": "flag",
+                    "prov": [
+                      "ssa"
+                    ]
+                  },
+                  {
+                    "src": "6:8",
+                    "dst": "7:11",
+                    "var": "flag",
+                    "prov": [
+                      "ssa"
+                    ]
+                  },
+                  {
+                    "src": "6:8",
+                    "dst": "8:12",
+                    "var": "message",
+                    "prov": [
+                      "ssa"
+                    ]
+                  },
+                  {
+                    "src": "6:8",
+                    "dst": "9:8",
+                    "var": "message",
+                    "prov": [
+                      "ssa"
+                    ]
+                  },
+                  {
+                    "src": "8:12",
+                    "dst": "9:8",
+                    "var": "message",
+                    "prov": [
+                      "ssa"
+                    ]
+                  }
+                ],
+                "summary": [
+                  {
+                    "src": "6:8/actual_in:0",
+                    "dst": "6:8/actual_out"
+                  }
+                ]
+              }
+            },
+            "attributes": {},
+            "types": {},
+            "start_line": 4,
+            "end_line": 9
+          }
+        },
+        "functions": {
+          "build": {
+            "name": "build",
+            "path": "/private/tmp/claude-501/-Users-rkrsn-workspace-codellm-devkit-codeanalyzer-python/679d9d16-db02-445a-9e18-8e43de0e0565/scratchpad/sample_proj/service.py",
+            "signature": "service.build",
+            "id": "can://python/sample_proj/service.py/build(x)",
+            "kind": "function",
+            "span": {
+              "start": [
+                11,
+                0
+              ],
+              "end": [
+                13,
+                12
+              ],
+              "bytes": [
+                194,
+                230
+              ]
+            },
+            "comments": [],
+            "decorators": [],
+            "parameters": [
+              {
+                "name": "x",
+                "start_line": 11,
+                "end_line": 11,
+                "start_column": 10,
+                "end_column": 11
+              }
+            ],
+            "start_line": 11,
+            "end_line": 13,
+            "code_start_line": 12,
+            "accessed_symbols": [
+              {
+                "name": "x",
+                "scope": "local",
+                "kind": "variable",
+                "is_builtin": false,
+                "lineno": 12,
+                "col_offset": 8
+              },
+              {
+                "name": "y",
+                "scope": "local",
+                "kind": "variable",
+                "is_builtin": false,
+                "lineno": 13,
+                "col_offset": 11
+              }
+            ],
+            "call_sites": [],
+            "callables": {},
+            "types": {},
+            "local_variables": [
+              {
+                "name": "y",
+                "initializer": "x",
+                "scope": "function",
+                "start_line": 12,
+                "end_line": 12,
+                "start_column": 4,
+                "end_column": 5
+              }
+            ],
+            "cyclomatic_complexity": 2,
+            "body": {
+              "@entry": {
+                "kind": "entry"
+              },
+              "12:4": {
+                "kind": "statement",
+                "span": {
+                  "start": [
+                    12,
+                    4
+                  ],
+                  "end": [
+                    12,
+                    9
+                  ],
+                  "bytes": [
+                    212,
+                    217
+                  ]
+                }
+              },
+              "13:4": {
+                "kind": "return",
+                "span": {
+                  "start": [
+                    13,
+                    4
+                  ],
+                  "end": [
+                    13,
+                    12
+                  ],
+                  "bytes": [
+                    222,
+                    230
+                  ]
+                }
+              },
+              "@exit": {
+                "kind": "exit"
+              },
+              "@formal_in:0": {
+                "kind": "formal_in",
+                "of": "x"
+              },
+              "@formal_out": {
+                "kind": "formal_out",
+                "of": "<return>"
+              }
+            },
+            "cfg": [
+              {
+                "src": "@entry",
+                "dst": "12:4",
+                "kind": "fallthrough"
+              },
+              {
+                "src": "12:4",
+                "dst": "13:4",
+                "kind": "fallthrough"
+              },
+              {
+                "src": "13:4",
+                "dst": "@exit",
+                "kind": "return"
+              }
+            ],
+            "cdg": [
+              {
+                "src": "@entry",
+                "dst": "12:4"
+              },
+              {
+                "src": "@entry",
+                "dst": "13:4"
+              }
+            ],
+            "ddg": [
+              {
+                "src": "@entry",
+                "dst": "12:4",
+                "var": "x",
+                "prov": [
+                  "ssa"
+                ]
+              },
+              {
+                "src": "12:4",
+                "dst": "13:4",
+                "var": "y",
+                "prov": [
+                  "ssa"
+                ]
+              }
+            ],
+            "summary": []
+          },
+          "run": {
+            "name": "run",
+            "path": "/private/tmp/claude-501/-Users-rkrsn-workspace-codellm-devkit-codeanalyzer-python/679d9d16-db02-445a-9e18-8e43de0e0565/scratchpad/sample_proj/service.py",
+            "signature": "service.run",
+            "id": "can://python/sample_proj/service.py/run(flag)",
+            "kind": "function",
+            "span": {
+              "start": [
+                15,
+                0
+              ],
+              "end": [
+                17,
+                29
+              ],
+              "bytes": [
+                232,
+                296
+              ]
+            },
+            "comments": [],
+            "decorators": [],
+            "parameters": [
+              {
+                "name": "flag",
+                "start_line": 15,
+                "end_line": 15,
+                "start_column": 8,
+                "end_column": 12
+              }
+            ],
+            "start_line": 15,
+            "end_line": 17,
+            "code_start_line": 16,
+            "accessed_symbols": [
+              {
+                "name": "Service",
+                "scope": "local",
+                "kind": "class",
+                "type": "Service",
+                "qualified_name": "service.Service",
+                "is_builtin": false,
+                "lineno": 16,
+                "col_offset": 10
+              },
+              {
+                "name": "flag",
+                "scope": "local",
+                "kind": "variable",
+                "is_builtin": false,
+                "lineno": 17,
+                "col_offset": 24
+              },
+              {
+                "name": "svc",
+                "scope": "local",
+                "kind": "variable",
+                "type": "Service",
+                "qualified_name": "service.Service",
+                "is_builtin": false,
+                "lineno": 17,
+                "col_offset": 11
+              }
+            ],
+            "call_sites": [
+              {
+                "method_name": "Service",
+                "argument_types": [],
+                "return_type": "Service",
+                "callee_signature": "service.Service.__init__",
+                "is_constructor_call": true,
+                "start_line": 16,
+                "start_column": 10,
+                "end_line": 16,
+                "end_column": 19
+              },
+              {
+                "method_name": "announce",
+                "receiver_expr": "svc",
+                "receiver_type": "Service",
+                "argument_types": [
+                  "Name"
+                ],
+                "return_type": "Service",
+                "callee_signature": "service.Service",
+                "is_constructor_call": false,
+                "start_line": 17,
+                "start_column": 11,
+                "end_line": 17,
+                "end_column": 29
+              }
+            ],
+            "callables": {},
+            "types": {},
+            "local_variables": [
+              {
+                "name": "svc",
+                "type": "Service",
+                "initializer": "Service()",
+                "scope": "function",
+                "start_line": 16,
+                "end_line": 16,
+                "start_column": 4,
+                "end_column": 7
+              }
+            ],
+            "cyclomatic_complexity": 2,
+            "body": {
+              "16:10": {
+                "kind": "call",
+                "span": {
+                  "start": [
+                    16,
+                    10
+                  ],
+                  "end": [
+                    16,
+                    19
+                  ],
+                  "bytes": [
+                    257,
+                    266
+                  ]
+                },
+                "callee": "can://python/sample_proj/@external/service.Service/__init__"
+              },
+              "17:11": {
+                "kind": "call",
+                "span": {
+                  "start": [
+                    17,
+                    11
+                  ],
+                  "end": [
+                    17,
+                    29
+                  ],
+                  "bytes": [
+                    278,
+                    296
+                  ]
+                },
+                "callee": "can://python/sample_proj/service.py/Service"
+              },
+              "@entry": {
+                "kind": "entry"
+              },
+              "16:4": {
+                "kind": "statement",
+                "span": {
+                  "start": [
+                    16,
+                    4
+                  ],
+                  "end": [
+                    16,
+                    19
+                  ],
+                  "bytes": [
+                    251,
+                    266
+                  ]
+                }
+              },
+              "17:4": {
+                "kind": "return",
+                "span": {
+                  "start": [
+                    17,
+                    4
+                  ],
+                  "end": [
+                    17,
+                    29
+                  ],
+                  "bytes": [
+                    271,
+                    296
+                  ]
+                }
+              },
+              "@exit": {
+                "kind": "exit"
+              },
+              "@formal_in:0": {
+                "kind": "formal_in",
+                "of": "flag"
+              },
+              "@formal_in:1": {
+                "kind": "formal_in",
+                "of": "<global>:service::Service"
+              },
+              "@formal_out:0": {
+                "kind": "formal_out",
+                "of": "<return>"
+              },
+              "@formal_out:1": {
+                "kind": "formal_out",
+                "of": "flag"
+              }
+            },
+            "cfg": [
+              {
+                "src": "@entry",
+                "dst": "16:4",
+                "kind": "fallthrough"
+              },
+              {
+                "src": "16:4",
+                "dst": "17:4",
+                "kind": "fallthrough"
+              },
+              {
+                "src": "16:4",
+                "dst": "@exit",
+                "kind": "exception"
+              },
+              {
+                "src": "17:4",
+                "dst": "@exit",
+                "kind": "exception"
+              },
+              {
+                "src": "17:4",
+                "dst": "@exit",
+                "kind": "return"
+              }
+            ],
+            "cdg": [
+              {
+                "src": "@entry",
+                "dst": "16:4"
+              },
+              {
+                "src": "16:4",
+                "dst": "17:4"
+              }
+            ],
+            "ddg": [
+              {
+                "src": "@entry",
+                "dst": "16:4",
+                "var": "service::Service",
+                "prov": [
+                  "ssa"
+                ]
+              },
+              {
+                "src": "@entry",
+                "dst": "17:4",
+                "var": "flag",
+                "prov": [
+                  "ssa"
+                ]
+              },
+              {
+                "src": "16:4",
+                "dst": "17:4",
+                "var": "svc",
+                "prov": [
+                  "ssa"
+                ]
+              },
+              {
+                "src": "16:4",
+                "dst": "17:4",
+                "var": "svc.announce",
+                "prov": [
+                  "ssa"
+                ]
+              },
+              {
+                "src": "@entry",
+                "dst": "17:4",
+                "var": "svc.announce",
+                "prov": [
+                  "points-to"
+                ]
+              }
+            ],
+            "summary": []
+          }
+        },
+        "variables": [],
+        "content_hash": "7097c745b302b502071549264a3eab63d8ba4db7c11174aca96a06d023db62e9",
+        "last_modified": 1784055599.9118228,
+        "file_size": 297
+      }
+    },
+    "id": "can://python/sample_proj",
+    "kind": "application",
+    "call_graph": [
+      {
+        "src": "can://python/sample_proj/service.py/run(flag)",
+        "dst": "can://python/sample_proj/@external/service.Service/__init__",
+        "weight": 1,
+        "prov": [
+          "jedi"
+        ]
+      },
+      {
+        "src": "can://python/sample_proj/service.py/run(flag)",
+        "dst": "can://python/sample_proj/service.py/Service",
+        "weight": 1,
+        "prov": [
+          "jedi"
+        ]
+      },
+      {
+        "src": "can://python/sample_proj/service.py/Service/announce(self,flag)",
+        "dst": "can://python/sample_proj/service.py/build(x)",
+        "weight": 2,
+        "prov": [
+          "jedi",
+          "pycg"
+        ]
+      },
+      {
+        "src": "can://python/sample_proj/service.py/run(flag)",
+        "dst": "can://python/sample_proj/service.py/Service/announce(self,flag)",
+        "weight": 1,
+        "prov": [
+          "pycg"
+        ]
+      }
+    ],
+    "external_symbols": {
+      "can://python/sample_proj/@external/service.Service/__init__": {
+        "id": "can://python/sample_proj/@external/service.Service/__init__",
+        "kind": "external",
+        "name": "__init__",
+        "module": "service.Service"
+      }
+    },
+    "param_in": [
+      {
+        "src": "can://python/sample_proj/service.py/Service/announce(self,flag)@6:8/actual_in:0",
+        "dst": "can://python/sample_proj/service.py/build(x)@formal_in:0"
+      }
+    ],
+    "param_out": [
+      {
+        "src": "can://python/sample_proj/service.py/build(x)@formal_out",
+        "dst": "can://python/sample_proj/service.py/Service/announce(self,flag)@6:8/actual_out"
+      }
+    ]
+  }
+}

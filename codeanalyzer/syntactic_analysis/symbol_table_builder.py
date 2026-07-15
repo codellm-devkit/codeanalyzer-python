@@ -23,6 +23,8 @@ from codeanalyzer.schema.py_schema import (
     PyModule,
     PySymbol,
     PyVariableDeclaration,
+    Span,
+    byte_offsets,
 )
 
 
@@ -177,11 +179,12 @@ class SymbolTableBuilder:
             PyModule.builder()
             .file_path(str(py_file))
             .module_name(py_file.stem)
+            .source(source)
             .comments(self._pycomments(module, source))
             .imports(self._imports(module))
             .variables(self._module_variables(module, script))
-            .classes(self._add_class(module, script))
-            .functions(self._callables(module, script))
+            .types(self._add_class(module, script, source))
+            .functions(self._callables(module, script, source))
             .content_hash(content_hash)
             .last_modified(last_modified)
             .file_size(file_size)
@@ -237,7 +240,7 @@ class SymbolTableBuilder:
 
         return imports
 
-    def _add_class(self, node: AST, script: Script, prefix: str = "") -> Dict[str, PyClass]:
+    def _add_class(self, node: AST, script: Script, source: str, prefix: str = "") -> Dict[str, PyClass]:
         classes: Dict[str, PyClass] = {}
 
         for child in ast.iter_child_nodes(node):
@@ -248,6 +251,14 @@ class SymbolTableBuilder:
             start_line = child.lineno
             end_line = getattr(child, "end_lineno", start_line + len(child.body))
             code = ast.unparse(child).strip()
+            span = Span(
+                start=(child.lineno, child.col_offset),
+                end=(getattr(child, "end_lineno", child.lineno),
+                     getattr(child, "end_col_offset", child.col_offset)),
+                bytes=byte_offsets(source, child.lineno, child.col_offset,
+                                   getattr(child, "end_lineno", child.lineno),
+                                   getattr(child, "end_col_offset", child.col_offset)),
+            )
 
             # Try resolving full signature with Jedi
             if prefix:
@@ -265,18 +276,18 @@ class SymbolTableBuilder:
                 PyClass.builder()
                 .name(class_name)
                 .signature(signature)
+                .span(span)
                 .start_line(start_line)
                 .end_line(end_line)
-                .code(code)
                 .comments(self._pycomments(child, code))
                 .base_classes([
                     ast.unparse(base)
                     for base in child.bases
                     if isinstance(base, ast.expr)
                 ])
-                .methods(self._callables(child, script, prefix=signature))  # Pass class signature as prefix
+                .callables(self._callables(child, script, source, prefix=signature))  # Pass class signature as prefix
                 .attributes(self._class_attributes(child, script))
-                .inner_classes(self._add_class(child, script, prefix=signature))  # Pass class signature as prefix
+                .types(self._add_class(child, script, source, prefix=signature))  # Pass class signature as prefix
                 .build()
             )
 
@@ -285,7 +296,7 @@ class SymbolTableBuilder:
         return classes
 
 
-    def _callables(self, node: AST, script: Script, prefix: str = "") -> Dict[str, PyCallable]:
+    def _callables(self, node: AST, script: Script, source: str, prefix: str = "") -> Dict[str, PyCallable]:
         callables: Dict[str, PyCallable] = {}
 
         for child in ast.iter_child_nodes(node):
@@ -294,6 +305,14 @@ class SymbolTableBuilder:
                 start_line = child.lineno
                 end_line = getattr(child, "end_lineno", start_line + len(child.body))
                 code = ast.unparse(child).strip()
+                span = Span(
+                    start=(child.lineno, child.col_offset),
+                    end=(getattr(child, "end_lineno", child.lineno),
+                         getattr(child, "end_col_offset", child.col_offset)),
+                    bytes=byte_offsets(source, child.lineno, child.col_offset,
+                                       getattr(child, "end_lineno", child.lineno),
+                                       getattr(child, "end_col_offset", child.col_offset)),
+                )
                 decorators = [ast.unparse(d) for d in child.decorator_list]
                 
                 if prefix:
@@ -318,8 +337,8 @@ class SymbolTableBuilder:
                     .name(method_name)  # Use the actual method name, not the full signature
                     .path(str(script.path))
                     .signature(signature)  # Use the full signature here
+                    .span(span)
                     .decorators(decorators)
-                    .code(code)
                     .start_line(start_line)
                     .end_line(end_line)
                     .code_start_line(child.body[0].lineno if child.body else start_line)
@@ -333,8 +352,8 @@ class SymbolTableBuilder:
                         if child.returns else self._infer_type(script, child.lineno, child.col_offset)
                     )
                     .comments(self._pycomments(child, code))
-                    .inner_callables(self._callables(child, script, signature))  # Pass current signature as prefix
-                    .inner_classes(self._add_class(child, script, signature))    # Pass current signature as prefix
+                    .callables(self._callables(child, script, source, signature))  # Pass current signature as prefix
+                    .types(self._add_class(child, script, source, signature))    # Pass current signature as prefix
                     .build()
                 )
 

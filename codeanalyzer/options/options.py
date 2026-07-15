@@ -49,6 +49,10 @@ class AnalysisOptions:
     neo4j_password: str = "neo4j"
     neo4j_database: Optional[str] = None
     analysis_level: int = 1
+    # Level-3 dataflow knobs: which program graphs to emit (csv of
+    # cfg|dfg|pdg|sdg) and the access-path k-limit.
+    graphs: str = "cfg,dfg,pdg,sdg"
+    graph_field_depth: int = 3
     using_ray: bool = False
     rebuild_analysis: bool = False
     skip_tests: bool = True

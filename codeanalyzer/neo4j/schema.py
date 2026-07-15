@@ -35,7 +35,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List
 
-SCHEMA_VERSION = "1.2.0"
+SCHEMA_VERSION = "2.0.0"
 
 # PropType ∈ {"string", "integer", "float", "boolean", "string[]", "integer[]"}.
 
@@ -80,8 +80,9 @@ NODE_LABELS: List[NodeLabel] = [
     NodeLabel(
         "PyModule",
         "PyModule",
-        "file_key",
+        "id",
         {
+            "id": "string",
             "file_key": "string",
             "module_name": "string",
             "content_hash": "string",
@@ -93,8 +94,9 @@ NODE_LABELS: List[NodeLabel] = [
     NodeLabel(
         "PyClass",
         "PySymbol",
-        "signature",
+        "id",
         {
+            "id": "string",
             "signature": "string",
             "name": "string",
             "code": "string",
@@ -107,8 +109,9 @@ NODE_LABELS: List[NodeLabel] = [
     NodeLabel(
         "PyCallable",
         "PySymbol",
-        "signature",
+        "id",
         {
+            "id": "string",
             "signature": "string",
             "name": "string",
             "path": "string",
@@ -127,8 +130,8 @@ NODE_LABELS: List[NodeLabel] = [
     NodeLabel(
         "PyExternal",
         "PySymbol",
-        "signature",
-        {"signature": "string", "name": "string", "module": "string"},
+        "id",
+        {"id": "string", "name": "string", "module": "string"},
     ),
     NodeLabel("PyPackage", "PyPackage", "name", {"name": "string"}),
     NodeLabel(
@@ -186,6 +189,25 @@ NODE_LABELS: List[NodeLabel] = [
             "_module": "string",
         },
     ),
+    # Level-3 CPG overlay (present only at -a 3). The dataflow vocabulary is
+    # shared cross-language in *shape* (same suffixes, props, semantics) but
+    # namespaced per language like every other row family — a multi-language
+    # Neo4j database must never mingle one analyzer's dependence edges with
+    # another's. `id` = "<signature>#<node_id>"; parameter-passing nodes
+    # (formal/actual in/out) ride the same label with `var`/`call_node`.
+    NodeLabel(
+        "PyCFGNode",
+        "PyCFGNode",
+        "id",
+        {
+            "id": "string",
+            "kind": "string",
+            "var": "string",
+            "call_node": "string",
+            **_SPAN,
+            "_module": "string",
+        },
+    ),
 ]
 
 _DECL_TARGETS = ["PyClass", "PyCallable"]
@@ -203,7 +225,7 @@ REL_TYPES: List[RelType] = [
         "PY_CALLS",
         ["PyCallable", "PyExternal"],
         ["PyCallable", "PyExternal"],
-        {"weight": "integer", "provenance": "string[]"},
+        {"weight": "integer", "prov": "string[]"},
     ),
     RelType("PY_EXTENDS", ["PyClass"], ["PyClass"]),
     RelType(
@@ -213,6 +235,20 @@ REL_TYPES: List[RelType] = [
         {"spellings": "string[]", "imported_names": "string[]", "aliases": "string[]"},
     ),
     RelType("PY_DECORATED_BY", ["PyCallable"], ["PyDecorator"]),
+    # Level-3 CPG overlay (-a 3 only): the cross-language dataflow vocabulary,
+    # PY_-namespaced so per-language SDK backends can scope their queries.
+    RelType("PY_HAS_CFG_NODE", ["PyCallable"], ["PyCFGNode"]),
+    # ``_k`` is the relationship-identity discriminant (internal, underscore-
+    # prefixed like ``_module``): PY_CFG_NEXT merges per ``kind`` (a conditional's
+    # true/false pair), PY_DDG per ``(var, prov)`` (one dependence per variable,
+    # and the ssa/points-to split) — a plain endpoint-pair MERGE would collapse
+    # legitimately-distinct edges.
+    RelType("PY_CFG_NEXT", ["PyCFGNode"], ["PyCFGNode"], {"kind": "string", "_k": "string"}),
+    RelType("PY_CDG", ["PyCFGNode"], ["PyCFGNode"]),
+    RelType("PY_DDG", ["PyCFGNode"], ["PyCFGNode"], {"var": "string", "prov": "string[]", "_k": "string"}),
+    RelType("PY_PARAM_IN", ["PyCFGNode"], ["PyCFGNode"], {"var": "string"}),
+    RelType("PY_PARAM_OUT", ["PyCFGNode"], ["PyCFGNode"], {"var": "string"}),
+    RelType("PY_SUMMARY", ["PyCFGNode"], ["PyCFGNode"]),
 ]
 
 

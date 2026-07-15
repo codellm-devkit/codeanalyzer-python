@@ -114,11 +114,32 @@ def main(
         typer.Option(
             "-a",
             "--analysis-level",
-            help="Analysis depth: 1=symbol table+Jedi call graph, 2=+PyCG call graph.",
+            help="Analysis depth: 1=symbol table+Jedi call graph, 2=+PyCG call "
+            "graph, 3=+native intraprocedural dataflow (CFG/PDG), "
+            "4=+interprocedural SDG (param/summary edges, alias-aware DDG).",
             min=1,
-            max=2,
+            max=4,
         ),
     ] = 1,
+    graphs: Annotated[
+        str,
+        typer.Option(
+            "--graphs",
+            help="Level 3+ only: comma-separated program-graph sections to emit "
+            "(cfg, dfg, pdg, sdg). Default: cfg,dfg,pdg. `dfg` emits the PDG's data "
+            "edges only; `sdg` requires -a 4.",
+        ),
+    ] = "cfg,dfg,pdg",
+    graph_field_depth: Annotated[
+        int,
+        typer.Option(
+            "--graph-field-depth",
+            help="Level 3 only: k-limit on access-path depth (x.f.g.h with "
+            "k=3 becomes x.f.g.*). Mandatory bound — it is what guarantees "
+            "the interprocedural fixpoint terminates.",
+            min=1,
+        ),
+    ] = 3,
     using_ray: Annotated[
         bool,
         typer.Option("--ray/--no-ray", help="Enable Ray for distributed analysis."),
@@ -243,6 +264,30 @@ def main(
         ),
     ] = 50,
 ):
+    # Flag validation (strict: unrecognized values error out, never fall back).
+    selected_graphs = [g.strip() for g in graphs.split(",") if g.strip()]
+    from codeanalyzer.dataflow.builder import VALID_GRAPHS
+
+    unknown_graphs = [g for g in selected_graphs if g not in VALID_GRAPHS]
+    if unknown_graphs:
+        logger.error(
+            f"Unrecognized --graphs value(s): {', '.join(unknown_graphs)} "
+            f"(valid: {', '.join(VALID_GRAPHS)})."
+        )
+        raise typer.Exit(code=2)
+    if not selected_graphs:
+        logger.error("--graphs requires at least one of: " + ", ".join(VALID_GRAPHS))
+        raise typer.Exit(code=2)
+    if "sdg" in selected_graphs and analysis_level < 4:
+        logger.error("--graphs sdg requires -a 4 (interprocedural SDG).")
+        raise typer.Exit(code=2)
+    if analysis_level < 3 and graphs != "cfg,dfg,pdg":
+        logger.error("--graphs is a level-3 option; pass -a 3 to emit program graphs.")
+        raise typer.Exit(code=2)
+    if analysis_level < 3 and graph_field_depth != 3:
+        logger.error("--graph-field-depth is a level-3 option; pass -a 3.")
+        raise typer.Exit(code=2)
+
     options = AnalysisOptions(
         input=input,
         output=output,
@@ -254,6 +299,8 @@ def main(
         neo4j_password=neo4j_password,
         neo4j_database=neo4j_database,
         analysis_level=analysis_level,
+        graphs=",".join(selected_graphs),
+        graph_field_depth=graph_field_depth,
         using_ray=using_ray,
         rebuild_analysis=rebuild_analysis,
         skip_tests=skip_tests,
@@ -310,7 +357,7 @@ def main(
 
             emit_neo4j(artifacts, options)
         elif options.output is None:
-            print(model_dump_json(artifacts, separators=(",", ":")))
+            print(model_dump_json(artifacts, exclude_none=True))
         else:
             options.output.mkdir(parents=True, exist_ok=True)
             _write_output(artifacts, options.output, options.format)
@@ -321,7 +368,7 @@ def _write_output(artifacts, output_dir: Path, format: OutputFormat):
     if format == OutputFormat.JSON:
         output_file = output_dir / "analysis.json"
         # Use Pydantic's model_dump_json() for compact output
-        json_str = model_dump_json(artifacts, indent=None)
+        json_str = model_dump_json(artifacts, indent=None, exclude_none=True)
         with output_file.open("w") as f:
             f.write(json_str)
         logger.info(f"Analysis saved to {output_file}")
