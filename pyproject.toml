@@ -1,7 +1,7 @@
 [project]
 name = "codeanalyzer-python"
-version = "0.3.1"
-description = "Static Analysis on Python source code using Jedi, CodeQL and Treesitter — emits analysis.json or a Neo4j property graph."
+version = "1.0.0"
+description = "Static analysis for Python — canonical schema v2 (symbol table, call graph, and native CFG/PDG/SDG dataflow) as analysis.json or a Neo4j property graph."
 readme = "README.md"
 authors = [
   { name = "Rahul Krishna", email = "i.m.ralk@gmail.com" }
@@ -57,6 +57,12 @@ dependencies = [
 # push). The `graph.cypher` snapshot and `--emit schema` need no extra packages.
 neo4j = [
   "neo4j>=5.0.0,<6.0.0",
+]
+# The Scalpel-backed L4 may-alias oracle (ScalpelAliasOracle). Optional: when
+# absent, `make_alias_oracle` degrades to the type-based fallback, so analysis
+# still runs — installing it only sharpens alias precision.
+scalpel = [
+  "python-scalpel>=1.0b0",
 ]
 
 [dependency-groups]

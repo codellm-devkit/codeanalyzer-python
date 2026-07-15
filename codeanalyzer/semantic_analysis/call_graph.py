@@ -38,24 +38,24 @@ from codeanalyzer.schema.py_schema import (
 
 
 def _walk_class_callables(cls: PyClass) -> Iterator[PyCallable]:
-    for method in cls.methods.values():
+    for method in cls.callables.values():
         yield from _walk_callable(method)
-    for inner in cls.inner_classes.values():
+    for inner in cls.types.values():
         yield from _walk_class_callables(inner)
 
 
 def _walk_callable(c: PyCallable) -> Iterator[PyCallable]:
     yield c
-    for inner in c.inner_callables.values():
+    for inner in c.callables.values():
         yield from _walk_callable(inner)
-    for inner_cls in c.inner_classes.values():
+    for inner_cls in c.types.values():
         yield from _walk_class_callables(inner_cls)
 
 
 def _walk_module_callables(module: PyModule) -> Iterator[PyCallable]:
     for fn in module.functions.values():
         yield from _walk_callable(fn)
-    for cls in module.classes.values():
+    for cls in module.types.values():
         yield from _walk_class_callables(cls)
 
 
@@ -69,18 +69,18 @@ def iter_callables_in_symbol_table(
 
 def _walk_classes_in_class(cls: PyClass) -> Iterator[PyClass]:
     yield cls
-    for inner in cls.inner_classes.values():
+    for inner in cls.types.values():
         yield from _walk_classes_in_class(inner)
     # Classes can live inside methods (e.g. a factory method that defines
     # a helper class). Recurse through every method's callable subtree.
-    for method in cls.methods.values():
+    for method in cls.callables.values():
         yield from _walk_classes_in_callable(method)
 
 
 def _walk_classes_in_callable(c: PyCallable) -> Iterator[PyClass]:
-    for inner_cls in c.inner_classes.values():
+    for inner_cls in c.types.values():
         yield from _walk_classes_in_class(inner_cls)
-    for inner in c.inner_callables.values():
+    for inner in c.callables.values():
         yield from _walk_classes_in_callable(inner)
 
 
@@ -91,7 +91,7 @@ def iter_classes_in_symbol_table(
     inner classes, classes nested in functions, and classes nested in
     class methods."""
     for module in symbol_table.values():
-        for cls in module.classes.values():
+        for cls in module.types.values():
             yield from _walk_classes_in_class(cls)
         for fn in module.functions.values():
             yield from _walk_classes_in_callable(fn)
@@ -118,22 +118,21 @@ def to_digraph(app: PyApplication) -> nx.DiGraph:
     added as **ghost** nodes (``callable=None``, ``ghost=True``) so the
     edges are preserved.
 
-    Edges carry ``type``, ``weight``, and ``provenance`` attributes.
+    Edges carry ``weight`` and ``prov`` attributes.
     """
     g = nx.DiGraph()
     by_sig = callables_by_signature(app)
     for sig, c in by_sig.items():
         g.add_node(sig, callable=c, ghost=False)
     for e in app.call_graph:
-        for sig in (e.source, e.target):
+        for sig in (e.src, e.dst):
             if sig not in g.nodes:
                 g.add_node(sig, callable=None, ghost=True)
         g.add_edge(
-            e.source,
-            e.target,
-            type=e.type,
+            e.src,
+            e.dst,
             weight=e.weight,
-            provenance=list(e.provenance),
+            prov=list(e.prov),
         )
     return g
 
@@ -143,18 +142,16 @@ def from_digraph(g: nx.DiGraph) -> list:
 
     Only edges are extracted; nodes are not serialized here — they are
     expected to already exist as ``PyCallable`` entries in the symbol
-    table. Edge attributes default to ``CALL_DEP`` / weight 1 / empty
-    provenance when missing.
+    table. Edge attributes default to weight 1 / empty prov when missing.
     """
     edges = []
     for src, dst, data in g.edges(data=True):
         edges.append(
             PyCallEdge(
-                source=src,
-                target=dst,
-                type=data.get("type", "CALL_DEP"),
+                src=src,
+                dst=dst,
                 weight=int(data.get("weight", 1)),
-                provenance=list(data.get("provenance", [])),
+                prov=list(data.get("prov", data.get("provenance", []))),
             )
         )
     return edges
@@ -183,7 +180,7 @@ def jedi_call_graph_edges(
             counts[(caller.signature, site.callee_signature)] += 1
 
     return [
-        PyCallEdge(source=src, target=dst, weight=n, provenance=["jedi"])
+        PyCallEdge(src=src, dst=dst, weight=n, prov=["jedi"])
         for (src, dst), n in counts.items()
     ]
 
@@ -255,7 +252,7 @@ def filter_external_edges(
     Edges where an app callable calls a library function (or vice-versa) are
     retained; only lib→lib edges are dropped.  The app symbol set is built by
     walking every callable in the symbol table recursively (including nested
-    functions and closures via ``inner_callables``) plus every class, so
+    functions and closures via ``callables``) plus every class, so
     PyCG-discovered closure nodes are correctly recognised as app symbols.
     """
     app_symbols: set = {c.signature for c in iter_callables_in_symbol_table(symbol_table)}
@@ -263,7 +260,7 @@ def filter_external_edges(
 
     return [
         e for e in edges
-        if e.source in app_symbols or e.target in app_symbols
+        if e.src in app_symbols or e.dst in app_symbols
     ]
 
 
@@ -277,11 +274,11 @@ def merge_edges(*edge_lists: list) -> list:
     by_key: Dict[Tuple[str, str], PyCallEdge] = {}
     for edges in edge_lists:
         for e in edges:
-            k = (e.source, e.target)
+            k = (e.src, e.dst)
             if k in by_key:
                 cur = by_key[k]
                 cur.weight += e.weight
-                cur.provenance = sorted(set(cur.provenance) | set(e.provenance))
+                cur.prov = sorted(set(cur.prov) | set(e.prov))
             else:
                 by_key[k] = e.model_copy()
     return list(by_key.values())

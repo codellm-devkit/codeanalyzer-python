@@ -2,6 +2,12 @@ from importlib.metadata import version, PackageNotFoundError
 from packaging.version import parse as parse_version
 
 from .py_schema import (
+    Analysis,
+    BodyNode,
+    CdgEdge,
+    CfgEdge,
+    DdgEdge,
+    ParamEdge,
     PyApplication,
     PyCallable,
     PyCallableParameter,
@@ -12,9 +18,12 @@ from .py_schema import (
     PyImport,
     PyModule,
     PyVariableDeclaration,
+    Span,
+    SummaryEdge,
 )
 
 __all__ = [
+    "Analysis",
     "PyApplication",
     "PyExternalSymbol",
     "PyImport",
@@ -25,6 +34,13 @@ __all__ = [
     "PyCallable",
     "PyClassAttribute",
     "PyCallableParameter",
+    "Span",
+    "BodyNode",
+    "CfgEdge",
+    "CdgEdge",
+    "DdgEdge",
+    "SummaryEdge",
+    "ParamEdge",
 ]
 
 try:
@@ -44,6 +60,7 @@ if not PYDANTIC_V2:
         PyClass=PyClass,
         PyModule=PyModule
     )
+    Analysis.update_forward_refs(PyApplication=PyApplication)
     
 # Compatibility helpers for Pydantic v1/v2
 def model_dump_json(model, **kwargs):
@@ -55,6 +72,8 @@ def model_dump_json(model, **kwargs):
         v1_kwargs = {}
         if 'indent' in kwargs:
             v1_kwargs['indent'] = kwargs['indent']
+        if 'exclude_none' in kwargs:
+            v1_kwargs['exclude_none'] = kwargs['exclude_none']
         if 'separators' in kwargs:
             # In v1, separators is passed to dumps_kwargs
             v1_kwargs['separators'] = kwargs['separators']

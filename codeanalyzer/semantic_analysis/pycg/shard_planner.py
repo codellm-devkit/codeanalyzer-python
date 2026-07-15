@@ -66,17 +66,17 @@ logger = logging.getLogger(__name__)
 
 def _walk_callable_sigs(c: PyCallable) -> Iterator[str]:
     yield c.signature
-    for inner in c.inner_callables.values():
+    for inner in c.callables.values():
         yield from _walk_callable_sigs(inner)
-    for inner_cls in c.inner_classes.values():
+    for inner_cls in c.types.values():
         yield from _walk_class_sigs(inner_cls)
 
 
 def _walk_class_sigs(cls: PyClass) -> Iterator[str]:
     yield cls.signature
-    for method in cls.methods.values():
+    for method in cls.callables.values():
         yield from _walk_callable_sigs(method)
-    for inner in cls.inner_classes.values():
+    for inner in cls.types.values():
         yield from _walk_class_sigs(inner)
 
 
@@ -95,7 +95,7 @@ def _signature_to_file(symbol_table: Dict[str, PyModule]) -> Dict[str, str]:
         for fn in module.functions.values():
             for sig in _walk_callable_sigs(fn):
                 sig_to_file[sig] = module.file_path
-        for cls in module.classes.values():
+        for cls in module.types.values():
             for sig in _walk_class_sigs(cls):
                 sig_to_file[sig] = module.file_path
     return sig_to_file
@@ -152,8 +152,8 @@ def build_module_graph(
         g.add_node(module.file_path, module_name=module.module_name)
 
     for edge in jedi_edges:
-        src = sig_to_file.get(edge.source)
-        dst = sig_to_file.get(edge.target)
+        src = sig_to_file.get(edge.src)
+        dst = sig_to_file.get(edge.dst)
         if src is None or dst is None or src == dst:
             continue
         if g.has_edge(src, dst):

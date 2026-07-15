@@ -115,24 +115,30 @@ def _node_statements(nodes: List[NodeRow]) -> List[str]:
 def _edge_statements(edges: List[EdgeRow]) -> List[str]:
     groups: Dict[str, List[EdgeRow]] = {}
     for e in edges:
-        key = f"{e.type}|{e.from_ref.label}.{e.from_ref.key_prop}|{e.to_ref.label}.{e.to_ref.key_prop}"
+        key = (
+            f"{e.type}|{e.from_ref.label}.{e.from_ref.key_prop}"
+            f"|{e.to_ref.label}.{e.to_ref.key_prop}|{e.key is not None}"
+        )
         groups.setdefault(key, []).append(e)
 
     blocks: List[str] = []
     for group in groups.values():
         first = group[0]
         from_ref, to_ref = first.from_ref, first.to_ref
+        # Discriminated relationships MERGE on ``{_k}`` — see EdgeRow.key.
+        rel_key = " {_k: row.k}" if first.key is not None else ""
         for batch in chunk(group, BATCH):
             rows_lit = ",\n".join(
                 f"  {{f: {cypher_value(e.from_ref.value)}, t: {cypher_value(e.to_ref.value)}, "
-                f"p: {cypher_map(e.props)}}}"
+                + (f"k: {cypher_value(e.key)}, " if first.key is not None else "")
+                + f"p: {cypher_map(e.props)}}}"
                 for e in batch
             )
             blocks.append(
                 f"UNWIND [\n{rows_lit}\n] AS row\n"
                 f"MATCH (a:{from_ref.label} {{{from_ref.key_prop}: row.f}})\n"
                 f"MATCH (b:{to_ref.label} {{{to_ref.key_prop}: row.t}})\n"
-                f"MERGE (a)-[r:{first.type}]->(b)\n"
+                f"MERGE (a)-[r:{first.type}{rel_key}]->(b)\n"
                 f"SET r += row.p;"
             )
     return blocks

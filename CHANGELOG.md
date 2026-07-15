@@ -5,6 +5,77 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [1.0.0] - 2026-07-14
+
+### Added
+- **Four analysis levels** (`-a 1|2|3|4`): L1 is symbol table and Jedi call graph; L2 adds
+  PyCG call-graph edges (`--pycg-shard` scales to large apps); L3 adds intraprocedural dataflow
+  (CFG/CDG/DDG, syntactic, `prov:["ssa"]`); L4 adds interprocedural SDG with synthetic
+  parameter-in/out and summary edges, alias-aware DDG (`prov:["points-to"]`). Dataflow graphs are
+  built in-process from the stdlib `ast` (exceptional CFGs with synthetic ENTRY/EXIT and
+  exception/yield/await edges; Ferrante–Ottenstein–Warren control dependence; reaching-definitions
+  data dependence over k-limited access paths; a Horwitz–Reps–Binkley SDG with parameter and
+  bottom-up summary edges over the Tarjan SCC condensation). They are emitted inline on each
+  callable as `body`/`cfg`/`cdg`/`ddg` under the v2 `application` tree — not a separate section.
+- **`--graphs` and `--graph-field-depth` flags** (level 3+): `--graphs cfg,dfg,pdg,sdg` scopes the
+  emitted program-graph sections (strict validation — unknown values or use below `-a 3` exit
+  non-zero; `sdg` requires `-a 4`); `--graph-field-depth` sets the access-path k-limit (default 3),
+  the bound that guarantees the interprocedural fixpoint terminates.
+- **Context-sensitive backward slicing** as an SDG query (`codeanalyzer.dataflow.slicing`,
+  HRB two-phase traversal). Taint is deliberately left to the CLDK SDK — post-SDG it is
+  language-independent labeled reachability.
+- **Scalpel points-to oracle** for L4 alias analysis (optional `python-scalpel` dependency:
+  `pip install "codeanalyzer-python[scalpel]"`). Automatic type-based fallback when absent.
+- **Neo4j schema v2.0.0** — the property graph is re-keyed onto canonical `can://` node IDs.
+  New `PY_PARAM_IN`, `PY_PARAM_OUT`, `PY_SUMMARY` edges. `PY_DDG` carries `prov` property
+  to distinguish syntactic (ssa) from semantic (points-to) dependence.
+- **Neo4j CPG overlay at levels 3–4** (part of schema v2.0.0): `PyCFGNode` nodes plus the
+  `PY_HAS_CFG_NODE`/`PY_CFG_NEXT`/`PY_CDG`/`PY_DDG` edges project each callable's control-flow and
+  dependence graph, PY_-namespaced like every other row family so a multi-language database never
+  mingles analyzers' dependence edges.
+
+### Changed
+- **BREAKING: canonical schema v2** (`analysis.json`). Structure is now a single additive CPG
+  tree under an `Analysis` envelope (`schema_version`, `language`, `max_level`,
+  `analyzer{name,version}`, `k_limit` at L3+, `application`). The old flat `symbol_table` +
+  `call_graph` + separate `program_graphs` is replaced: consumers must read
+  `application.symbol_table`, `application.call_graph` (now nested under `application`), and
+  inline `body`/`cfg`/`cdg`/`ddg` on each callable. Nodes carry canonical `can://` identifiers.
+  Module `source` is stored once with byte-offset spans; per-node `code` is dropped. Upgrade:
+  pin `codeanalyzer-python==1.0.0` and update any code that read top-level
+  `symbol_table`/`call_graph` to go through `application`.
+- **BREAKING: keystone conformance sweep** (#98, part of the schema-v2 change above; key-for-key
+  parity with the canonical CPG keystone shared by every analyzer):
+  - Containment uses the shared canonical names: modules nest `types`/`functions`, classes nest
+    `callables`/`types`, callables nest `callables`/`types`. The historical
+    `classes`/`methods`/`inner_classes`/`inner_callables` keys are gone.
+  - `call_graph` edges are `{src, dst, prov, weight}` — the list name is the edge type, so the
+    `type: "CALL_DEP"` field and the old `source`/`target`/`provenance` keys are gone.
+  - No dangling edge endpoints: imported/builtin call targets are homed as
+    `can://<lang>/<app>/@external/<module>/<name>` entries in `application.external_symbols`
+    (keyed by that id, `kind:"external"`); first-party endpoints always resolve to their tree id.
+  - Envelope carries `analyzer: {name, version}`; `k_limit` is emitted only at L3+ (it is a
+    dataflow bound and was meaningless at L1/L2).
+  - Neo4j projection follows: `:PyExternal` ghosts merge on `id` (the `@external` id, not the
+    dotted signature) and `PY_CALLS` carries `prov` (was `provenance`).
+
+### Fixed
+- **Neo4j edge identity no longer collapses distinct edges** between the same endpoint pair:
+  `PY_DDG` merges per `(var, prov)` and `PY_CFG_NEXT` per `kind` via an internal `_k`
+  relationship discriminant. Previously a plain endpoint-pair `MERGE` silently dropped
+  per-variable data dependences (and could collapse a conditional's true/false CFG pair),
+  so a live Bolt push materialized fewer relationships than the projection produced.
+- **Full-run orphan prune now removes the L3/L4 CPG overlay** of a vanished module: the
+  containment closure used for pruning was missing `PY_HAS_CFG_NODE`, stranding every
+  `PyCFGNode` (and its dependence edges) in the database after its module was deleted.
+- **Emitted `analysis.json` round-trips through the `Analysis` model again.**
+  `PyVariableDeclaration.type` was required-but-nullable; `exclude_none` emission drops the
+  key when Jedi cannot infer a variable's type, so re-validating the analyzer's own output
+  failed with "Field required" (43k errors on an Odoo-scale run). The field now defaults to
+  `None`; a round-trip gate rides `test_v2_keystone.py`.
+
 ## [0.3.1] - 2026-07-14
 
 ### Added

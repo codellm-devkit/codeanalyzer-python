@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from codeanalyzer.schema import PyApplication
+from codeanalyzer.schema.assign_ids import assign_ids
 from codeanalyzer.syntactic_analysis.import_resolver import resolve_imports
 from codeanalyzer.syntactic_analysis.symbol_table_builder import SymbolTableBuilder
 
@@ -63,15 +64,16 @@ def test_projection_emits_module_and_package_targets(single_functionalities__int
     app = _build_app(root)
     resolve_imports(app, root)
 
-    rows = project(app, "internal-imports")
+    rows = project(app, "internal-imports", assign_ids(app, "internal-imports"))
 
     py_imports = [e for e in rows.edges if e.type == "PY_IMPORTS"]
     module_targets = [e for e in py_imports if e.to_ref.label == "PyModule"]
     package_targets = [e for e in py_imports if e.to_ref.label == "PyPackage"]
 
+    # v2 keys module nodes (and hence edge endpoints) on their can:// id.
     assert {e.to_ref.value for e in module_targets} >= {
-        str(root / "pkg" / "util.py"),
-        str(root / "pkg" / "consumer.py"),
+        app.symbol_table[str(root / "pkg" / "util.py")].id,
+        app.symbol_table[str(root / "pkg" / "consumer.py")].id,
     }
     assert {e.to_ref.value for e in package_targets} == {"os"}
     assert all(e.props.get("spellings") for e in py_imports)
@@ -89,17 +91,18 @@ def test_multiple_spellings_of_one_target_collapse_to_one_edge(single_functional
     app = _build_app(root)
     resolve_imports(app, root)
 
-    rows = project(app, "internal-imports")
+    rows = project(app, "internal-imports", assign_ids(app, "internal-imports"))
 
-    consumer_key = str(root / "pkg" / "consumer.py")
-    util_key = str(root / "pkg" / "util.py")
+    # v2 keys module nodes (and hence edge endpoints) on their can:// id.
+    consumer_id = app.symbol_table[str(root / "pkg" / "consumer.py")].id
+    util_id = app.symbol_table[str(root / "pkg" / "util.py")].id
 
     edges = [
         e
         for e in rows.edges
         if e.type == "PY_IMPORTS"
-        and e.from_ref.value == consumer_key
-        and e.to_ref.value == util_key
+        and e.from_ref.value == consumer_id
+        and e.to_ref.value == util_id
     ]
     assert len(edges) == 1, f"expected exactly one consumer->util PY_IMPORTS edge, got {len(edges)}"
     edge = edges[0]
@@ -118,7 +121,7 @@ def test_no_two_import_edges_share_a_node_pair(single_functionalities__internal_
     app = _build_app(root)
     resolve_imports(app, root)
 
-    rows = project(app, "internal-imports")
+    rows = project(app, "internal-imports", assign_ids(app, "internal-imports"))
 
     py_imports = [e for e in rows.edges if e.type == "PY_IMPORTS"]
     pairs = [(e.from_ref.value, e.to_ref.value) for e in py_imports]
@@ -135,17 +138,18 @@ def test_same_spelling_to_different_targets_keeps_two_edges(single_functionaliti
     app = _build_app(root)
     resolve_imports(app, root)
 
-    rows = project(app, "internal-imports")
+    rows = project(app, "internal-imports", assign_ids(app, "internal-imports"))
 
-    main_key = str(root / "main.py")
-    util_key = str(root / "pkg" / "util.py")
-    consumer_key = str(root / "pkg" / "consumer.py")
+    # v2 keys module nodes (and hence edge endpoints) on their can:// id.
+    main_id = app.symbol_table[str(root / "main.py")].id
+    util_id = app.symbol_table[str(root / "pkg" / "util.py")].id
+    consumer_id = app.symbol_table[str(root / "pkg" / "consumer.py")].id
 
     py_imports = [
-        e for e in rows.edges if e.type == "PY_IMPORTS" and e.from_ref.value == main_key
+        e for e in rows.edges if e.type == "PY_IMPORTS" and e.from_ref.value == main_id
     ]
-    to_util = [e for e in py_imports if e.to_ref.value == util_key]
-    to_consumer = [e for e in py_imports if e.to_ref.value == consumer_key]
+    to_util = [e for e in py_imports if e.to_ref.value == util_id]
+    to_consumer = [e for e in py_imports if e.to_ref.value == consumer_id]
 
     assert len(to_util) == 1
     assert len(to_consumer) == 1

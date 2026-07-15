@@ -1,180 +1,168 @@
-"""A small, hand-built :class:`PyApplication` that exercises every Neo4j
-projection path (module, class + inheritance + methods + attributes + inner
-class, callable + decorators + call sites + local vars + inner callable, module
-variables, imports, and a call graph with a resolved edge and a ghost edge).
+"""A small v2 :class:`PyApplication` carried through the real L1 → L4 pipeline,
+so the Neo4j projection tests exercise the whole overlay: a module, a class with
+inheritance + a method + an attribute + an inner class, functions with
+decorators + call sites + local variables, module variables, imports, a call
+graph with a resolved edge and a ghost edge, each callable's CPG
+``body``/``cfg``/``cdg``/``ddg`` (level 3), and — new at level 4 — the
+interprocedural ``param_in``/``param_out``/``summary`` param-passing overlay plus
+the points-to ``ddg`` delta.
 
-Built directly from the schema models so the Neo4j tests need neither Jedi nor a
-virtualenv — they stay fast and deterministic.
+The symbol table is built from a real (temporary) source file so
+``build_function_pdgs`` can recover each callable's AST; ``assign_ids`` +
+``populate_l1_body`` + ``build_function_pdgs`` (syntactic oracle) + ``emit_l3_body``
+populate the v2 tree at L3, then ``build_program_graphs`` (Scalpel-primary alias
+oracle) + ``emit_l4`` + ``emit_ddg_pointsto_delta`` layer the L4 delta on top. The
+tests need neither a checked-in fixture tree nor a virtualenv — they stay fast and
+deterministic.
+
+``make_sample_app`` returns ``(app, sig_to_id)``: the projection
+(``project(app, app_name, sig_to_id)``) needs the signature → ``can://`` id map
+that ``assign_ids`` produced.
 """
 from __future__ import annotations
 
-from codeanalyzer.schema import (
-    PyApplication,
-    PyCallable,
-    PyClass,
-    PyClassAttribute,
-    PyComment,
-    PyExternalSymbol,
-    PyImport,
-    PyModule,
-    PyVariableDeclaration,
+import tempfile
+from pathlib import Path
+from typing import Dict, Tuple
+
+from codeanalyzer.dataflow.builder import (
+    _base_types,
+    build_function_pdgs,
+    build_program_graphs,
+    emit_ddg_pointsto_delta,
+    emit_l3_body,
+    emit_l4,
 )
-from codeanalyzer.schema.py_schema import (
-    PyAnalyzerInfo,
-    PyCallArgument,
-    PyCallEdge,
-    PyCallsite,
-    PyRepositoryInfo,
+from codeanalyzer.dataflow.scalpel_oracle import make_alias_oracle
+from codeanalyzer.dataflow.syntactic import SyntacticOracle
+from codeanalyzer.schema import PyApplication, PyExternalSymbol
+from codeanalyzer.schema.assign_ids import assign_ids
+from codeanalyzer.schema.l1_body import populate_l1_body
+from codeanalyzer.schema.py_schema import PyCallEdge
+from codeanalyzer.semantic_analysis.call_graph import (
+    iter_callables_in_symbol_table,
 )
+from codeanalyzer.syntactic_analysis.symbol_table_builder import SymbolTableBuilder
+
+# A tiny program with every symbol-table shape the projection walks: a base class
+# and a subclass (inheritance → PY_EXTENDS), a method + attribute + inner class,
+# decorated functions, a resolved call site (``build(flag)`` → ``service.build``),
+# and enough control flow (an ``if``) and def-use (``message``/``y``) that each
+# recovered callable yields a non-empty CFG / CDG / DDG. ``build(flag)`` is a
+# resolved interprocedural call with a parameter, so the L4 SDG carries
+# PARAM_IN / PARAM_OUT / SUMMARY edges over ``build``'s pass-through.
+_SOURCE = '''import os
+
+CONFIG = {}
 
 
-def make_sample_app() -> PyApplication:
-    announce = PyCallable(
-        name="announce",
-        path="src/service.py",
-        signature="src.service.Service.announce",
-        comments=[PyComment(content="Announce something.", is_docstring=True)],
-        return_type="None",
-        code="def announce(self):\n    ...",
-        start_line=10,
-        end_line=12,
-        code_start_line=10,
-        cyclomatic_complexity=1,
-    )
-    inner = PyClass(
-        name="Inner",
-        signature="src.service.Service.Inner",
-        code="class Inner:\n    ...",
-        start_line=14,
-        end_line=15,
-    )
-    service = PyClass(
-        name="Service",
-        signature="src.service.Service",
-        comments=[PyComment(content="A service.", is_docstring=True)],
-        code="class Service(BaseService):\n    ...",
-        base_classes=["src.service.BaseService"],
-        methods={"announce": announce},
-        attributes={
-            "name": PyClassAttribute(
-                name="name", type="str", initializer="'svc'", start_line=8, end_line=8
-            )
-        },
-        inner_classes={"Inner": inner},
-        start_line=6,
-        end_line=15,
-    )
-    base_service = PyClass(
-        name="BaseService",
-        signature="src.service.BaseService",
-        code="class BaseService:\n    ...",
-        start_line=1,
-        end_line=4,
-    )
-    helper = PyCallable(
-        name="helper",
-        path="src/service.py",
-        signature="src.service.helper",
-        decorators=["staticmethod"],
-        return_type="int",
-        code="def helper():\n    Service().announce()\n    requests.get(url)",
-        start_line=17,
-        end_line=20,
-        code_start_line=17,
-        cyclomatic_complexity=2,
-        call_sites=[
-            PyCallsite(
-                method_name="announce",
-                receiver_expr="Service()",
-                receiver_type="src.service.Service",
-                callee_signature="src.service.Service.announce",
-                arguments=[PyCallArgument(ast_kind="Name", inferred_type="str")],
-                start_line=18,
-                start_column=4,
-                end_line=18,
-                end_column=22,
-            )
-        ],
-        local_variables=[
-            PyVariableDeclaration(
-                name="url", type="str", initializer="'x'", scope="function",
-                start_line=18, end_line=18,
-            )
-        ],
-    )
-    service_mod = PyModule(
-        file_path="src/service.py",
-        module_name="src.service",
-        imports=[
-            PyImport(module="os", name="path", alias="p"),
-            # Internal import, pre-resolved (issue #82): exercises the
-            # PY_IMPORTS -> :PyModule edge alongside the :PyPackage one above.
-            PyImport(
-                module="src.util",
-                name="src.util",
-                resolved_module="src/util.py",
-            ),
-        ],
-        classes={"Service": service, "BaseService": base_service},
-        functions={"helper": helper},
-        variables=[
-            PyVariableDeclaration(
-                name="CONFIG", type="dict", initializer="{}", scope="module",
-                start_line=2, end_line=2,
-            )
-        ],
-        content_hash="hash-service-v1",
-        last_modified=1.0,
-        file_size=100,
-    )
-    util_mod = PyModule(
-        file_path="src/util.py",
-        module_name="src.util",
-        functions={
-            "util_fn": PyCallable(
-                name="util_fn",
-                path="src/util.py",
-                signature="src.util.util_fn",
-                return_type="int",
-                code="def util_fn():\n    return 1",
-                start_line=1,
-                end_line=2,
-                code_start_line=1,
-                cyclomatic_complexity=1,
-            )
-        },
-        content_hash="hash-util-v1",
-        last_modified=1.0,
-        file_size=40,
-    )
+def trace(fn):
+    return fn
 
-    call_graph = [
-        # resolved edge — both endpoints live in the symbol table
+
+class BaseService:
+    pass
+
+
+class Service(BaseService):
+    name: str
+
+    def announce(self, flag):
+        message = build(flag)
+        if flag:
+            message = message + "!"
+        return message
+
+    class Inner:
+        pass
+
+
+@trace
+def helper(flag):
+    svc = Service()
+    result = svc.announce(flag)
+    return result
+
+
+@trace
+def build(x):
+    y = x
+    return y
+'''
+
+
+def _qualify_base_classes(module) -> None:
+    """Resolve each class's bare base-class names to their in-module signatures
+    (``BaseService`` → ``service.BaseService``), mirroring what a semantic
+    resolution pass does, so the Neo4j PY_EXTENDS edge lands on the declared base
+    class's ``can://`` id rather than dangling on an unresolved bare name."""
+    name_to_sig = {cls.name: cls.signature for cls in (module.types or {}).values()}
+    for cls in (module.types or {}).values():
+        cls.base_classes = [name_to_sig.get(b, b) for b in (cls.base_classes or [])]
+
+
+def make_sample_app() -> Tuple[PyApplication, Dict[str, str]]:
+    """Build the v2 sample application with its level-3 CPG overlay and level-4
+    interprocedural delta emitted.
+
+    Returns ``(app, sig_to_id)`` — the projection consumes both.
+    """
+    workdir = Path(tempfile.mkdtemp(prefix="sample-graph-app-"))
+    source_file = workdir / "service.py"
+    source_file.write_text(_SOURCE, encoding="utf-8")
+
+    module = SymbolTableBuilder(workdir, None).build_pymodule_from_file(source_file)
+    _qualify_base_classes(module)
+    app = PyApplication(symbol_table={"service.py": module})
+
+    # Two independent builds of this fixture must project byte-identical rows (the
+    # determinism guard). The only environment-derived fields are the file mtime
+    # and the absolute callable ``path`` (both carry the random temp dir); pin the
+    # mtime and rewrite ``path`` to the portable project-relative "service.py".
+    # Nothing in L1–L4 depends on either — the graph build reads ``module.file_path``,
+    # which stays pointed at the real temp file.
+    module.last_modified = 1.0
+    for c in iter_callables_in_symbol_table(app.symbol_table):
+        c.path = "service.py"
+
+    # A resolved call-graph edge (both endpoints declared) and a ghost edge whose
+    # target is a third-party member — materialized as a :PyExternal node.
+    app.call_graph = [
         PyCallEdge(
-            source="src.service.helper",
-            target="src.service.Service.announce",
+            src="service.helper",
+            dst="service.Service.announce",
             weight=1,
-            provenance=["jedi"],
+            prov=["jedi"],
         ),
-        # ghost edge — target is third-party, materialized as an :PyExternal node
         PyCallEdge(
-            source="src.service.helper",
-            target="requests.get",
+            src="service.helper",
+            dst="os.getcwd",
             weight=2,
-            provenance=["jedi", "pycg"],
+            prov=["jedi", "pycg"],
         ),
     ]
 
-    return PyApplication(
-        symbol_table={"src/service.py": service_mod, "src/util.py": util_mod},
-        call_graph=call_graph,
-        # The ghost edge's target (requests.get) is a library member, recorded as a
-        # first-class external symbol so the projection emits a :PyExternal for it.
-        external_symbols={"requests.get": PyExternalSymbol(name="get", module="requests")},
-        analyzer=PyAnalyzerInfo(
-            name="codeanalyzer-python", version="0.0.0-test", config={"analysis_level": 1}
-        ),
-        repository=PyRepositoryInfo(
-            uri="https://example.invalid/repo.git", revision="deadbeef", dirty=False
-        ),
+    # Identity + L1 bodies, then the intraprocedural (syntactic) L3 overlay.
+    sig_to_id = assign_ids(app, "sample-app")
+    ext_id = "can://python/sample-app/@external/os/getcwd"
+    app.external_symbols = {
+        ext_id: PyExternalSymbol(id=ext_id, name="getcwd", module="os")
+    }
+    sig_to_id["os.getcwd"] = ext_id
+    populate_l1_body(app)
+    syntactic_infos, _func_asts = build_function_pdgs(
+        app, k=3, oracle_factory=lambda c, fast: SyntacticOracle()
     )
+    emit_l3_body(app, syntactic_infos, sig_to_id, {"cfg", "dfg", "pdg"})
+
+    # The L4 interprocedural delta, layered on top of L3 (L3 ⊆ L4 by construction):
+    # param vertices + summary + param_in/param_out, then the points-to ddg delta.
+    ir = build_program_graphs(
+        app,
+        k=3,
+        oracle_factory=lambda c, fast: make_alias_oracle(c, fast, _base_types(c)),
+    )
+    emit_l4(app, ir, sig_to_id)
+    emit_ddg_pointsto_delta(app, syntactic_infos, ir, sig_to_id)
+
+    return app, sig_to_id

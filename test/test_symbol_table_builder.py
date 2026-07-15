@@ -7,8 +7,8 @@ from codeanalyzer.syntactic_analysis.symbol_table_builder import SymbolTableBuil
 def _action_post_call_sites(project_dir: Path):
     builder = SymbolTableBuilder(project_dir, None)
     module = builder.build_pymodule_from_file(project_dir / "main.py")
-    account_move = next(c for c in module.classes.values() if c.name == "AccountMove")
-    return {cs.method_name: cs for cs in account_move.methods["action_post"].call_sites}
+    account_move = next(c for c in module.types.values() if c.name == "AccountMove")
+    return {cs.method_name: cs for cs in account_move.callables["action_post"].call_sites}
 
 
 def test_attribute_calls_resolve_to_the_invoked_method(single_functionalities__method_call_resolution):
@@ -70,11 +70,11 @@ def test_class_attribute_initializers_are_captured(single_functionalities__metho
     builder = SymbolTableBuilder(single_functionalities__method_call_resolution, None)
     module = builder.build_pymodule_from_file(single_functionalities__method_call_resolution / "main.py")
 
-    account_move = next(c for c in module.classes.values() if c.name == "AccountMove")
+    account_move = next(c for c in module.types.values() if c.name == "AccountMove")
     assert account_move.attributes["_name"].initializer == "'account.move'"
     assert account_move.attributes["_inherit"].initializer == "['mail.thread']"
 
-    model = next(c for c in module.classes.values() if c.name == "Model")
+    model = next(c for c in module.types.values() if c.name == "Model")
     assert model.attributes["env"].initializer == "Environment()"
 
 

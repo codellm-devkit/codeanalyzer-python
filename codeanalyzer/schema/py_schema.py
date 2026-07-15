@@ -20,9 +20,8 @@ This module defines the data models used to represent Python code structures
 for static analysis purposes.
 """
 from __future__ import annotations
-import inspect
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import gzip
 
 from pydantic import BaseModel
@@ -120,12 +119,23 @@ def builder(cls):
     # Get type hints and default values for the fields in the model.
     # For example, {file_path: Path, module_name: str, imports: List[PyImport], ...}
     annotations = cls.__annotations__
-    # Get default values for the fields in the model.
-    defaults = {
-        f.name: f.default
-        for f in inspect.signature(cls).parameters.values()
-        if f.default is not inspect.Parameter.empty
-    }
+    # Get default values for the fields in the model. `inspect.signature` is
+    # unreliable for models carrying forward references (e.g. PyCallable's
+    # self-referential ``callables``): Pydantic falls back to a generic
+    # ``(**data)`` signature that drops the per-field defaults, so the builder
+    # would seed those fields with ``None`` and fail validation. Read the declared
+    # defaults straight off the model instead. Required fields are intentionally
+    # omitted (seeded ``None``) — the builder chain must set them.
+    defaults = {}
+    model_fields = getattr(cls, "model_fields", None)  # Pydantic v2
+    if model_fields:
+        for name, field in model_fields.items():
+            if not field.is_required():
+                defaults[name] = field.get_default(call_default_factory=True)
+    else:  # Pydantic v1
+        for name, field in getattr(cls, "__fields__", {}).items():
+            if not field.required:
+                defaults[name] = field.get_default()
     # Create a namespace for the builder class.
     namespace = {}
 
@@ -166,6 +176,71 @@ def builder(cls):
     # Attach the builder class to the original class as an attribute so we can now call `MyModel.builder().name(...)`.
     setattr(cls, "builder", builder_cls)
     return cls
+
+
+def byte_offsets(source: str, start_line: int, start_col: int,
+                 end_line: int, end_col: int) -> Tuple[int, int]:
+    """Convert (1-based line, 0-based col) ast positions to utf-8 byte offsets
+    into `source`. `col` is a character offset within the line (ast semantics);
+    we re-encode the line prefix to bytes so multibyte chars are handled."""
+    lines = source.splitlines(keepends=True)
+    def offset(line: int, col: int) -> int:
+        prefix_bytes = len("".join(lines[: line - 1]).encode("utf-8"))
+        col_bytes = len(lines[line - 1][:col].encode("utf-8")) if line - 1 < len(lines) else 0
+        return prefix_bytes + col_bytes
+    return offset(start_line, start_col), offset(end_line, end_col)
+
+
+@builder
+@msgpk
+class Span(BaseModel):
+    """Where a node lives in source. `start`/`end` are [line, col] (1-based line,
+    0-based col, ast semantics); `bytes` are utf-8 offsets into module.source."""
+    start: Tuple[int, int]
+    end: Tuple[int, int]
+    bytes: Tuple[int, int]
+
+
+@builder
+@msgpk
+class BodyNode(BaseModel):
+    """A node in a callable's `body`: an AST region (statement/call/branch/…) or
+    a synthetic analysis vertex (entry/exit/formal_in/out/actual_in/out)."""
+    kind: str
+    span: Optional[Span] = None
+    callee: Optional[str] = None   # only on `call` nodes; the sanctioned null→id slot
+    of: Optional[str] = None       # param vertices: the variable/return they carry
+    parent: Optional[str] = None   # actuals: owning callsite ordinal id
+
+
+@builder
+@msgpk
+class CfgEdge(BaseModel):
+    src: str; dst: str; kind: str = "fallthrough"
+
+
+@builder
+@msgpk
+class CdgEdge(BaseModel):
+    src: str; dst: str
+
+
+@builder
+@msgpk
+class DdgEdge(BaseModel):
+    src: str; dst: str; var: Optional[str] = None; prov: List[str] = []
+
+
+@builder
+@msgpk
+class SummaryEdge(BaseModel):
+    src: str; dst: str
+
+
+@builder
+@msgpk
+class ParamEdge(BaseModel):
+    src: str; dst: str
 
 
 @builder
@@ -217,7 +292,10 @@ class PyVariableDeclaration(BaseModel):
     """Represents a Python variable declaration."""
 
     name: str
-    type: Optional[str]
+    # Optional WITH a default: emission drops None (exclude_none), so a
+    # required-but-nullable field would make the emitted JSON fail its own
+    # model's validation whenever the type is uninferred.
+    type: Optional[str] = None
     initializer: Optional[str] = None
     value: Optional[Any] = None
     scope: Literal["module", "class", "function"] = "module"
@@ -281,20 +359,27 @@ class PyCallable(BaseModel):
     name: str
     path: str
     signature: str  # e.g., module.<class_name>.function_name
+    id: str = ""
+    kind: str = "function"
+    span: Optional[Span] = None
     comments: List[PyComment] = []
     decorators: List[str] = []
     parameters: List[PyCallableParameter] = []
     return_type: Optional[str] = None
-    code: str = None
     start_line: int = -1
     end_line: int = -1
     code_start_line: int = -1
     accessed_symbols: List[PySymbol] = []
     call_sites: List[PyCallsite] = []
-    inner_callables: Dict[str, "PyCallable"] = {}
-    inner_classes: Dict[str, "PyClass"] = {}
+    callables: Dict[str, "PyCallable"] = {}  # nested callables (closures)
+    types: Dict[str, "PyClass"] = {}  # nested (local) classes
     local_variables: List[PyVariableDeclaration] = []
     cyclomatic_complexity: int = 0
+    body: Dict[str, BodyNode] = {}
+    cfg: List[CfgEdge] = []
+    cdg: List[CdgEdge] = []
+    ddg: List[DdgEdge] = []
+    summary: List[SummaryEdge] = []
 
     def __hash__(self) -> int:
         """Generate a hash based on the callable's signature."""
@@ -323,12 +408,14 @@ class PyClass(BaseModel):
 
     name: str
     signature: str  # e.g., module.class_name
+    id: str = ""
+    kind: str = "class"
+    span: Optional[Span] = None
     comments: List[PyComment] = []
-    code: str = None
     base_classes: List[str] = []
-    methods: Dict[str, PyCallable] = {}
+    callables: Dict[str, PyCallable] = {}  # methods, keystone containment name
     attributes: Dict[str, PyClassAttribute] = {}
-    inner_classes: Dict[str, "PyClass"] = {}
+    types: Dict[str, "PyClass"] = {}  # inner classes, keystone containment name
     start_line: int = -1
     end_line: int = -1
 
@@ -344,9 +431,12 @@ class PyModule(BaseModel):
 
     file_path: str
     module_name: str
+    id: str = ""
+    kind: str = "module"
+    source: str = ""
     imports: List[PyImport] = []
     comments: List[PyComment] = []
-    classes: Dict[str, PyClass] = {}
+    types: Dict[str, PyClass] = {}  # classes, keystone containment name
     functions: Dict[str, PyCallable] = {}
     variables: List[PyVariableDeclaration] = []
     # Metadata for caching
@@ -358,29 +448,30 @@ class PyModule(BaseModel):
 @builder
 @msgpk
 class PyCallEdge(BaseModel):
-    """Identity-only call-graph edge with weight.
+    """Identity-only call-graph edge with weight (keystone shape: the list name
+    IS the edge type, so there is no ``type`` field).
 
-    Mirrors Java's ``CallDependency``. ``source`` and ``target`` are
-    ``PyCallable.signature`` strings — nodes of the graph are the existing
-    ``PyCallable`` entries in the symbol table, not a separate vertex type.
+    ``src`` and ``dst`` are node ids — the caller's ``can://`` id and the
+    callee's ``can://`` id (a symbol-table callable or an ``@external`` home).
     Rich per-call metadata (receiver, arguments, location, ...) lives on
     ``PyCallsite`` inside the source ``PyCallable.call_sites``.
     """
 
-    source: str  # caller's PyCallable.signature
-    target: str  # callee's PyCallable.signature
-    type: Literal["CALL_DEP"] = "CALL_DEP"
+    src: str  # caller callable id
+    dst: str  # callee callable (or external) id
     weight: int = 1
-    provenance: List[Literal["jedi", "pycg", "joern"]] = []
+    prov: List[Literal["jedi", "pycg", "joern"]] = []
 
 
 @builder
 @msgpk
 class PyExternalSymbol(BaseModel):
     """A call-graph target outside the analyzed project -- an imported library or
-    builtin member. Mirrors codeanalyzer-typescript's ``TSExternalSymbol`` and is
-    keyed in ``PyApplication.external_symbols`` by its call-graph signature."""
+    builtin member. An edge-endpoint id home, not a tree node: keyed in
+    ``PyApplication.external_symbols`` by its ``can://…/@external/…`` id."""
 
+    id: str = ""  # can://python/<app>/@external/<module>/<name>
+    kind: str = "external"
     name: str  # the member/short name, e.g. "get" for "requests.get"
     module: Optional[str] = None  # best-effort owning module, e.g. "requests"
 
@@ -398,10 +489,12 @@ class PyRepositoryInfo(BaseModel):
 @builder
 @msgpk
 class PyAnalyzerInfo(BaseModel):
-    """Which analyzer produced this snapshot, and how it was configured."""
+    """Which analyzer produced this snapshot, and how it was configured.
+    Lives on the ``Analysis`` envelope (keystone ``analyzer{name,version}``;
+    ``config`` rides additively)."""
 
-    name: str
-    version: str
+    name: str = "codeanalyzer-python"
+    version: str = "unknown"
     config: Dict[str, Any] = {}
 
 
@@ -411,10 +504,28 @@ class PyApplication(BaseModel):
     """Represents a Python application."""
 
     symbol_table: Dict[str, PyModule]
+    id: str = ""
+    kind: str = "application"
     call_graph: List[PyCallEdge] = []
     # Call-graph endpoints not declared in the symbol table (imported library /
     # builtin members), keyed by signature. Populated by the analyzer so every
     # backend (JSON and Neo4j) shares one authoritative external-symbol set.
     external_symbols: Dict[str, PyExternalSymbol] = {}
-    analyzer: Optional[PyAnalyzerInfo] = None
+    # Git provenance of the analyzed checkout, captured at analysis time.
     repository: Optional[PyRepositoryInfo] = None
+    # Interprocedural parameter-passing edges (formal↔actual); populated at L4.
+    param_in: List[ParamEdge] = []
+    param_out: List[ParamEdge] = []
+
+
+@builder
+@msgpk
+class Analysis(BaseModel):
+    """v2 payload root: envelope + the application tree node. ``k_limit`` is an
+    L3+ envelope key (None below the dataflow levels; exclude_none drops it)."""
+    schema_version: str = "2.0.0"
+    language: str = "python"
+    max_level: int = 1
+    k_limit: Optional[int] = None
+    analyzer: PyAnalyzerInfo = PyAnalyzerInfo()
+    application: PyApplication
