@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-07-15
+
 ### Fixed
 - **Deterministic output** (#99): the same flags on the same input now emit byte-identical
   `analysis.json`. Four independent nondeterminism sources were closed:

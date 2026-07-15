@@ -20,7 +20,7 @@ DETACH DELETE x, m, a;
 
 // ── nodes ──
 UNWIND [
-  {k: 'sample_proj', p: {schema_version: '2.0.0'}}
+  {k: 'sample_proj', p: {schema_version: '2.0.0', analyzer_name: 'codeanalyzer-python', analyzer_version: '1.0.1'}}
 ] AS row
 MERGE (n:PyApplication {name: row.k})
 SET n += row.p;
@@ -33,8 +33,8 @@ MERGE (n:PyCFGNode {id: row.k})
 SET n += row.p;
 UNWIND [
   {k: 'service.py#16:10-16:19', p: {id: 'service.py#16:10-16:19', method_name: 'Service', argument_types: [], return_type: 'Service', callee_signature: 'service.Service.__init__', is_constructor_call: true, start_line: 16, start_column: 10, end_line: 16, end_column: 19, _module: 'service.py'}},
-  {k: 'service.py#17:11-17:29', p: {id: 'service.py#17:11-17:29', method_name: 'announce', receiver_expr: 'svc', receiver_type: 'Service', argument_types: ['Name'], return_type: 'Service', callee_signature: 'service.Service', is_constructor_call: false, start_line: 17, start_column: 11, end_line: 17, end_column: 29, _module: 'service.py'}},
-  {k: 'service.py#6:18-6:29', p: {id: 'service.py#6:18-6:29', method_name: 'build', argument_types: ['Name'], return_type: 'build', callee_signature: 'service.build', is_constructor_call: false, start_line: 6, start_column: 18, end_line: 6, end_column: 29, _module: 'service.py'}}
+  {k: 'service.py#17:11-17:29', p: {id: 'service.py#17:11-17:29', method_name: 'announce', receiver_expr: 'svc', receiver_type: 'Service', argument_types: ['Name'], arguments_json: '[{"ast_kind": "Name", "inferred_type": null}]', return_type: 'str', callee_signature: 'service.Service.announce', is_constructor_call: false, start_line: 17, start_column: 11, end_line: 17, end_column: 29, _module: 'service.py'}},
+  {k: 'service.py#6:18-6:29', p: {id: 'service.py#6:18-6:29', method_name: 'build', argument_types: ['Name'], arguments_json: '[{"ast_kind": "Name", "inferred_type": null}]', callee_signature: 'service.build', is_constructor_call: false, start_line: 6, start_column: 18, end_line: 6, end_column: 29, _module: 'service.py'}}
 ] AS row
 MERGE (n:PyCallSite {id: row.k})
 SET n += row.p;
@@ -74,7 +74,7 @@ SET n += row.p;
 UNWIND [
   {f: 'can://python/sample_proj/service.py/Service/announce(self,flag)', t: 'can://python/sample_proj/service.py/build(x)', p: {weight: 1, prov: ['jedi']}},
   {f: 'can://python/sample_proj/service.py/run(flag)', t: 'can://python/sample_proj/@external/service.Service/__init__', p: {weight: 1, prov: ['jedi']}},
-  {f: 'can://python/sample_proj/service.py/run(flag)', t: 'can://python/sample_proj/service.py/Service', p: {weight: 1, prov: ['jedi']}}
+  {f: 'can://python/sample_proj/service.py/run(flag)', t: 'can://python/sample_proj/service.py/Service/announce(self,flag)', p: {weight: 1, prov: ['jedi']}}
 ] AS row
 MATCH (a:PySymbol {id: row.f})
 MATCH (b:PySymbol {id: row.t})
@@ -133,7 +133,7 @@ MATCH (b:PyModule {id: row.t})
 MERGE (a)-[r:PY_HAS_MODULE]->(b)
 SET r += row.p;
 UNWIND [
-  {f: 'service.py#17:11-17:29', t: 'can://python/sample_proj/service.py/Service', p: {}},
+  {f: 'service.py#17:11-17:29', t: 'can://python/sample_proj/service.py/Service/announce(self,flag)', p: {}},
   {f: 'service.py#6:18-6:29', t: 'can://python/sample_proj/service.py/build(x)', p: {}}
 ] AS row
 MATCH (a:PyCallSite {id: row.f})

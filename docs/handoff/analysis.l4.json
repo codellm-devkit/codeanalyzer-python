@@ -5,7 +5,10 @@
   "k_limit": 3,
   "analyzer": {
     "name": "codeanalyzer-python",
-    "version": "1.0.0"
+    "version": "1.0.1",
+    "config": {
+      "analysis_level": 4
+    }
   },
   "application": {
     "symbol_table": {
@@ -163,7 +166,11 @@
                     "argument_types": [
                       "Name"
                     ],
-                    "return_type": "build",
+                    "arguments": [
+                      {
+                        "ast_kind": "Name"
+                      }
+                    ],
                     "callee_signature": "service.build",
                     "is_constructor_call": false,
                     "start_line": 6,
@@ -680,6 +687,7 @@
               {
                 "method_name": "Service",
                 "argument_types": [],
+                "arguments": [],
                 "return_type": "Service",
                 "callee_signature": "service.Service.__init__",
                 "is_constructor_call": true,
@@ -695,8 +703,13 @@
                 "argument_types": [
                   "Name"
                 ],
-                "return_type": "Service",
-                "callee_signature": "service.Service",
+                "arguments": [
+                  {
+                    "ast_kind": "Name"
+                  }
+                ],
+                "return_type": "str",
+                "callee_signature": "service.Service.announce",
                 "is_constructor_call": false,
                 "start_line": 17,
                 "start_column": 11,
@@ -754,7 +767,7 @@
                     296
                   ]
                 },
-                "callee": "can://python/sample_proj/service.py/Service"
+                "callee": "can://python/sample_proj/service.py/Service/announce(self,flag)"
               },
               "@entry": {
                 "kind": "entry"
@@ -804,6 +817,10 @@
                 "kind": "formal_in",
                 "of": "<global>:service::Service"
               },
+              "@formal_in:2": {
+                "kind": "formal_in",
+                "of": "<global>:service::build"
+              },
               "@formal_out:0": {
                 "kind": "formal_out",
                 "of": "<return>"
@@ -811,6 +828,31 @@
               "@formal_out:1": {
                 "kind": "formal_out",
                 "of": "flag"
+              },
+              "17:4/actual_in:0": {
+                "kind": "actual_in",
+                "of": "self",
+                "parent": "17:4"
+              },
+              "17:4/actual_in:1": {
+                "kind": "actual_in",
+                "of": "flag",
+                "parent": "17:4"
+              },
+              "17:4/actual_in:2": {
+                "kind": "actual_in",
+                "of": "<global>:service::build",
+                "parent": "17:4"
+              },
+              "17:4/actual_out:0": {
+                "kind": "actual_out",
+                "of": "<return>",
+                "parent": "17:4"
+              },
+              "17:4/actual_out:1": {
+                "kind": "actual_out",
+                "of": "flag",
+                "parent": "17:4"
               }
             },
             "cfg": [
@@ -892,7 +934,24 @@
                 ]
               }
             ],
-            "summary": []
+            "summary": [
+              {
+                "src": "17:4/actual_in:1",
+                "dst": "17:4/actual_out:0"
+              },
+              {
+                "src": "17:4/actual_in:1",
+                "dst": "17:4/actual_out:1"
+              },
+              {
+                "src": "17:4/actual_in:2",
+                "dst": "17:4/actual_out:0"
+              },
+              {
+                "src": "17:4/actual_in:2",
+                "dst": "17:4/actual_out:1"
+              }
+            ]
           }
         },
         "variables": [],
@@ -905,22 +964,6 @@
     "kind": "application",
     "call_graph": [
       {
-        "src": "can://python/sample_proj/service.py/run(flag)",
-        "dst": "can://python/sample_proj/@external/service.Service/__init__",
-        "weight": 1,
-        "prov": [
-          "jedi"
-        ]
-      },
-      {
-        "src": "can://python/sample_proj/service.py/run(flag)",
-        "dst": "can://python/sample_proj/service.py/Service",
-        "weight": 1,
-        "prov": [
-          "jedi"
-        ]
-      },
-      {
         "src": "can://python/sample_proj/service.py/Service/announce(self,flag)",
         "dst": "can://python/sample_proj/service.py/build(x)",
         "weight": 2,
@@ -931,9 +974,18 @@
       },
       {
         "src": "can://python/sample_proj/service.py/run(flag)",
-        "dst": "can://python/sample_proj/service.py/Service/announce(self,flag)",
+        "dst": "can://python/sample_proj/@external/service.Service/__init__",
         "weight": 1,
         "prov": [
+          "jedi"
+        ]
+      },
+      {
+        "src": "can://python/sample_proj/service.py/run(flag)",
+        "dst": "can://python/sample_proj/service.py/Service/announce(self,flag)",
+        "weight": 2,
+        "prov": [
+          "jedi",
           "pycg"
         ]
       }
@@ -950,9 +1002,29 @@
       {
         "src": "can://python/sample_proj/service.py/Service/announce(self,flag)@6:8/actual_in:0",
         "dst": "can://python/sample_proj/service.py/build(x)@formal_in:0"
+      },
+      {
+        "src": "can://python/sample_proj/service.py/run(flag)@17:4/actual_in:0",
+        "dst": "can://python/sample_proj/service.py/Service/announce(self,flag)@formal_in:0"
+      },
+      {
+        "src": "can://python/sample_proj/service.py/run(flag)@17:4/actual_in:1",
+        "dst": "can://python/sample_proj/service.py/Service/announce(self,flag)@formal_in:1"
+      },
+      {
+        "src": "can://python/sample_proj/service.py/run(flag)@17:4/actual_in:2",
+        "dst": "can://python/sample_proj/service.py/Service/announce(self,flag)@formal_in:2"
       }
     ],
     "param_out": [
+      {
+        "src": "can://python/sample_proj/service.py/Service/announce(self,flag)@formal_out:0",
+        "dst": "can://python/sample_proj/service.py/run(flag)@17:4/actual_out:0"
+      },
+      {
+        "src": "can://python/sample_proj/service.py/Service/announce(self,flag)@formal_out:1",
+        "dst": "can://python/sample_proj/service.py/run(flag)@17:4/actual_out:1"
+      },
       {
         "src": "can://python/sample_proj/service.py/build(x)@formal_out",
         "dst": "can://python/sample_proj/service.py/Service/announce(self,flag)@6:8/actual_out"

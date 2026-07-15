@@ -13,14 +13,14 @@ the contract lives in the spec, the decision log, and `schema.neo4j.json`.
 Pin the analyzer that produced these samples:
 
 ```
-pip install "codeanalyzer-python==1.0.0"
+pip install "codeanalyzer-python==1.0.1"
 ```
 
 For L4 alias analysis (the Scalpel points-to oracle), install the optional extra —
 without it, L4 degrades to the type-based fallback oracle (still sound, coarser):
 
 ```
-pip install "codeanalyzer-python[scalpel]==1.0.0"
+pip install "codeanalyzer-python[scalpel]==1.0.1"
 ```
 
 ## Schema contract

@@ -4,7 +4,10 @@
   "max_level": 1,
   "analyzer": {
     "name": "codeanalyzer-python",
-    "version": "1.0.0"
+    "version": "1.0.1",
+    "config": {
+      "analysis_level": 1
+    }
   },
   "application": {
     "symbol_table": {
@@ -162,7 +165,11 @@
                     "argument_types": [
                       "Name"
                     ],
-                    "return_type": "build",
+                    "arguments": [
+                      {
+                        "ast_kind": "Name"
+                      }
+                    ],
                     "callee_signature": "service.build",
                     "is_constructor_call": false,
                     "start_line": 6,
@@ -368,6 +375,7 @@
               {
                 "method_name": "Service",
                 "argument_types": [],
+                "arguments": [],
                 "return_type": "Service",
                 "callee_signature": "service.Service.__init__",
                 "is_constructor_call": true,
@@ -383,8 +391,13 @@
                 "argument_types": [
                   "Name"
                 ],
-                "return_type": "Service",
-                "callee_signature": "service.Service",
+                "arguments": [
+                  {
+                    "ast_kind": "Name"
+                  }
+                ],
+                "return_type": "str",
+                "callee_signature": "service.Service.announce",
                 "is_constructor_call": false,
                 "start_line": 17,
                 "start_column": 11,
@@ -459,6 +472,14 @@
     "kind": "application",
     "call_graph": [
       {
+        "src": "can://python/sample_proj/service.py/Service/announce(self,flag)",
+        "dst": "can://python/sample_proj/service.py/build(x)",
+        "weight": 1,
+        "prov": [
+          "jedi"
+        ]
+      },
+      {
         "src": "can://python/sample_proj/service.py/run(flag)",
         "dst": "can://python/sample_proj/@external/service.Service/__init__",
         "weight": 1,
@@ -468,15 +489,7 @@
       },
       {
         "src": "can://python/sample_proj/service.py/run(flag)",
-        "dst": "can://python/sample_proj/service.py/Service",
-        "weight": 1,
-        "prov": [
-          "jedi"
-        ]
-      },
-      {
-        "src": "can://python/sample_proj/service.py/Service/announce(self,flag)",
-        "dst": "can://python/sample_proj/service.py/build(x)",
+        "dst": "can://python/sample_proj/service.py/Service/announce(self,flag)",
         "weight": 1,
         "prov": [
           "jedi"
