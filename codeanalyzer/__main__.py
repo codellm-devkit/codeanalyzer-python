@@ -1,8 +1,39 @@
+import os
+import sys
 from importlib.metadata import version as _pkg_version, PackageNotFoundError
 from pathlib import Path
 from typing import Optional, Annotated
 
 import typer
+
+
+def _pin_hash_seed() -> None:
+    """Re-exec once with ``PYTHONHASHSEED=0`` unless the caller pinned one.
+
+    PyCG's capped fixpoint (``--pycg-max-iter``) iterates hash-ordered sets
+    keyed on module/access-path strings, so an unpinned per-interpreter hash
+    seed makes the emitted L2+ call graph vary run to run (issue #99). The
+    seed cannot be set after interpreter start, hence the exec. Export
+    PYTHONHASHSEED (any value) to opt out or pin a different seed.
+
+    Only fires when this process really is the CLI (canpy / python -m
+    codeanalyzer): in-process invocations — e.g. Typer's CliRunner in the
+    test suite, or a host app calling the callback — must never have their
+    own process exec'd out from under them."""
+    if os.environ.get("PYTHONHASHSEED") is not None:
+        return
+    argv0 = os.path.basename(sys.argv[0]) if sys.argv else ""
+    is_cli = argv0 in ("canpy", "codeanalyzer") or sys.argv[0].endswith(
+        os.path.join("codeanalyzer", "__main__.py")
+    )
+    if not is_cli:
+        return
+    env = dict(os.environ, PYTHONHASHSEED="0")
+    os.execvpe(
+        sys.executable,
+        [sys.executable, "-m", "codeanalyzer", *sys.argv[1:]],
+        env,
+    )
 
 from codeanalyzer.core import Codeanalyzer
 from codeanalyzer.utils import _set_log_level, logger
@@ -264,6 +295,10 @@ def main(
         ),
     ] = 50,
 ):
+    # Determinism: pin the interpreter hash seed before any analysis (no-op
+    # when PYTHONHASHSEED is already set; --version exits before this).
+    _pin_hash_seed()
+
     # Flag validation (strict: unrecognized values error out, never fall back).
     selected_graphs = [g.strip() for g in graphs.split(",") if g.strip()]
     from codeanalyzer.dataflow.builder import VALID_GRAPHS

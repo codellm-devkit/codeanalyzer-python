@@ -39,9 +39,12 @@ project-relative dotted paths so they align with the symbol table.
 # re-enters PyCG's hook before its import graph is ready.  Pre-importing
 # these modules at import time ensures they're already in sys.modules when
 # PyCG's hook is active, preventing the re-entrant ImportManagerError.
+import fcntl
+import hashlib
 import importlib.metadata  # noqa: F401
 import importlib.util  # noqa: F401
 import contextlib
+import os
 import json  # noqa: F401
 import shutil
 import signal
@@ -85,6 +88,15 @@ from codeanalyzer.semantic_analysis.pycg.shard_planner import plan_shards
 from codeanalyzer.utils import ProgressBar, logger
 
 
+def _shard_root_path(files: List[str], project_dir: Path) -> Path:
+    """Content-derived mini-project root for a shard: same project + same file
+    set → same path on every run (determinism, issue #99)."""
+    digest = hashlib.sha1(
+        "\0".join([str(project_dir), *sorted(files)]).encode("utf-8")
+    ).hexdigest()[:16]
+    return Path(tempfile.gettempdir()) / f"canpy_pycg_shard_{digest}"
+
+
 def _materialize_shard_root(
     files: List[str],
     project_dir: Path,
@@ -103,10 +115,21 @@ def _materialize_shard_root(
 
     The caller owns the returned *root* and must ``shutil.rmtree`` it.
     """
-    root = Path(tempfile.mkdtemp(prefix="canpy_pycg_shard_"))
+    # Deterministic root: PyCG's capped fixpoint (--pycg-max-iter) is
+    # order-sensitive, and its internal state keys on absolute module paths —
+    # a random mkdtemp suffix changes those strings every run and shifts the
+    # iteration frontier, making the emitted edge set vary run-to-run
+    # (issue #99). Deriving the directory name from the shard's content keeps
+    # the path (and thus the analysis input) identical across runs. Callers
+    # that may run concurrently on the same shard serialize on the sidecar
+    # lock (see _shard_symlink_root).
+    root = _shard_root_path(files, project_dir)
+    if root.exists():
+        shutil.rmtree(root, ignore_errors=True)
+    root.mkdir(parents=True, exist_ok=True)
     entry_points: List[str] = []
     linked_inits: Set[Path] = set()
-    for f in files:
+    for f in sorted(files):
         src = Path(f).resolve()
         try:
             rel = src.relative_to(project_dir)
@@ -142,12 +165,27 @@ def _shard_symlink_root(
     """Context-manager wrapper around :func:`_materialize_shard_root`.
 
     Yields ``(root, entry_points)`` and removes the temp tree on exit.
+
+    The root path is content-derived (determinism, issue #99), so two
+    concurrent analyses of the same shard — e.g. a test suite and a manual
+    run on one project — would collide on it (one rmtree's the tree the
+    other is mid-analysis on). An exclusive flock on a sidecar lockfile
+    serializes them; distinct projects/shards hash to distinct roots and
+    never contend.
     """
-    root, entry_points = _materialize_shard_root(files, project_dir)
+    digest_root = _shard_root_path(files, project_dir)
+    lock_path = digest_root.with_name(digest_root.name + ".lock")
+    lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR)
     try:
-        yield root, entry_points
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        root, entry_points = _materialize_shard_root(files, project_dir)
+        try:
+            yield root, entry_points
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
     finally:
-        shutil.rmtree(root, ignore_errors=True)
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        os.close(lock_fd)
 
 
 def _pycg_shard_worker(
@@ -469,7 +507,9 @@ class PyCG:
             ):
                 continue
             paths.append(str(p))
-        return paths
+        # Sorted for run-to-run stability: rglob yields filesystem order, and
+        # PyCG's capped fixpoint is sensitive to entry-point order (issue #99).
+        return sorted(paths)
 
     # ------------------------------------------------------------------
     # Package-root helpers for sharding
@@ -712,11 +752,14 @@ class PyCG:
         """
         import os
         import ray
+        from codeanalyzer.core import _ensure_ray
+        _ensure_ray()
 
         os.environ.setdefault("RAY_IGNORE_UNHANDLED_ERRORS", "1")
         remote_fn = ray.remote(_pycg_shard_worker)
 
         roots: List[Path] = []
+        lock_fds: List[int] = []
         futures: List[Any] = []
         meta: Dict[Any, List[str]] = {}  # ObjectRef -> shard file list
         edges_all: List[PyCallEdge] = []
@@ -724,6 +767,16 @@ class PyCG:
         try:
             with ProgressBar(len(shards), "Building call graph shards (parallel)", item_label="shards") as progress:
                 for files in shards:
+                    # Deterministic roots can collide across concurrent
+                    # analyses of the same project — the driver holds each
+                    # shard's sidecar lock for the whole Ray fan-out (released
+                    # in the finally below with the root cleanup).
+                    lock_fd = os.open(
+                        str(_shard_root_path(files, self.project_dir).with_suffix(".lock")),
+                        os.O_CREAT | os.O_RDWR,
+                    )
+                    fcntl.flock(lock_fd, fcntl.LOCK_EX)
+                    lock_fds.append(lock_fd)
                     root, eps = _materialize_shard_root(files, self.project_dir)
                     roots.append(root)
                     fut = remote_fn.remote(eps, str(root), "", self.max_iter)
@@ -765,6 +818,12 @@ class PyCG:
         finally:
             for root in roots:
                 shutil.rmtree(root, ignore_errors=True)
+            for fd in lock_fds:
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_UN)
+                    os.close(fd)
+                except OSError:
+                    pass
         return edges_all, runaways
 
     def _build_sharded(
@@ -870,6 +929,8 @@ class PyCG:
         """
         import os
         import ray
+        from codeanalyzer.core import _ensure_ray
+        _ensure_ray()
 
         # force-cancel kills worker processes; suppress Ray's "worker died
         # unexpectedly" noise since the death is intentional here.

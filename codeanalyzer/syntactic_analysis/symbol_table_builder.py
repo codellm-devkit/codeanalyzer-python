@@ -58,12 +58,25 @@ class SymbolTableBuilder:
         return ".".join(relative.with_suffix("").parts) + f".{name}"
 
     @staticmethod
+    def _first_definition(definitions):
+        """Deterministic pick from Jedi's inference candidates.
+
+        On a union-typed receiver Jedi may return several candidates whose
+        ORDER varies run to run (issue #99 — e.g. ``o.seek`` on
+        ``_IOBase | BufferedRandom | TextIOWrapper``); taking whichever came
+        first made the emitted call graph nondeterministic. Sort on the
+        stable identity (full_name, then name) and take the smallest."""
+        if not definitions:
+            return None
+        return min(definitions, key=lambda d: (d.full_name or "", d.name or ""))
+
+    @staticmethod
     def _infer_type(script: Script, line: int, column: int) -> str:
         """Tries to infer the type at a given position using Jedi."""
         try:
-            inference = script.infer(line=line, column=column)
-            if inference:
-                return inference[0].name  # or .full_name
+            d = SymbolTableBuilder._first_definition(script.infer(line=line, column=column))
+            if d is not None:
+                return d.name  # or .full_name
         except Exception:
             pass
         return None
@@ -82,9 +95,9 @@ class SymbolTableBuilder:
             Optional[str]: The fully qualified name if available, else None.
         """
         try:
-            definitions = script.infer(line=line, column=column)
-            if definitions:
-                return definitions[0].full_name
+            d = SymbolTableBuilder._first_definition(script.infer(line=line, column=column))
+            if d is not None:
+                return d.full_name
         except Exception:
             pass
         return None
@@ -103,10 +116,9 @@ class SymbolTableBuilder:
         the call graph.
         """
         try:
-            definitions = script.infer(line=line, column=column)
-            if not definitions:
+            d = SymbolTableBuilder._first_definition(script.infer(line=line, column=column))
+            if d is None:
                 return None, False
-            d = definitions[0]
             is_class = (d.type == "class")
             full = d.full_name
             if is_class and full:
@@ -144,11 +156,17 @@ class SymbolTableBuilder:
         as the callee's own name.
         """
         try:
-            definitions = script.infer(line=line, column=column)
-            if definitions:
-                results = definitions[0].execute()
-                if results:
-                    return results[0].name
+            d = SymbolTableBuilder._first_definition(script.infer(line=line, column=column))
+            if d is not None:
+                # Drop NoneType results before picking: Jedi flaps between
+                # yielding {NoneType} and {} for the None arm of an Optional
+                # return (issue #99), and when a real type is also in the
+                # union it is the informative choice — a bare NoneType says
+                # nothing a missing return_type doesn't.
+                results = [r for r in d.execute() if r.name != "NoneType"]
+                r = SymbolTableBuilder._first_definition(results)
+                if r is not None:
+                    return r.name
         except Exception:
             pass
         return None
@@ -974,9 +992,10 @@ class SymbolTableBuilder:
 
         if script:
             try:
-                definitions = script.infer(line=lineno, column=col_offset)
-                if definitions:
-                    d = definitions[0]
+                d = SymbolTableBuilder._first_definition(
+                    script.infer(line=lineno, column=col_offset)
+                )
+                if d is not None:
                     inferred_type = d.name
                     qname = d.full_name
                     if d.type == "function":

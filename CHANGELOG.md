@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Deterministic output** (#99): the same flags on the same input now emit byte-identical
+  `analysis.json`. Four independent nondeterminism sources were closed:
+  - the CLI re-execs once with `PYTHONHASHSEED=0` (export the variable to opt out or pin another
+    seed) — PyCG's capped fixpoint iterates hash-ordered sets, so an unpinned per-interpreter
+    seed shifted its frontier arbitrarily (observed 1,527 vs 4,712 edges on the same input);
+    Ray workers get the pinned seed via the runtime env;
+  - the PyCG mini-project root is content-derived instead of a random `mkdtemp` (PyCG state keys
+    on absolute module paths), with an exclusive sidecar lock so concurrent analyses of the same
+    project serialize instead of deleting each other's tree mid-run;
+  - entry points are sorted (was filesystem order) and the emitted `call_graph` is canonically
+    ordered by `(src, dst)`;
+  - Jedi inference candidates are tie-broken deterministically (sorted, not set order) — a
+    union-typed receiver (e.g. `IOBase | BufferedRandom | TextIOWrapper`) previously resolved to
+    a different member per run.
+  Regression gates: `test_l2_runs_are_byte_identical` plus the #87 audit gate below.
+- **L2 audit gate** (#87 acceptance): ≥95% of resolved non-constructor callsites must bind to the
+  invoked attribute name, and no callsite may fall back to a class id when the class declares the
+  exact method (`test_l2_audit_gate_callee_name_equality`). The underlying anchoring fix shipped
+  in 1.0.0 via the v0.3.1 merge.
+
 ## [1.0.0] - 2026-07-14
 
 ### Added
