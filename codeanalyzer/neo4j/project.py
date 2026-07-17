@@ -290,9 +290,11 @@ def _project_module_body(
     externals: dict, sig_to_id: dict, module_id_by_key: dict,
 ) -> None:
     for fn in (mod.functions or {}).values():
-        _project_callable(b, file_key, mod_ref, "PY_DECLARES", fn, externals, sig_to_id)
+        _project_callable(b, file_key, mod_ref, "PY_DECLARES", fn, externals, sig_to_id,
+                          mod.source)
     for cl in (mod.types or {}).values():
-        _project_class(b, file_key, mod_ref, "PY_DECLARES", cl, externals, sig_to_id)
+        _project_class(b, file_key, mod_ref, "PY_DECLARES", cl, externals, sig_to_id,
+                       mod.source)
     for v in mod.variables or []:
         _project_variable(b, file_key, mod_ref, file_key, v)
     _project_imports(b, mod_ref, mod, module_id_by_key)
@@ -360,10 +362,10 @@ def _project_imports(b: RowBuilder, mod_ref: NodeRef, mod: PyModule,
 
 def _project_class(
     b: RowBuilder, file_key: str, parent: NodeRef, parent_rel: str, cl: PyClass,
-    externals: dict, sig_to_id: dict,
+    externals: dict, sig_to_id: dict, source: str,
 ) -> None:
     ref = b.node(
-        ["PySymbol", "PyClass"], "id", cl.id, _class_props(cl, file_key)
+        ["PySymbol", "PyClass"], "id", cl.id, _class_props(cl, file_key, source)
     )
     b.edge(parent_rel, parent, ref)
 
@@ -372,22 +374,23 @@ def _project_class(
             b.edge_to_symbol("PY_EXTENDS", ref, _symbol_ref(base, externals, sig_to_id))
 
     for m in (cl.callables or {}).values():
-        _project_callable(b, file_key, ref, "PY_HAS_METHOD", m, externals, sig_to_id)
+        _project_callable(b, file_key, ref, "PY_HAS_METHOD", m, externals, sig_to_id,
+                          source)
     for a in (cl.attributes or {}).values():
         _project_attribute(b, file_key, ref, cl.signature, a)
     for ic in (cl.types or {}).values():
-        _project_class(b, file_key, ref, "PY_DECLARES", ic, externals, sig_to_id)
+        _project_class(b, file_key, ref, "PY_DECLARES", ic, externals, sig_to_id, source)
 
 
 def _project_callable(
     b: RowBuilder, file_key: str, owner: NodeRef, owner_rel: str, c: PyCallable,
-    externals: dict, sig_to_id: dict,
+    externals: dict, sig_to_id: dict, source: str,
 ) -> None:
     ref = b.node(
         ["PySymbol", "PyCallable"],
         "id",
         c.id,
-        _callable_props(c, file_key),
+        _callable_props(c, file_key, source),
     )
     b.edge(owner_rel, owner, ref)
 
@@ -410,9 +413,10 @@ def _project_callable(
     for v in c.local_variables or []:
         _project_variable(b, file_key, ref, c.signature, v)
     for ic in (c.callables or {}).values():
-        _project_callable(b, file_key, ref, "PY_DECLARES", ic, externals, sig_to_id)
+        _project_callable(b, file_key, ref, "PY_DECLARES", ic, externals, sig_to_id,
+                          source)
     for cl in (c.types or {}).values():
-        _project_class(b, file_key, ref, "PY_DECLARES", cl, externals, sig_to_id)
+        _project_class(b, file_key, ref, "PY_DECLARES", cl, externals, sig_to_id, source)
 
 
 def _project_attribute(
@@ -459,13 +463,24 @@ def _module_props(mod: PyModule, file_key: str) -> Props:
     )
 
 
-def _class_props(cl: PyClass, file_key: str) -> Props:
+def _span_code(source: str, span) -> str | None:
+    """A declaration's text: the owning module's ``source`` sliced by the node's
+    utf-8 byte span. Schema v2 stores source once per module, so the graph's
+    ``code`` property (declared on :PyClass/:PyCallable and indexed by
+    ``py_code_fts``) is derived here at projection time (#104)."""
+    if span is None or not source:
+        return None
+    lo, hi = span.bytes
+    return source.encode("utf-8")[lo:hi].decode("utf-8")
+
+
+def _class_props(cl: PyClass, file_key: str, source: str) -> Props:
     return prune(
         {
             "id": cl.id,
             "signature": cl.signature,
             "name": cl.name,
-            "code": getattr(cl, "code", None),
+            "code": _span_code(source, cl.span),
             "base_classes": list(cl.base_classes or []),
             "docstring": _docstring_of(cl.comments),
             "start_line": cl.start_line,
@@ -475,7 +490,7 @@ def _class_props(cl: PyClass, file_key: str) -> Props:
     )
 
 
-def _callable_props(c: PyCallable, file_key: str) -> Props:
+def _callable_props(c: PyCallable, file_key: str, source: str) -> Props:
     return prune(
         {
             "id": c.id,
@@ -484,7 +499,7 @@ def _callable_props(c: PyCallable, file_key: str) -> Props:
             "path": c.path,
             "return_type": c.return_type,
             "cyclomatic_complexity": c.cyclomatic_complexity,
-            "code": getattr(c, "code", None),
+            "code": _span_code(source, c.span),
             "code_start_line": c.code_start_line,
             "start_line": c.start_line,
             "end_line": c.end_line,
