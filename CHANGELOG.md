@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-07-16
+
 ### Fixed
 - **Neo4j `code` property was silently null** (#104): schema v2 removed the per-node `code`
   field (source lives once on `PyModule.source`, sliced by spans), but the Neo4j projection

@@ -1,6 +1,6 @@
 [project]
 name = "codeanalyzer-python"
-version = "1.0.1"
+version = "1.0.2"
 description = "Static analysis for Python — canonical schema v2 (symbol table, call graph, and native CFG/PDG/SDG dataflow) as analysis.json or a Neo4j property graph."
 readme = "README.md"
 authors = [
