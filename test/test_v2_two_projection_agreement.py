@@ -207,3 +207,41 @@ def test_l4_param_summary_overlay_projects_onto_pycfgnode(tmp_path):
     assert any(
         e.type == "PY_DDG" and "prov" in e.props for e in rows.edges
     ), "expected a PY_DDG edge carrying a prov prop at -a 4"
+
+
+# ----------------------------------------------------------------------------------------------
+# Regression for #104: schema v2 dropped the per-node `code` field (source lives once on
+# PyModule.source, sliced by spans), but the graph schema still declares `code` on
+# :PyClass / :PyCallable and indexes it (py_code_fts). The projection must therefore
+# derive `code` at projection time — module source sliced by the node's byte span —
+# or code search in the graph and the SDK's `RETURN c.code` go silently null.
+# ----------------------------------------------------------------------------------------------
+
+
+def test_projected_code_property_is_the_module_source_span_slice():
+    from sample_graph_app import make_sample_app
+
+    app, sig_to_id = make_sample_app()
+    rows = project(app, "sample-app", sig_to_id)
+    by_id = {n.value: n for n in rows.nodes}
+
+    checked = 0
+    for mod in app.symbol_table.values():
+        src = mod.source.encode("utf-8")
+        stack = list((mod.functions or {}).values()) + list((mod.types or {}).values())
+        while stack:
+            decl = stack.pop()
+            stack += list((decl.callables or {}).values())
+            stack += list((decl.types or {}).values())
+            assert decl.span is not None, f"{decl.signature}: span missing at L1+"
+            lo, hi = decl.span.bytes
+            expected = src[lo:hi].decode("utf-8")
+            got = by_id[decl.id].props.get("code")
+            assert got == expected, (
+                f"{decl.signature}: projected code must be the span slice of "
+                f"module.source, got {got!r}"
+            )
+            checked += 1
+    # the sample app has functions, methods, an inner class and a subclass —
+    # if we checked fewer than that, the walk itself is broken.
+    assert checked >= 6

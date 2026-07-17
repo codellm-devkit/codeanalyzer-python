@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Neo4j `code` property was silently null** (#104): schema v2 removed the per-node `code`
+  field (source lives once on `PyModule.source`, sliced by spans), but the Neo4j projection
+  still read the old field — every `:PyClass`/`:PyCallable` node was written without `code`,
+  deadening the `py_code_fts` fulltext index and the SDK's `RETURN c.code` queries. The
+  projection now derives `code` at projection time by slicing the owning module's source
+  with the node's utf-8 byte span. Regression gate:
+  `test_projected_code_property_is_the_module_source_span_slice`.
+
 ## [1.0.1] - 2026-07-15
 
 ### Fixed
