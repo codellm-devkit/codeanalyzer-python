@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Analysis env provisioning is parso-version-aware** (#107): on hosts whose default
+  `python3` is newer than the newest grammar the installed parso ships (e.g. Python 3.14
+  with parso ≤ 0.8.4), every file failed jedi parsing and the run completed "successfully"
+  with an empty symbol table. Provisioning now derives parso's supported ceiling at runtime
+  from its shipped grammar files and prefers the newest supported interpreter on the host
+  (versioned PATH names, then pyenv installs), falling back loudly only when none exists;
+  an explicit `SYSTEM_PYTHON` is still honored, with a warning when unsupported. A run in
+  which every discovered file fails now logs a prominent error instead of staying silent,
+  and `parso>=0.8.5` (the first release with the 3.14 grammar) is a direct dependency.
+
 ## [1.0.2] - 2026-07-16
 
 ### Fixed
