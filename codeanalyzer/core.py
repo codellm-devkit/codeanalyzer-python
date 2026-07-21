@@ -163,8 +163,159 @@ class Codeanalyzer:
             stderr=None,
         )
 
+    @classmethod
+    def _get_base_interpreter(cls) -> Path:
+        """The interpreter used to provision the analysis virtualenv.
+
+        jedi parses the *analysis environment's* Python version with parso,
+        which ships one hardcoded grammar file per minor version — an
+        environment newer than the newest shipped grammar makes every file
+        fail with "Python version X.Y is currently not supported" while the
+        run still exits 0 (#107). So the default choice is gated on the
+        installed parso's ceiling: a too-new default is swapped for the
+        newest supported interpreter found on the host, falling back to the
+        default (loudly) only when none exists. An explicit ``SYSTEM_PYTHON``
+        always wins, with a warning when parso cannot parse its version.
+        """
+        # An explicit SYSTEM_PYTHON override wins (consulted only when running
+        # inside a virtualenv, matching the historical behavior).
+        if sys.prefix != sys.base_prefix:
+            system_python = os.getenv("SYSTEM_PYTHON")
+            if system_python:
+                system_python_path = Path(system_python)
+                if system_python_path.exists() and system_python_path.is_file():
+                    ceiling = cls._parso_supported_ceiling()
+                    version = cls._interpreter_version(system_python_path)
+                    if ceiling is not None and version is not None and version > ceiling:
+                        logger.warning(
+                            f"SYSTEM_PYTHON={system_python} is Python "
+                            f"{version[0]}.{version[1]}, newer than the newest grammar "
+                            f"the installed parso ships ({ceiling[0]}.{ceiling[1]}). "
+                            "jedi will likely reject every file in the analysis "
+                            "environment (#107); honoring the explicit override anyway."
+                        )
+                    return system_python_path
+
+        candidate = cls._default_base_interpreter()
+        ceiling = cls._parso_supported_ceiling()
+        if ceiling is None:
+            return candidate
+        version = cls._interpreter_version(candidate)
+        if version is None or version <= ceiling:
+            return candidate
+        logger.warning(
+            f"Default interpreter {candidate} is Python {version[0]}.{version[1]}, "
+            f"newer than the newest grammar the installed parso ships "
+            f"({ceiling[0]}.{ceiling[1]}) — looking for a supported interpreter "
+            "for the analysis environment (#107)."
+        )
+        supported = cls._find_supported_interpreter(ceiling)
+        if supported is not None:
+            logger.info(f"Provisioning the analysis environment with {supported}.")
+            return supported
+        logger.warning(
+            f"No interpreter <= {ceiling[0]}.{ceiling[1]} found on this host; "
+            f"falling back to {candidate}. jedi/parso will likely reject every "
+            "file — install a supported Python or upgrade parso."
+        )
+        return candidate
+
     @staticmethod
-    def _get_base_interpreter() -> Path:
+    def _versions_from_grammar_stems(stems: List[str]) -> List[tuple]:
+        """``grammar313`` → ``(3, 13)``, sorted ascending; malformed stems dropped."""
+        versions = []
+        for stem in stems:
+            digits = stem[len("grammar"):]
+            if len(digits) >= 2 and digits.isdigit():
+                versions.append((int(digits[0]), int(digits[1:])))
+        return sorted(versions)
+
+    @classmethod
+    def _parso_supported_ceiling(cls) -> Optional[tuple]:
+        """Newest ``(major, minor)`` the installed parso ships a grammar for,
+        derived from its ``python/grammar*.txt`` files so the ceiling moves
+        automatically when parso adds a version. ``None`` if undeterminable."""
+        try:
+            import parso
+
+            stems = [
+                p.stem
+                for p in (Path(parso.__file__).parent / "python").glob("grammar*.txt")
+            ]
+            versions = cls._versions_from_grammar_stems(stems)
+            return versions[-1] if versions else None
+        except Exception:
+            return None
+
+    @staticmethod
+    def _interpreter_version(interpreter: Path) -> Optional[tuple]:
+        """``(major, minor)`` of an interpreter, or ``None`` if it can't run."""
+        try:
+            result = subprocess.run(
+                [
+                    str(interpreter),
+                    "-c",
+                    "import sys; print('%d.%d' % sys.version_info[:2])",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                major, minor = result.stdout.strip().split(".")
+                return (int(major), int(minor))
+        except (subprocess.TimeoutExpired, FileNotFoundError, PermissionError, ValueError):
+            pass
+        return None
+
+    @staticmethod
+    def _pick_supported_interpreter(
+        candidates: List[tuple], ceiling: tuple
+    ) -> Optional[Path]:
+        """Newest candidate whose version is within the ceiling.
+
+        ``candidates`` is ``[(path, (major, minor) | None), ...]``."""
+        supported = [
+            (version, path)
+            for path, version in candidates
+            if version is not None and version <= ceiling
+        ]
+        return max(supported)[1] if supported else None
+
+    @classmethod
+    def _find_supported_interpreter(cls, ceiling: tuple) -> Optional[Path]:
+        """Search the host for the newest interpreter within the parso ceiling:
+        versioned names on PATH (``python3.13``, ``python3.12``, ...) first,
+        then pyenv installs."""
+        paths: List[Path] = []
+        for minor in range(ceiling[1], 7, -1):
+            which = shutil.which(f"python{ceiling[0]}.{minor}")
+            # Skip the current virtualenv's own interpreter (same rule as
+            # _default_base_interpreter): the analysis env must come from a
+            # base installation.
+            if which and not which.startswith(sys.prefix):
+                paths.append(Path(which))
+        for pyenv_root in (os.getenv("PYENV_ROOT"), str(Path.home() / ".pyenv")):
+            if not pyenv_root:
+                continue
+            versions_dir = Path(pyenv_root) / "versions"
+            if versions_dir.is_dir():
+                for install in sorted(versions_dir.iterdir(), reverse=True):
+                    exe = install / "bin" / "python3"
+                    if exe.exists():
+                        paths.append(exe)
+        seen = set()
+        candidates = []
+        for path in paths:
+            key = str(path)
+            if key in seen:
+                continue
+            seen.add(key)
+            candidates.append((path, cls._interpreter_version(path)))
+        return cls._pick_supported_interpreter(candidates, ceiling)
+
+    @staticmethod
+    def _default_base_interpreter() -> Path:
         """Get the base Python interpreter path.
 
         This method finds a suitable base Python interpreter that can be used
@@ -182,13 +333,6 @@ class Codeanalyzer:
             return Path(sys.executable)
 
         # We're inside a virtual environment; need to find the base interpreter
-
-        # First, check if user explicitly set SYSTEM_PYTHON
-        system_python = os.getenv("SYSTEM_PYTHON")
-        if system_python:
-            system_python_path = Path(system_python)
-            if system_python_path.exists() and system_python_path.is_file():
-                return system_python_path
 
         # Try to get the base interpreter from sys.base_executable (Python 3.3+)
         if hasattr(sys, "base_executable") and sys.base_executable:
@@ -777,6 +921,15 @@ class Codeanalyzer:
             
             if files_from_cache > 0:
                 logger.info(f"Reused {files_from_cache} files from cache, processed {files_processed} new/changed files")
+
+        if py_files and not symbol_table:
+            logger.error(
+                "Every one of the %d discovered Python files failed to process — "
+                "the symbol table is empty. This usually means the analysis "
+                "environment's interpreter is newer than the installed jedi/parso "
+                "stack supports (#107); check the per-file errors above.",
+                len(py_files),
+            )
 
         logger.info(
             "✅ Symbol table: %d modules in %.1fs",
