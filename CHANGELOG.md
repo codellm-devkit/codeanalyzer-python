@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-07-21
+
 ### Fixed
 - **Analysis env provisioning is parso-version-aware** (#107): on hosts whose default
   `python3` is newer than the newest grammar the installed parso ships (e.g. Python 3.14
