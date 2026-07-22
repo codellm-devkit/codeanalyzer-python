@@ -4,10 +4,14 @@ import pytest
 
 from codeanalyzer.options import AnalysisOptions
 from codeanalyzer.config import OutputFormat
-from codeanalyzer.pipeline import AnalysisContext
-from codeanalyzer.pipeline.passes import home_external_symbols
+from codeanalyzer.pipeline import AnalysisContext, AnalysisPipeline
+from codeanalyzer.pipeline.passes import (
+    _pass_symbol_table, _pass_call_graph,
+    _pass_intraproc_dataflow, _pass_interproc_dataflow,
+    home_external_symbols,
+)
 from codeanalyzer.pipeline.symbol_table import build_symbol_table
-from codeanalyzer.schema import PyApplication
+from codeanalyzer.schema import Analysis, PyApplication
 from codeanalyzer.schema.py_schema import PyCallEdge
 
 
@@ -52,12 +56,6 @@ def test_home_external_symbols_homes_undeclared_endpoints():
     externals = home_external_symbols(app, app.id, sig_to_id)
     assert "can://python/proj/@external/os/getcwd" in externals
     assert sig_to_id["os.getcwd"] == "can://python/proj/@external/os/getcwd"
-
-
-from codeanalyzer.pipeline.passes import (
-    _pass_symbol_table, _pass_call_graph,
-    _pass_intraproc_dataflow, _pass_interproc_dataflow,
-)
 
 
 def _ctx(tmp_path, level, src="def g():\n    return 1\ndef f():\n    return g()\n"):
@@ -109,3 +107,34 @@ def test_pass_intraproc_populates_infos(tmp_path):
     _pass_call_graph(ctx)
     _pass_intraproc_dataflow(ctx)
     assert ctx.infos is not None
+
+
+def test_pipeline_gating_skips_dataflow_below_level(tmp_path):
+    ctx = _ctx(tmp_path, 2)
+    analysis = (
+        AnalysisPipeline(ctx)
+        .with_symbol_table()
+        .with_call_graph()
+        .with_intraproc_dataflow()   # min_level 3 -> skipped at level 2
+        .with_interproc_dataflow()   # min_level 4 -> skipped at level 2
+        .build()
+    )
+    assert isinstance(analysis, Analysis)
+    assert ctx.infos is None and ctx.ir is None            # gates fired
+    assert analysis.max_level == 2
+    assert analysis.k_limit is None                         # L3+ only
+
+
+def test_pipeline_with_methods_return_self(tmp_path):
+    ctx = _ctx(tmp_path, 1)
+    pipe = AnalysisPipeline(ctx)
+    assert pipe.with_symbol_table() is pipe
+
+
+def test_pipeline_level4_runs_intraproc_before_interproc(tmp_path):
+    ctx = _ctx(tmp_path, 4, src="def g(x):\n    return x\ndef f(a):\n    b = g(a)\n    return b\n")
+    (AnalysisPipeline(ctx)
+        .with_symbol_table().with_call_graph()
+        .with_intraproc_dataflow().with_interproc_dataflow().build())
+    assert ctx.infos is not None    # L3 ran before L4 (reuse precondition held)
+    assert ctx.ir is not None
