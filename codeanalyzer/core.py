@@ -12,7 +12,6 @@ from codeanalyzer.utils import logger
 from codeanalyzer.schema import (
     Analysis,
     PyApplication,
-    PyExternalSymbol,
     PyModule,
     model_dump_json,
     model_validate_json,
@@ -28,7 +27,6 @@ from codeanalyzer.semantic_analysis.call_graph import (
     merge_edges,
     resolve_unresolved_constructors,
 )
-from codeanalyzer.semantic_analysis.pycg import PyCG, PyCGExceptions
 from codeanalyzer.syntactic_analysis.import_resolver import resolve_imports
 from codeanalyzer.options import AnalysisOptions
 from codeanalyzer.provenance import analyzer_info, repository_info
