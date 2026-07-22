@@ -16,3 +16,10 @@ Any other use of CodeQL, including its use on proprietary code or in closed-sour
 
 You can view the full CodeQL license at:
 https://github.com/github/codeql/blob/main/LICENSE
+
+--- Scalpel License Notice ---
+
+This project vendors a slice of Scalpel (python-scalpel), a product of SMAT-Lab,
+under codeanalyzer/dataflow/scalpel/. Scalpel is licensed under the Apache
+License 2.0. The full license text is included at
+codeanalyzer/dataflow/scalpel/LICENSE. Source: https://github.com/SMAT-Lab/Scalpel
