@@ -1,0 +1,2671 @@
+{
+  "analyzer": {
+    "config": {
+      "analysis_level": 1
+    },
+    "name": "codeanalyzer-python"
+  },
+  "application": {
+    "call_graph": [
+      {
+        "dst": "can://python/async_patterns/@external/asyncio.tasks/sleep",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/async_patterns/main.py/AsyncResource/__aenter__(self)",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/async_patterns/@external/asyncio.tasks/sleep",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/async_patterns/main.py/AsyncResource/__aexit__(self,exc_type,exc_val,exc_tb)",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/async_patterns/@external/builtins.RuntimeError/__init__",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/async_patterns/main.py/AsyncResource/read(self)",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/async_patterns/main.py/pipeline(urls,resource_name)",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/async_patterns/main.py/async_main()",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/async_patterns/@external/builtins.list/append",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/async_patterns/main.py/collect_chunks(data,size)",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/async_patterns/main.py/generate_chunks(data,size)",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/async_patterns/main.py/collect_chunks(data,size)",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/async_patterns/@external/asyncio.tasks/gather",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/async_patterns/main.py/fetch_all(urls)",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/async_patterns/main.py/process_url(url)",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/async_patterns/main.py/fetch_all(urls)",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/async_patterns/@external/asyncio.tasks/sleep",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/async_patterns/main.py/fetch_data(url)",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/async_patterns/@external/asyncio.tasks/sleep",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/async_patterns/main.py/generate_chunks(data,size)",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/async_patterns/@external/builtins/len",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/async_patterns/main.py/generate_chunks(data,size)",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/async_patterns/@external/builtins.range/__init__",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/async_patterns/main.py/generate_chunks(data,size)",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/async_patterns/@external/asyncio.runners/run",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/async_patterns/main.py/main()",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/async_patterns/main.py/async_main()",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/async_patterns/main.py/main()",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/async_patterns/main.py/collect_chunks(data,size)",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/async_patterns/main.py/pipeline(urls,resource_name)",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/async_patterns/main.py/fetch_all(urls)",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/async_patterns/main.py/pipeline(urls,resource_name)",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/async_patterns/main.py/read_resource(name)",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/async_patterns/main.py/pipeline(urls,resource_name)",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/async_patterns/@external/builtins.str/upper",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/async_patterns/main.py/process_url(url)",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/async_patterns/main.py/fetch_data(url)",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/async_patterns/main.py/process_url(url)",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/async_patterns/main.py/AsyncResource/__init__(self,name)",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/async_patterns/main.py/read_resource(name)",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/async_patterns/main.py/AsyncResource/read(self)",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/async_patterns/main.py/read_resource(name)",
+        "weight": 1
+      }
+    ],
+    "external_symbols": {
+      "can://python/async_patterns/@external/asyncio.runners/run": {
+        "id": "can://python/async_patterns/@external/asyncio.runners/run",
+        "kind": "external",
+        "module": "asyncio.runners",
+        "name": "run"
+      },
+      "can://python/async_patterns/@external/asyncio.tasks/gather": {
+        "id": "can://python/async_patterns/@external/asyncio.tasks/gather",
+        "kind": "external",
+        "module": "asyncio.tasks",
+        "name": "gather"
+      },
+      "can://python/async_patterns/@external/asyncio.tasks/sleep": {
+        "id": "can://python/async_patterns/@external/asyncio.tasks/sleep",
+        "kind": "external",
+        "module": "asyncio.tasks",
+        "name": "sleep"
+      },
+      "can://python/async_patterns/@external/builtins.RuntimeError/__init__": {
+        "id": "can://python/async_patterns/@external/builtins.RuntimeError/__init__",
+        "kind": "external",
+        "module": "builtins.RuntimeError",
+        "name": "__init__"
+      },
+      "can://python/async_patterns/@external/builtins.list/append": {
+        "id": "can://python/async_patterns/@external/builtins.list/append",
+        "kind": "external",
+        "module": "builtins.list",
+        "name": "append"
+      },
+      "can://python/async_patterns/@external/builtins.range/__init__": {
+        "id": "can://python/async_patterns/@external/builtins.range/__init__",
+        "kind": "external",
+        "module": "builtins.range",
+        "name": "__init__"
+      },
+      "can://python/async_patterns/@external/builtins.str/upper": {
+        "id": "can://python/async_patterns/@external/builtins.str/upper",
+        "kind": "external",
+        "module": "builtins.str",
+        "name": "upper"
+      },
+      "can://python/async_patterns/@external/builtins/len": {
+        "id": "can://python/async_patterns/@external/builtins/len",
+        "kind": "external",
+        "module": "builtins",
+        "name": "len"
+      }
+    },
+    "id": "can://python/async_patterns",
+    "kind": "application",
+    "param_in": [],
+    "param_out": [],
+    "symbol_table": {
+      "main.py": {
+        "comments": [
+          {
+            "content": "Async/await patterns.\n\nExercises:\n- async def + await\n- asyncio.gather (concurrent tasks)\n- Async generator (async def + yield)\n- async for loop consuming an async generator\n- Async context manager (__aenter__ / __aexit__)\n- async with block\n- Nested awaits / task composition\n",
+            "end_column": 3,
+            "end_line": 11,
+            "is_docstring": true,
+            "start_column": 0,
+            "start_line": 1
+          }
+        ],
+        "content_hash": "3b6eb8773ed5b7309052bb555ad62c5505210c2bbcae17902924b136bfa7d6e0",
+        "file_size": 3784,
+        "functions": {
+          "async_main": {
+            "accessed_symbols": [
+              {
+                "col_offset": 26,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 113,
+                "name": "dict",
+                "qualified_name": "builtins.dict",
+                "scope": "local",
+                "type": "dict"
+              },
+              {
+                "col_offset": 17,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 119,
+                "name": "pipeline",
+                "qualified_name": "main.pipeline",
+                "scope": "local",
+                "type": "pipeline"
+              },
+              {
+                "col_offset": 26,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 119,
+                "name": "urls",
+                "qualified_name": "builtins.list",
+                "scope": "local",
+                "type": "list"
+              }
+            ],
+            "body": {
+              "119:17": {
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    3649,
+                    3692
+                  ],
+                  "end": [
+                    119,
+                    60
+                  ],
+                  "start": [
+                    119,
+                    17
+                  ]
+                }
+              }
+            },
+            "call_sites": [
+              {
+                "argument_types": [
+                  "list"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Name",
+                    "inferred_type": "list"
+                  }
+                ],
+                "callee_signature": "main.pipeline",
+                "end_column": 60,
+                "end_line": 119,
+                "is_constructor_call": false,
+                "method_name": "pipeline",
+                "return_type": "Coroutine",
+                "start_column": 17,
+                "start_line": 119
+              }
+            ],
+            "callables": {},
+            "cdg": [],
+            "cfg": [],
+            "code_start_line": 114,
+            "comments": [],
+            "cyclomatic_complexity": 2,
+            "ddg": [],
+            "decorators": [],
+            "end_line": 119,
+            "id": "can://python/async_patterns/main.py/async_main()",
+            "kind": "function",
+            "local_variables": [
+              {
+                "end_column": 8,
+                "end_line": 118,
+                "initializer": "['http://example.com/a', 'http://example.com/b', 'http://example.com/c']",
+                "name": "urls",
+                "scope": "function",
+                "start_column": 4,
+                "start_line": 114,
+                "type": "list"
+              }
+            ],
+            "name": "async_main",
+            "parameters": [],
+            "return_type": "dict",
+            "signature": "main.async_main",
+            "span": {
+              "bytes": [
+                3485,
+                3692
+              ],
+              "end": [
+                119,
+                60
+              ],
+              "start": [
+                113,
+                0
+              ]
+            },
+            "start_line": 113,
+            "summary": [],
+            "types": {}
+          },
+          "collect_chunks": {
+            "accessed_symbols": [
+              {
+                "col_offset": 11,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 57,
+                "name": "chunks",
+                "qualified_name": "builtins.list",
+                "scope": "local",
+                "type": "list"
+              },
+              {
+                "col_offset": 50,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 53,
+                "name": "List",
+                "qualified_name": "typing.list",
+                "scope": "local",
+                "type": "List"
+              },
+              {
+                "col_offset": 55,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 53,
+                "name": "str",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              },
+              {
+                "col_offset": 31,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 53,
+                "name": "str",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              },
+              {
+                "col_offset": 42,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 53,
+                "name": "int",
+                "qualified_name": "builtins.int",
+                "scope": "local",
+                "type": "int"
+              },
+              {
+                "col_offset": 12,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 54,
+                "name": "List",
+                "qualified_name": "typing.list",
+                "scope": "local",
+                "type": "List"
+              },
+              {
+                "col_offset": 17,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 54,
+                "name": "str",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              },
+              {
+                "col_offset": 23,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 55,
+                "name": "generate_chunks",
+                "qualified_name": "main.generate_chunks",
+                "scope": "local",
+                "type": "generate_chunks"
+              },
+              {
+                "col_offset": 39,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 55,
+                "name": "data",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              },
+              {
+                "col_offset": 45,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 55,
+                "name": "size",
+                "qualified_name": "builtins.int",
+                "scope": "local",
+                "type": "int"
+              },
+              {
+                "col_offset": 22,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 56,
+                "name": "chunk",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              },
+              {
+                "col_offset": 8,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 56,
+                "name": "chunks",
+                "qualified_name": "builtins.list",
+                "scope": "local",
+                "type": "list"
+              }
+            ],
+            "body": {
+              "55:23": {
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    1727,
+                    1754
+                  ],
+                  "end": [
+                    55,
+                    50
+                  ],
+                  "start": [
+                    55,
+                    23
+                  ]
+                }
+              },
+              "56:8": {
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    1764,
+                    1784
+                  ],
+                  "end": [
+                    56,
+                    28
+                  ],
+                  "start": [
+                    56,
+                    8
+                  ]
+                }
+              }
+            },
+            "call_sites": [
+              {
+                "argument_types": [
+                  "str",
+                  "int"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Name",
+                    "inferred_type": "str"
+                  },
+                  {
+                    "ast_kind": "Name",
+                    "inferred_type": "int"
+                  }
+                ],
+                "callee_signature": "main.generate_chunks",
+                "end_column": 50,
+                "end_line": 55,
+                "is_constructor_call": false,
+                "method_name": "generate_chunks",
+                "return_type": "AsyncGenerator",
+                "start_column": 23,
+                "start_line": 55
+              },
+              {
+                "argument_types": [
+                  "str"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Name",
+                    "inferred_type": "str"
+                  }
+                ],
+                "callee_signature": "builtins.list.append",
+                "end_column": 28,
+                "end_line": 56,
+                "is_constructor_call": false,
+                "method_name": "append",
+                "receiver_expr": "chunks",
+                "receiver_type": "list",
+                "start_column": 8,
+                "start_line": 56
+              }
+            ],
+            "callables": {},
+            "cdg": [],
+            "cfg": [],
+            "code_start_line": 54,
+            "comments": [],
+            "cyclomatic_complexity": 2,
+            "ddg": [],
+            "decorators": [],
+            "end_line": 57,
+            "id": "can://python/async_patterns/main.py/collect_chunks(data,size)",
+            "kind": "function",
+            "local_variables": [
+              {
+                "end_column": 10,
+                "end_line": 54,
+                "initializer": "[]",
+                "name": "chunks",
+                "scope": "function",
+                "start_column": 4,
+                "start_line": 54,
+                "type": "List[str]"
+              }
+            ],
+            "name": "collect_chunks",
+            "parameters": [
+              {
+                "end_column": 34,
+                "end_line": 53,
+                "name": "data",
+                "start_column": 25,
+                "start_line": 53,
+                "type": "str"
+              },
+              {
+                "end_column": 45,
+                "end_line": 53,
+                "name": "size",
+                "start_column": 36,
+                "start_line": 53,
+                "type": "int"
+              }
+            ],
+            "return_type": "List[str]",
+            "signature": "main.collect_chunks",
+            "span": {
+              "bytes": [
+                1616,
+                1802
+              ],
+              "end": [
+                57,
+                17
+              ],
+              "start": [
+                53,
+                0
+              ]
+            },
+            "start_line": 53,
+            "summary": [],
+            "types": {}
+          },
+          "fetch_all": {
+            "accessed_symbols": [
+              {
+                "col_offset": 40,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 34,
+                "name": "List",
+                "qualified_name": "typing.list",
+                "scope": "local",
+                "type": "List"
+              },
+              {
+                "col_offset": 45,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 34,
+                "name": "str",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              },
+              {
+                "col_offset": 26,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 34,
+                "name": "List",
+                "qualified_name": "typing.list",
+                "scope": "local",
+                "type": "List"
+              },
+              {
+                "col_offset": 31,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 34,
+                "name": "str",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              },
+              {
+                "col_offset": 13,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 35,
+                "name": "process_url",
+                "qualified_name": "main.process_url",
+                "scope": "local",
+                "type": "process_url"
+              },
+              {
+                "col_offset": 25,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 35,
+                "name": "url",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              },
+              {
+                "col_offset": 41,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 35,
+                "name": "urls",
+                "qualified_name": "builtins.list",
+                "scope": "local",
+                "type": "list"
+              },
+              {
+                "col_offset": 17,
+                "is_builtin": false,
+                "kind": "module",
+                "lineno": 36,
+                "name": "asyncio",
+                "qualified_name": "asyncio",
+                "scope": "global",
+                "type": "asyncio"
+              },
+              {
+                "col_offset": 33,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 36,
+                "name": "tasks",
+                "qualified_name": "builtins.list",
+                "scope": "local",
+                "type": "list"
+              }
+            ],
+            "body": {
+              "35:13": {
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    977,
+                    993
+                  ],
+                  "end": [
+                    35,
+                    29
+                  ],
+                  "start": [
+                    35,
+                    13
+                  ]
+                }
+              },
+              "36:17": {
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    1028,
+                    1050
+                  ],
+                  "end": [
+                    36,
+                    39
+                  ],
+                  "start": [
+                    36,
+                    17
+                  ]
+                }
+              }
+            },
+            "call_sites": [
+              {
+                "argument_types": [
+                  "str"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Name",
+                    "inferred_type": "str"
+                  }
+                ],
+                "callee_signature": "main.process_url",
+                "end_column": 29,
+                "end_line": 35,
+                "is_constructor_call": false,
+                "method_name": "process_url",
+                "return_type": "Coroutine",
+                "start_column": 13,
+                "start_line": 35
+              },
+              {
+                "argument_types": [
+                  "Future"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Starred",
+                    "inferred_type": "Future"
+                  }
+                ],
+                "callee_signature": "asyncio.tasks.gather",
+                "end_column": 39,
+                "end_line": 36,
+                "is_constructor_call": false,
+                "method_name": "gather",
+                "receiver_expr": "asyncio",
+                "receiver_type": "asyncio",
+                "return_type": "Future",
+                "start_column": 17,
+                "start_line": 36
+              }
+            ],
+            "callables": {},
+            "cdg": [],
+            "cfg": [],
+            "code_start_line": 35,
+            "comments": [],
+            "cyclomatic_complexity": 2,
+            "ddg": [],
+            "decorators": [],
+            "end_line": 36,
+            "id": "can://python/async_patterns/main.py/fetch_all(urls)",
+            "kind": "function",
+            "local_variables": [
+              {
+                "end_column": 9,
+                "end_line": 35,
+                "initializer": "[process_url(url) for url in urls]",
+                "name": "tasks",
+                "scope": "function",
+                "start_column": 4,
+                "start_line": 35,
+                "type": "list"
+              }
+            ],
+            "name": "fetch_all",
+            "parameters": [
+              {
+                "end_column": 35,
+                "end_line": 34,
+                "name": "urls",
+                "start_column": 20,
+                "start_line": 34,
+                "type": "List[str]"
+              }
+            ],
+            "return_type": "List[str]",
+            "signature": "main.fetch_all",
+            "span": {
+              "bytes": [
+                913,
+                1050
+              ],
+              "end": [
+                36,
+                39
+              ],
+              "start": [
+                34,
+                0
+              ]
+            },
+            "start_line": 34,
+            "summary": [],
+            "types": {}
+          },
+          "fetch_data": {
+            "accessed_symbols": [
+              {
+                "col_offset": 34,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 20,
+                "name": "str",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              },
+              {
+                "col_offset": 26,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 20,
+                "name": "str",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              },
+              {
+                "col_offset": 19,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 22,
+                "name": "url",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              },
+              {
+                "col_offset": 10,
+                "is_builtin": false,
+                "kind": "module",
+                "lineno": 21,
+                "name": "asyncio",
+                "qualified_name": "asyncio",
+                "scope": "global",
+                "type": "asyncio"
+              }
+            ],
+            "body": {
+              "21:10": {
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    573,
+                    589
+                  ],
+                  "end": [
+                    21,
+                    26
+                  ],
+                  "start": [
+                    21,
+                    10
+                  ]
+                }
+              }
+            },
+            "call_sites": [
+              {
+                "argument_types": [
+                  "int"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Constant",
+                    "inferred_type": "int"
+                  }
+                ],
+                "callee_signature": "asyncio.tasks.sleep",
+                "end_column": 26,
+                "end_line": 21,
+                "is_constructor_call": false,
+                "method_name": "sleep",
+                "receiver_expr": "asyncio",
+                "receiver_type": "asyncio",
+                "return_type": "Coroutine",
+                "start_column": 10,
+                "start_line": 21
+              }
+            ],
+            "callables": {},
+            "cdg": [],
+            "cfg": [],
+            "code_start_line": 21,
+            "comments": [],
+            "cyclomatic_complexity": 2,
+            "ddg": [],
+            "decorators": [],
+            "end_line": 22,
+            "id": "can://python/async_patterns/main.py/fetch_data(url)",
+            "kind": "function",
+            "local_variables": [],
+            "name": "fetch_data",
+            "parameters": [
+              {
+                "end_column": 29,
+                "end_line": 20,
+                "name": "url",
+                "start_column": 21,
+                "start_line": 20,
+                "type": "str"
+              }
+            ],
+            "return_type": "str",
+            "signature": "main.fetch_data",
+            "span": {
+              "bytes": [
+                524,
+                614
+              ],
+              "end": [
+                22,
+                24
+              ],
+              "start": [
+                20,
+                0
+              ]
+            },
+            "start_line": 20,
+            "summary": [],
+            "types": {}
+          },
+          "generate_chunks": {
+            "accessed_symbols": [
+              {
+                "col_offset": 51,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 43,
+                "name": "AsyncGenerator",
+                "qualified_name": "typing._SpecialGenericAlias",
+                "scope": "local",
+                "type": "_SpecialGenericAlias"
+              },
+              {
+                "col_offset": 32,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 43,
+                "name": "str",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              },
+              {
+                "col_offset": 43,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 43,
+                "name": "int",
+                "qualified_name": "builtins.int",
+                "scope": "local",
+                "type": "int"
+              },
+              {
+                "col_offset": 13,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 44,
+                "name": "range",
+                "qualified_name": "builtins.range",
+                "scope": "local",
+                "type": "range"
+              },
+              {
+                "col_offset": 33,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 44,
+                "name": "size",
+                "qualified_name": "builtins.int",
+                "scope": "local",
+                "type": "int"
+              },
+              {
+                "col_offset": 66,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 43,
+                "name": "str",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              },
+              {
+                "col_offset": 22,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 44,
+                "name": "len",
+                "qualified_name": "builtins.len",
+                "scope": "local",
+                "type": "len"
+              },
+              {
+                "col_offset": 26,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 44,
+                "name": "data",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              },
+              {
+                "col_offset": 14,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 46,
+                "name": "data",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              },
+              {
+                "col_offset": 14,
+                "is_builtin": false,
+                "kind": "module",
+                "lineno": 45,
+                "name": "asyncio",
+                "qualified_name": "asyncio",
+                "scope": "global",
+                "type": "asyncio"
+              },
+              {
+                "col_offset": 19,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 46,
+                "name": "i",
+                "qualified_name": "builtins.int",
+                "scope": "local",
+                "type": "int"
+              },
+              {
+                "col_offset": 23,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 46,
+                "name": "i",
+                "qualified_name": "builtins.int",
+                "scope": "local",
+                "type": "int"
+              },
+              {
+                "col_offset": 27,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 46,
+                "name": "size",
+                "qualified_name": "builtins.int",
+                "scope": "local",
+                "type": "int"
+              }
+            ],
+            "body": {
+              "44:13": {
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    1322,
+                    1347
+                  ],
+                  "end": [
+                    44,
+                    38
+                  ],
+                  "start": [
+                    44,
+                    13
+                  ]
+                }
+              },
+              "44:22": {
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    1331,
+                    1340
+                  ],
+                  "end": [
+                    44,
+                    31
+                  ],
+                  "start": [
+                    44,
+                    22
+                  ]
+                }
+              },
+              "45:14": {
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    1363,
+                    1379
+                  ],
+                  "end": [
+                    45,
+                    30
+                  ],
+                  "start": [
+                    45,
+                    14
+                  ]
+                }
+              }
+            },
+            "call_sites": [
+              {
+                "argument_types": [
+                  "int",
+                  "len",
+                  "int"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Constant",
+                    "inferred_type": "int"
+                  },
+                  {
+                    "ast_kind": "Call",
+                    "inferred_type": "len"
+                  },
+                  {
+                    "ast_kind": "Name",
+                    "inferred_type": "int"
+                  }
+                ],
+                "callee_signature": "builtins.range.__init__",
+                "end_column": 38,
+                "end_line": 44,
+                "is_constructor_call": true,
+                "method_name": "range",
+                "return_type": "range",
+                "start_column": 13,
+                "start_line": 44
+              },
+              {
+                "argument_types": [
+                  "str"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Name",
+                    "inferred_type": "str"
+                  }
+                ],
+                "callee_signature": "builtins.len",
+                "end_column": 31,
+                "end_line": 44,
+                "is_constructor_call": false,
+                "method_name": "len",
+                "return_type": "int",
+                "start_column": 22,
+                "start_line": 44
+              },
+              {
+                "argument_types": [
+                  "int"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Constant",
+                    "inferred_type": "int"
+                  }
+                ],
+                "callee_signature": "asyncio.tasks.sleep",
+                "end_column": 30,
+                "end_line": 45,
+                "is_constructor_call": false,
+                "method_name": "sleep",
+                "receiver_expr": "asyncio",
+                "receiver_type": "asyncio",
+                "return_type": "Coroutine",
+                "start_column": 14,
+                "start_line": 45
+              }
+            ],
+            "callables": {},
+            "cdg": [],
+            "cfg": [],
+            "code_start_line": 44,
+            "comments": [],
+            "cyclomatic_complexity": 3,
+            "ddg": [],
+            "decorators": [],
+            "end_line": 46,
+            "id": "can://python/async_patterns/main.py/generate_chunks(data,size)",
+            "kind": "function",
+            "local_variables": [],
+            "name": "generate_chunks",
+            "parameters": [
+              {
+                "end_column": 35,
+                "end_line": 43,
+                "name": "data",
+                "start_column": 26,
+                "start_line": 43,
+                "type": "str"
+              },
+              {
+                "end_column": 46,
+                "end_line": 43,
+                "name": "size",
+                "start_column": 37,
+                "start_line": 43,
+                "type": "int"
+              }
+            ],
+            "return_type": "AsyncGenerator[str, None]",
+            "signature": "main.generate_chunks",
+            "span": {
+              "bytes": [
+                1231,
+                1412
+              ],
+              "end": [
+                46,
+                32
+              ],
+              "start": [
+                43,
+                0
+              ]
+            },
+            "start_line": 43,
+            "summary": [],
+            "types": {}
+          },
+          "main": {
+            "accessed_symbols": [
+              {
+                "col_offset": 11,
+                "is_builtin": false,
+                "kind": "module",
+                "lineno": 123,
+                "name": "asyncio",
+                "qualified_name": "asyncio",
+                "scope": "global",
+                "type": "asyncio"
+              },
+              {
+                "col_offset": 23,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 123,
+                "name": "async_main",
+                "qualified_name": "main.async_main",
+                "scope": "local",
+                "type": "async_main"
+              }
+            ],
+            "body": {
+              "123:11": {
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    3718,
+                    3743
+                  ],
+                  "end": [
+                    123,
+                    36
+                  ],
+                  "start": [
+                    123,
+                    11
+                  ]
+                }
+              },
+              "123:23": {
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    3730,
+                    3742
+                  ],
+                  "end": [
+                    123,
+                    35
+                  ],
+                  "start": [
+                    123,
+                    23
+                  ]
+                }
+              }
+            },
+            "call_sites": [
+              {
+                "argument_types": [
+                  "async_main"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Call",
+                    "inferred_type": "async_main"
+                  }
+                ],
+                "callee_signature": "asyncio.runners.run",
+                "end_column": 36,
+                "end_line": 123,
+                "is_constructor_call": false,
+                "method_name": "run",
+                "receiver_expr": "asyncio",
+                "receiver_type": "asyncio",
+                "start_column": 11,
+                "start_line": 123
+              },
+              {
+                "argument_types": [],
+                "arguments": [],
+                "callee_signature": "main.async_main",
+                "end_column": 35,
+                "end_line": 123,
+                "is_constructor_call": false,
+                "method_name": "async_main",
+                "return_type": "Coroutine",
+                "start_column": 23,
+                "start_line": 123
+              }
+            ],
+            "callables": {},
+            "cdg": [],
+            "cfg": [],
+            "code_start_line": 123,
+            "comments": [],
+            "cyclomatic_complexity": 2,
+            "ddg": [],
+            "decorators": [],
+            "end_line": 123,
+            "id": "can://python/async_patterns/main.py/main()",
+            "kind": "function",
+            "local_variables": [],
+            "name": "main",
+            "parameters": [],
+            "signature": "main.main",
+            "span": {
+              "bytes": [
+                3695,
+                3743
+              ],
+              "end": [
+                123,
+                36
+              ],
+              "start": [
+                122,
+                0
+              ]
+            },
+            "start_line": 122,
+            "summary": [],
+            "types": {}
+          },
+          "pipeline": {
+            "accessed_symbols": [
+              {
+                "col_offset": 59,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 98,
+                "name": "dict",
+                "qualified_name": "builtins.dict",
+                "scope": "local",
+                "type": "dict"
+              },
+              {
+                "col_offset": 51,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 98,
+                "name": "str",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              },
+              {
+                "col_offset": 19,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 103,
+                "name": "fetched",
+                "qualified_name": "builtins.list",
+                "scope": "local",
+                "type": "list"
+              },
+              {
+                "col_offset": 18,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 104,
+                "name": "chunks",
+                "qualified_name": "builtins.list",
+                "scope": "local",
+                "type": "list"
+              },
+              {
+                "col_offset": 19,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 105,
+                "name": "content",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              },
+              {
+                "col_offset": 25,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 98,
+                "name": "List",
+                "qualified_name": "typing.list",
+                "scope": "local",
+                "type": "List"
+              },
+              {
+                "col_offset": 30,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 98,
+                "name": "str",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              },
+              {
+                "col_offset": 20,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 99,
+                "name": "fetch_all",
+                "qualified_name": "main.fetch_all",
+                "scope": "local",
+                "type": "fetch_all"
+              },
+              {
+                "col_offset": 30,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 99,
+                "name": "urls",
+                "qualified_name": "builtins.list",
+                "scope": "local",
+                "type": "list"
+              },
+              {
+                "col_offset": 19,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 100,
+                "name": "collect_chunks",
+                "qualified_name": "main.collect_chunks",
+                "scope": "local",
+                "type": "collect_chunks"
+              },
+              {
+                "col_offset": 20,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 101,
+                "name": "read_resource",
+                "qualified_name": "main.read_resource",
+                "scope": "local",
+                "type": "read_resource"
+              },
+              {
+                "col_offset": 34,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 101,
+                "name": "resource_name",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              }
+            ],
+            "body": {
+              "100:19": {
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    3120,
+                    3163
+                  ],
+                  "end": [
+                    100,
+                    62
+                  ],
+                  "start": [
+                    100,
+                    19
+                  ]
+                }
+              },
+              "101:20": {
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    3184,
+                    3212
+                  ],
+                  "end": [
+                    101,
+                    48
+                  ],
+                  "start": [
+                    101,
+                    20
+                  ]
+                }
+              },
+              "99:20": {
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    3085,
+                    3100
+                  ],
+                  "end": [
+                    99,
+                    35
+                  ],
+                  "start": [
+                    99,
+                    20
+                  ]
+                }
+              }
+            },
+            "call_sites": [
+              {
+                "argument_types": [
+                  "list"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Name",
+                    "inferred_type": "list"
+                  }
+                ],
+                "callee_signature": "main.fetch_all",
+                "end_column": 35,
+                "end_line": 99,
+                "is_constructor_call": false,
+                "method_name": "fetch_all",
+                "return_type": "Coroutine",
+                "start_column": 20,
+                "start_line": 99
+              },
+              {
+                "argument_types": [
+                  "str"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Constant",
+                    "inferred_type": "str"
+                  }
+                ],
+                "callee_signature": "main.collect_chunks",
+                "end_column": 62,
+                "end_line": 100,
+                "is_constructor_call": false,
+                "method_name": "collect_chunks",
+                "return_type": "Coroutine",
+                "start_column": 19,
+                "start_line": 100
+              },
+              {
+                "argument_types": [
+                  "str"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Name",
+                    "inferred_type": "str"
+                  }
+                ],
+                "callee_signature": "main.read_resource",
+                "end_column": 48,
+                "end_line": 101,
+                "is_constructor_call": false,
+                "method_name": "read_resource",
+                "return_type": "Coroutine",
+                "start_column": 20,
+                "start_line": 101
+              }
+            ],
+            "callables": {},
+            "cdg": [],
+            "cfg": [],
+            "code_start_line": 99,
+            "comments": [],
+            "cyclomatic_complexity": 2,
+            "ddg": [],
+            "decorators": [],
+            "end_line": 106,
+            "id": "can://python/async_patterns/main.py/pipeline(urls,resource_name)",
+            "kind": "function",
+            "local_variables": [
+              {
+                "end_column": 11,
+                "end_line": 99,
+                "initializer": "await fetch_all(urls)",
+                "name": "fetched",
+                "scope": "function",
+                "start_column": 4,
+                "start_line": 99,
+                "type": "list"
+              },
+              {
+                "end_column": 10,
+                "end_line": 100,
+                "initializer": "await collect_chunks('hello world async', size=5)",
+                "name": "chunks",
+                "scope": "function",
+                "start_column": 4,
+                "start_line": 100,
+                "type": "list"
+              },
+              {
+                "end_column": 11,
+                "end_line": 101,
+                "initializer": "await read_resource(resource_name)",
+                "name": "content",
+                "scope": "function",
+                "start_column": 4,
+                "start_line": 101,
+                "type": "str"
+              }
+            ],
+            "name": "pipeline",
+            "parameters": [
+              {
+                "end_column": 34,
+                "end_line": 98,
+                "name": "urls",
+                "start_column": 19,
+                "start_line": 98,
+                "type": "List[str]"
+              },
+              {
+                "end_column": 54,
+                "end_line": 98,
+                "name": "resource_name",
+                "start_column": 36,
+                "start_line": 98,
+                "type": "str"
+              }
+            ],
+            "return_type": "dict",
+            "signature": "main.pipeline",
+            "span": {
+              "bytes": [
+                3000,
+                3313
+              ],
+              "end": [
+                106,
+                5
+              ],
+              "start": [
+                98,
+                0
+              ]
+            },
+            "start_line": 98,
+            "summary": [],
+            "types": {}
+          },
+          "process_url": {
+            "accessed_symbols": [
+              {
+                "col_offset": 35,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 25,
+                "name": "str",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              },
+              {
+                "col_offset": 27,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 25,
+                "name": "str",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              },
+              {
+                "col_offset": 16,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 26,
+                "name": "fetch_data",
+                "qualified_name": "main.fetch_data",
+                "scope": "local",
+                "type": "fetch_data"
+              },
+              {
+                "col_offset": 27,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 26,
+                "name": "url",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              },
+              {
+                "col_offset": 11,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 27,
+                "name": "raw",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              }
+            ],
+            "body": {
+              "26:16": {
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    673,
+                    688
+                  ],
+                  "end": [
+                    26,
+                    31
+                  ],
+                  "start": [
+                    26,
+                    16
+                  ]
+                }
+              },
+              "27:11": {
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    700,
+                    711
+                  ],
+                  "end": [
+                    27,
+                    22
+                  ],
+                  "start": [
+                    27,
+                    11
+                  ]
+                }
+              }
+            },
+            "call_sites": [
+              {
+                "argument_types": [
+                  "str"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Name",
+                    "inferred_type": "str"
+                  }
+                ],
+                "callee_signature": "main.fetch_data",
+                "end_column": 31,
+                "end_line": 26,
+                "is_constructor_call": false,
+                "method_name": "fetch_data",
+                "return_type": "Coroutine",
+                "start_column": 16,
+                "start_line": 26
+              },
+              {
+                "argument_types": [],
+                "arguments": [],
+                "callee_signature": "builtins.str.upper",
+                "end_column": 22,
+                "end_line": 27,
+                "is_constructor_call": false,
+                "method_name": "upper",
+                "receiver_expr": "raw",
+                "receiver_type": "str",
+                "return_type": "str",
+                "start_column": 11,
+                "start_line": 27
+              }
+            ],
+            "callables": {},
+            "cdg": [],
+            "cfg": [],
+            "code_start_line": 26,
+            "comments": [],
+            "cyclomatic_complexity": 2,
+            "ddg": [],
+            "decorators": [],
+            "end_line": 27,
+            "id": "can://python/async_patterns/main.py/process_url(url)",
+            "kind": "function",
+            "local_variables": [
+              {
+                "end_column": 7,
+                "end_line": 26,
+                "initializer": "await fetch_data(url)",
+                "name": "raw",
+                "scope": "function",
+                "start_column": 4,
+                "start_line": 26,
+                "type": "str"
+              }
+            ],
+            "name": "process_url",
+            "parameters": [
+              {
+                "end_column": 30,
+                "end_line": 25,
+                "name": "url",
+                "start_column": 22,
+                "start_line": 25,
+                "type": "str"
+              }
+            ],
+            "return_type": "str",
+            "signature": "main.process_url",
+            "span": {
+              "bytes": [
+                617,
+                711
+              ],
+              "end": [
+                27,
+                22
+              ],
+              "start": [
+                25,
+                0
+              ]
+            },
+            "start_line": 25,
+            "summary": [],
+            "types": {}
+          },
+          "read_resource": {
+            "accessed_symbols": [
+              {
+                "col_offset": 38,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 89,
+                "name": "str",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              },
+              {
+                "col_offset": 30,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 89,
+                "name": "str",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              },
+              {
+                "col_offset": 15,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 90,
+                "name": "AsyncResource",
+                "qualified_name": "main.AsyncResource",
+                "scope": "local",
+                "type": "AsyncResource"
+              },
+              {
+                "col_offset": 29,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 90,
+                "name": "name",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              },
+              {
+                "col_offset": 21,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 91,
+                "name": "res",
+                "qualified_name": "main.AsyncResource",
+                "scope": "local",
+                "type": "AsyncResource"
+              }
+            ],
+            "body": {
+              "90:15": {
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    2759,
+                    2778
+                  ],
+                  "end": [
+                    90,
+                    34
+                  ],
+                  "start": [
+                    90,
+                    15
+                  ]
+                }
+              },
+              "91:21": {
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    2808,
+                    2818
+                  ],
+                  "end": [
+                    91,
+                    31
+                  ],
+                  "start": [
+                    91,
+                    21
+                  ]
+                }
+              }
+            },
+            "call_sites": [
+              {
+                "argument_types": [
+                  "str"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Name",
+                    "inferred_type": "str"
+                  }
+                ],
+                "callee_signature": "main.AsyncResource.__init__",
+                "end_column": 34,
+                "end_line": 90,
+                "is_constructor_call": true,
+                "method_name": "AsyncResource",
+                "return_type": "AsyncResource",
+                "start_column": 15,
+                "start_line": 90
+              },
+              {
+                "argument_types": [],
+                "arguments": [],
+                "callee_signature": "main.AsyncResource.read",
+                "end_column": 31,
+                "end_line": 91,
+                "is_constructor_call": false,
+                "method_name": "read",
+                "receiver_expr": "res",
+                "receiver_type": "AsyncResource",
+                "return_type": "Coroutine",
+                "start_column": 21,
+                "start_line": 91
+              }
+            ],
+            "callables": {},
+            "cdg": [],
+            "cfg": [],
+            "code_start_line": 90,
+            "comments": [],
+            "cyclomatic_complexity": 2,
+            "ddg": [],
+            "decorators": [],
+            "end_line": 91,
+            "id": "can://python/async_patterns/main.py/read_resource(name)",
+            "kind": "function",
+            "local_variables": [],
+            "name": "read_resource",
+            "parameters": [
+              {
+                "end_column": 33,
+                "end_line": 89,
+                "name": "name",
+                "start_column": 24,
+                "start_line": 89,
+                "type": "str"
+              }
+            ],
+            "return_type": "str",
+            "signature": "main.read_resource",
+            "span": {
+              "bytes": [
+                2701,
+                2818
+              ],
+              "end": [
+                91,
+                31
+              ],
+              "start": [
+                89,
+                0
+              ]
+            },
+            "start_line": 89,
+            "summary": [],
+            "types": {}
+          }
+        },
+        "id": "can://python/async_patterns/main.py",
+        "imports": [
+          {
+            "end_column": 14,
+            "end_line": 12,
+            "module": "asyncio",
+            "name": "asyncio",
+            "start_column": 0,
+            "start_line": 12
+          },
+          {
+            "end_column": 39,
+            "end_line": 13,
+            "module": "typing",
+            "name": "AsyncGenerator",
+            "start_column": 0,
+            "start_line": 13
+          },
+          {
+            "end_column": 39,
+            "end_line": 13,
+            "module": "typing",
+            "name": "List",
+            "start_column": 0,
+            "start_line": 13
+          }
+        ],
+        "kind": "module",
+        "module_name": "main",
+        "source": "\"\"\"Async/await patterns.\n\nExercises:\n- async def + await\n- asyncio.gather (concurrent tasks)\n- Async generator (async def + yield)\n- async for loop consuming an async generator\n- Async context manager (__aenter__ / __aexit__)\n- async with block\n- Nested awaits / task composition\n\"\"\"\nimport asyncio\nfrom typing import AsyncGenerator, List\n\n\n# ---------------------------------------------------------------------------\n# 1. Basic async function\n# ---------------------------------------------------------------------------\n\nasync def fetch_data(url: str) -> str:\n    await asyncio.sleep(0)\n    return f\"data:{url}\"\n\n\nasync def process_url(url: str) -> str:\n    raw = await fetch_data(url)\n    return raw.upper()\n\n\n# ---------------------------------------------------------------------------\n# 2. Concurrent tasks with asyncio.gather\n# ---------------------------------------------------------------------------\n\nasync def fetch_all(urls: List[str]) -> List[str]:\n    tasks = [process_url(url) for url in urls]\n    return await asyncio.gather(*tasks)\n\n\n# ---------------------------------------------------------------------------\n# 3. Async generator\n# ---------------------------------------------------------------------------\n\nasync def generate_chunks(data: str, size: int) -> AsyncGenerator[str, None]:\n    for i in range(0, len(data), size):\n        await asyncio.sleep(0)\n        yield data[i : i + size]\n\n\n# ---------------------------------------------------------------------------\n# 4. async for consuming an async generator\n# ---------------------------------------------------------------------------\n\nasync def collect_chunks(data: str, size: int) -> List[str]:\n    chunks: List[str] = []\n    async for chunk in generate_chunks(data, size):\n        chunks.append(chunk)\n    return chunks\n\n\n# ---------------------------------------------------------------------------\n# 5. Async context manager\n# ---------------------------------------------------------------------------\n\nclass AsyncResource:\n    def __init__(self, name: str):\n        self.name = name\n        self._open = False\n\n    async def __aenter__(self) -> \"AsyncResource\":\n        await asyncio.sleep(0)\n        self._open = True\n        return self\n\n    async def __aexit__(self, exc_type, exc_val, exc_tb) -> bool:\n        await asyncio.sleep(0)\n        self._open = False\n        return False\n\n    async def read(self) -> str:\n        if not self._open:\n            raise RuntimeError(\"Resource not open\")\n        return f\"content of {self.name}\"\n\n\n# ---------------------------------------------------------------------------\n# 6. async with\n# ---------------------------------------------------------------------------\n\nasync def read_resource(name: str) -> str:\n    async with AsyncResource(name) as res:\n        return await res.read()\n\n\n# ---------------------------------------------------------------------------\n# 7. Task composition\n# ---------------------------------------------------------------------------\n\nasync def pipeline(urls: List[str], resource_name: str) -> dict:\n    fetched = await fetch_all(urls)\n    chunks = await collect_chunks(\"hello world async\", size=5)\n    content = await read_resource(resource_name)\n    return {\n        \"fetched\": fetched,\n        \"chunks\": chunks,\n        \"content\": content,\n    }\n\n\n# ---------------------------------------------------------------------------\n# 8. Driver\n# ---------------------------------------------------------------------------\n\nasync def async_main() -> dict:\n    urls = [\n        \"http://example.com/a\",\n        \"http://example.com/b\",\n        \"http://example.com/c\",\n    ]\n    return await pipeline(urls, resource_name=\"config.json\")\n\n\ndef main():\n    return asyncio.run(async_main())\n\n\nif __name__ == \"__main__\":\n    main()\n",
+        "types": {
+          "main.AsyncResource": {
+            "attributes": {},
+            "base_classes": [],
+            "callables": {
+              "__aenter__": {
+                "accessed_symbols": [
+                  {
+                    "col_offset": 15,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 72,
+                    "name": "self",
+                    "qualified_name": "main.AsyncResource",
+                    "scope": "local",
+                    "type": "AsyncResource"
+                  },
+                  {
+                    "col_offset": 8,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 71,
+                    "name": "self",
+                    "qualified_name": "main.AsyncResource",
+                    "scope": "local",
+                    "type": "AsyncResource"
+                  },
+                  {
+                    "col_offset": 14,
+                    "is_builtin": false,
+                    "kind": "module",
+                    "lineno": 70,
+                    "name": "asyncio",
+                    "qualified_name": "asyncio",
+                    "scope": "global",
+                    "type": "asyncio"
+                  }
+                ],
+                "body": {
+                  "70:14": {
+                    "kind": "call",
+                    "span": {
+                      "bytes": [
+                        2163,
+                        2179
+                      ],
+                      "end": [
+                        70,
+                        30
+                      ],
+                      "start": [
+                        70,
+                        14
+                      ]
+                    }
+                  }
+                },
+                "call_sites": [
+                  {
+                    "argument_types": [
+                      "int"
+                    ],
+                    "arguments": [
+                      {
+                        "ast_kind": "Constant",
+                        "inferred_type": "int"
+                      }
+                    ],
+                    "callee_signature": "asyncio.tasks.sleep",
+                    "end_column": 30,
+                    "end_line": 70,
+                    "is_constructor_call": false,
+                    "method_name": "sleep",
+                    "receiver_expr": "asyncio",
+                    "receiver_type": "asyncio",
+                    "return_type": "Coroutine",
+                    "start_column": 14,
+                    "start_line": 70
+                  }
+                ],
+                "callables": {},
+                "cdg": [],
+                "cfg": [],
+                "code_start_line": 70,
+                "comments": [],
+                "cyclomatic_complexity": 2,
+                "ddg": [],
+                "decorators": [],
+                "end_line": 72,
+                "id": "can://python/async_patterns/main.py/AsyncResource/__aenter__(self)",
+                "kind": "function",
+                "local_variables": [
+                  {
+                    "end_column": 18,
+                    "end_line": 71,
+                    "initializer": "True",
+                    "name": "_open",
+                    "scope": "class",
+                    "start_column": 8,
+                    "start_line": 71,
+                    "type": "AsyncResource"
+                  }
+                ],
+                "name": "__aenter__",
+                "parameters": [
+                  {
+                    "end_column": 29,
+                    "end_line": 69,
+                    "name": "self",
+                    "start_column": 25,
+                    "start_line": 69,
+                    "type": "AsyncResource"
+                  }
+                ],
+                "return_type": "'AsyncResource'",
+                "signature": "main.AsyncResource.__aenter__",
+                "span": {
+                  "bytes": [
+                    2102,
+                    2225
+                  ],
+                  "end": [
+                    72,
+                    19
+                  ],
+                  "start": [
+                    69,
+                    4
+                  ]
+                },
+                "start_line": 69,
+                "summary": [],
+                "types": {}
+              },
+              "__aexit__": {
+                "accessed_symbols": [
+                  {
+                    "col_offset": 60,
+                    "is_builtin": false,
+                    "kind": "class",
+                    "lineno": 74,
+                    "name": "bool",
+                    "qualified_name": "builtins.bool",
+                    "scope": "local",
+                    "type": "bool"
+                  },
+                  {
+                    "col_offset": 8,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 76,
+                    "name": "self",
+                    "qualified_name": "main.AsyncResource",
+                    "scope": "local",
+                    "type": "AsyncResource"
+                  },
+                  {
+                    "col_offset": 14,
+                    "is_builtin": false,
+                    "kind": "module",
+                    "lineno": 75,
+                    "name": "asyncio",
+                    "qualified_name": "asyncio",
+                    "scope": "global",
+                    "type": "asyncio"
+                  }
+                ],
+                "body": {
+                  "75:14": {
+                    "kind": "call",
+                    "span": {
+                      "bytes": [
+                        2307,
+                        2323
+                      ],
+                      "end": [
+                        75,
+                        30
+                      ],
+                      "start": [
+                        75,
+                        14
+                      ]
+                    }
+                  }
+                },
+                "call_sites": [
+                  {
+                    "argument_types": [
+                      "int"
+                    ],
+                    "arguments": [
+                      {
+                        "ast_kind": "Constant",
+                        "inferred_type": "int"
+                      }
+                    ],
+                    "callee_signature": "asyncio.tasks.sleep",
+                    "end_column": 30,
+                    "end_line": 75,
+                    "is_constructor_call": false,
+                    "method_name": "sleep",
+                    "receiver_expr": "asyncio",
+                    "receiver_type": "asyncio",
+                    "return_type": "Coroutine",
+                    "start_column": 14,
+                    "start_line": 75
+                  }
+                ],
+                "callables": {},
+                "cdg": [],
+                "cfg": [],
+                "code_start_line": 75,
+                "comments": [],
+                "cyclomatic_complexity": 2,
+                "ddg": [],
+                "decorators": [],
+                "end_line": 77,
+                "id": "can://python/async_patterns/main.py/AsyncResource/__aexit__(self,exc_type,exc_val,exc_tb)",
+                "kind": "function",
+                "local_variables": [
+                  {
+                    "end_column": 18,
+                    "end_line": 76,
+                    "initializer": "False",
+                    "name": "_open",
+                    "scope": "class",
+                    "start_column": 8,
+                    "start_line": 76,
+                    "type": "AsyncResource"
+                  }
+                ],
+                "name": "__aexit__",
+                "parameters": [
+                  {
+                    "end_column": 28,
+                    "end_line": 74,
+                    "name": "self",
+                    "start_column": 24,
+                    "start_line": 74,
+                    "type": "AsyncResource"
+                  },
+                  {
+                    "end_column": 38,
+                    "end_line": 74,
+                    "name": "exc_type",
+                    "start_column": 30,
+                    "start_line": 74
+                  },
+                  {
+                    "end_column": 47,
+                    "end_line": 74,
+                    "name": "exc_val",
+                    "start_column": 40,
+                    "start_line": 74
+                  },
+                  {
+                    "end_column": 55,
+                    "end_line": 74,
+                    "name": "exc_tb",
+                    "start_column": 49,
+                    "start_line": 74
+                  }
+                ],
+                "return_type": "bool",
+                "signature": "main.AsyncResource.__aexit__",
+                "span": {
+                  "bytes": [
+                    2231,
+                    2371
+                  ],
+                  "end": [
+                    77,
+                    20
+                  ],
+                  "start": [
+                    74,
+                    4
+                  ]
+                },
+                "start_line": 74,
+                "summary": [],
+                "types": {}
+              },
+              "__init__": {
+                "accessed_symbols": [
+                  {
+                    "col_offset": 20,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 66,
+                    "name": "name",
+                    "qualified_name": "builtins.str",
+                    "scope": "local",
+                    "type": "str"
+                  },
+                  {
+                    "col_offset": 29,
+                    "is_builtin": false,
+                    "kind": "class",
+                    "lineno": 65,
+                    "name": "str",
+                    "qualified_name": "builtins.str",
+                    "scope": "local",
+                    "type": "str"
+                  },
+                  {
+                    "col_offset": 8,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 66,
+                    "name": "self",
+                    "qualified_name": "main.AsyncResource",
+                    "scope": "local",
+                    "type": "AsyncResource"
+                  },
+                  {
+                    "col_offset": 8,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 67,
+                    "name": "self",
+                    "qualified_name": "main.AsyncResource",
+                    "scope": "local",
+                    "type": "AsyncResource"
+                  }
+                ],
+                "body": {},
+                "call_sites": [],
+                "callables": {},
+                "cdg": [],
+                "cfg": [],
+                "code_start_line": 66,
+                "comments": [],
+                "cyclomatic_complexity": 1,
+                "ddg": [],
+                "decorators": [],
+                "end_line": 67,
+                "id": "can://python/async_patterns/main.py/AsyncResource/__init__(self,name)",
+                "kind": "function",
+                "local_variables": [
+                  {
+                    "end_column": 17,
+                    "end_line": 66,
+                    "initializer": "name",
+                    "name": "name",
+                    "scope": "class",
+                    "start_column": 8,
+                    "start_line": 66,
+                    "type": "AsyncResource"
+                  },
+                  {
+                    "end_column": 18,
+                    "end_line": 67,
+                    "initializer": "False",
+                    "name": "_open",
+                    "scope": "class",
+                    "start_column": 8,
+                    "start_line": 67,
+                    "type": "AsyncResource"
+                  }
+                ],
+                "name": "__init__",
+                "parameters": [
+                  {
+                    "end_column": 21,
+                    "end_line": 65,
+                    "name": "self",
+                    "start_column": 17,
+                    "start_line": 65,
+                    "type": "AsyncResource"
+                  },
+                  {
+                    "end_column": 32,
+                    "end_line": 65,
+                    "name": "name",
+                    "start_column": 23,
+                    "start_line": 65,
+                    "type": "str"
+                  }
+                ],
+                "signature": "main.AsyncResource.__init__",
+                "span": {
+                  "bytes": [
+                    2014,
+                    2096
+                  ],
+                  "end": [
+                    67,
+                    26
+                  ],
+                  "start": [
+                    65,
+                    4
+                  ]
+                },
+                "start_line": 65,
+                "summary": [],
+                "types": {}
+              },
+              "read": {
+                "accessed_symbols": [
+                  {
+                    "col_offset": 28,
+                    "is_builtin": false,
+                    "kind": "class",
+                    "lineno": 79,
+                    "name": "str",
+                    "qualified_name": "builtins.str",
+                    "scope": "local",
+                    "type": "str"
+                  },
+                  {
+                    "col_offset": 15,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 80,
+                    "name": "self",
+                    "qualified_name": "main.AsyncResource",
+                    "scope": "local",
+                    "type": "AsyncResource"
+                  },
+                  {
+                    "col_offset": 18,
+                    "is_builtin": false,
+                    "kind": "class",
+                    "lineno": 81,
+                    "name": "RuntimeError",
+                    "qualified_name": "builtins.RuntimeError",
+                    "scope": "local",
+                    "type": "RuntimeError"
+                  },
+                  {
+                    "col_offset": 29,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 82,
+                    "name": "self",
+                    "qualified_name": "main.AsyncResource",
+                    "scope": "local",
+                    "type": "AsyncResource"
+                  }
+                ],
+                "body": {
+                  "81:18": {
+                    "kind": "call",
+                    "span": {
+                      "bytes": [
+                        2451,
+                        2484
+                      ],
+                      "end": [
+                        81,
+                        51
+                      ],
+                      "start": [
+                        81,
+                        18
+                      ]
+                    }
+                  }
+                },
+                "call_sites": [
+                  {
+                    "argument_types": [
+                      "str"
+                    ],
+                    "arguments": [
+                      {
+                        "ast_kind": "Constant",
+                        "inferred_type": "str"
+                      }
+                    ],
+                    "callee_signature": "builtins.RuntimeError.__init__",
+                    "end_column": 51,
+                    "end_line": 81,
+                    "is_constructor_call": true,
+                    "method_name": "RuntimeError",
+                    "return_type": "RuntimeError",
+                    "start_column": 18,
+                    "start_line": 81
+                  }
+                ],
+                "callables": {},
+                "cdg": [],
+                "cfg": [],
+                "code_start_line": 80,
+                "comments": [],
+                "cyclomatic_complexity": 3,
+                "ddg": [],
+                "decorators": [],
+                "end_line": 82,
+                "id": "can://python/async_patterns/main.py/AsyncResource/read(self)",
+                "kind": "function",
+                "local_variables": [],
+                "name": "read",
+                "parameters": [
+                  {
+                    "end_column": 23,
+                    "end_line": 79,
+                    "name": "self",
+                    "start_column": 19,
+                    "start_line": 79,
+                    "type": "AsyncResource"
+                  }
+                ],
+                "return_type": "str",
+                "signature": "main.AsyncResource.read",
+                "span": {
+                  "bytes": [
+                    2377,
+                    2525
+                  ],
+                  "end": [
+                    82,
+                    40
+                  ],
+                  "start": [
+                    79,
+                    4
+                  ]
+                },
+                "start_line": 79,
+                "summary": [],
+                "types": {}
+              }
+            },
+            "comments": [],
+            "end_line": 82,
+            "id": "can://python/async_patterns/main.py/AsyncResource",
+            "kind": "class",
+            "name": "AsyncResource",
+            "signature": "main.AsyncResource",
+            "span": {
+              "bytes": [
+                1989,
+                2525
+              ],
+              "end": [
+                82,
+                40
+              ],
+              "start": [
+                64,
+                0
+              ]
+            },
+            "start_line": 64,
+            "types": {}
+          }
+        },
+        "variables": []
+      }
+    }
+  },
+  "language": "python",
+  "max_level": 1,
+  "schema_version": "2.0.0"
+}
