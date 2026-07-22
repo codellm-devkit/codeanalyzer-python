@@ -36,3 +36,19 @@ def test_build_symbol_table_free_function(tmp_path):
     )
     table = build_symbol_table(proj, None, opts, cached_symbol_table={})
     assert "m.py" in table
+
+
+from codeanalyzer.pipeline.passes import home_external_symbols
+from codeanalyzer.schema import PyApplication
+
+
+def test_home_external_symbols_homes_undeclared_endpoints():
+    app = PyApplication.builder().symbol_table({}).call_graph([]).build()
+    app.id = "can://python/proj"
+    # a call edge whose endpoints are not declared callables
+    from codeanalyzer.schema.py_schema import PyCallEdge
+    app.call_graph = [PyCallEdge(src="a.b", dst="os.getcwd", prov=["jedi"], weight=1)]
+    sig_to_id = {}
+    externals = home_external_symbols(app, app.id, sig_to_id)
+    assert "can://python/proj/@external/os/getcwd" in externals
+    assert sig_to_id["os.getcwd"] == "can://python/proj/@external/os/getcwd"

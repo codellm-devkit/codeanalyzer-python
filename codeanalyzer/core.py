@@ -493,25 +493,8 @@ class Codeanalyzer:
 
     @staticmethod
     def _home_external_symbols(app, app_id, sig_to_id):
-        """Home every call-graph endpoint that is not a declared class/callable
-        onto a ``can://…/@external/<module>/<name>`` id (the keystone edge-endpoint
-        id home). Registers each homed id in ``sig_to_id`` so callee backfill and
-        call-graph re-identity map the dotted signature to it, and returns the
-        id-keyed external-symbol map. ``name``/``module`` are derived from the
-        signature (best effort: split on the last dot)."""
-        externals: Dict[str, PyExternalSymbol] = {}
-        for edge in app.call_graph:
-            for sig in (edge.src, edge.dst):
-                if sig in sig_to_id:
-                    continue
-                module, name = sig.rsplit(".", 1) if "." in sig else (None, sig)
-                ext_id = f"{app_id}/@external/{module}/{name}" if module else \
-                    f"{app_id}/@external/{name}"
-                sig_to_id[sig] = ext_id
-                externals[ext_id] = PyExternalSymbol(
-                    id=ext_id, name=name, module=module
-                )
-        return externals
+        from codeanalyzer.pipeline.passes import home_external_symbols
+        return home_external_symbols(app, app_id, sig_to_id)
 
     def analyze(self) -> Analysis:
         """Analyze the project and return the v2 ``Analysis`` envelope.
@@ -737,33 +720,5 @@ class Codeanalyzer:
         symbol_table: Dict[str, PyModule],
         jedi_edges: List[PyCallEdge],
     ) -> List[PyCallEdge]:
-        """Build PyCG-resolved call edges.
-
-        Runs PyCG's iterative name-pointer analysis over the whole project
-        and returns edges with ``prov=["pycg"]``.  Falls back to an
-        empty list and logs a warning on any failure so the caller can
-        continue with Jedi-only edges.
-
-        *jedi_edges* are the level-1 call edges; under the ``jedi`` shard
-        strategy they drive coupling-aware partitioning (see
-        :func:`shard_planner.plan_shards`).
-        """
-        try:
-            pycg = PyCG(
-                self.project_dir,
-                skip_tests=self.skip_tests,
-                shard=self.options.pycg_shard,
-                shard_ceiling=self.options.pycg_shard_ceiling,
-                shard_timeout=self.options.pycg_shard_timeout,
-                shard_strategy=self.options.pycg_shard_strategy,
-                max_iter=self.options.pycg_max_iter,
-                using_ray=self.using_ray,
-            )
-            return pycg.build_call_graph_edges(symbol_table, jedi_edges=jedi_edges)
-        except PyCGExceptions.PyCGImportError as exc:
-            logger.warning(f"PyCG not installed — level 2 edges will be Jedi-only: {exc}")
-            return []
-        except PyCGExceptions.PyCGAnalysisError as exc:
-            logger.warning(f"PyCG analysis failed — level 2 edges will be Jedi-only: {exc}")
-            logger.debug("PyCG full traceback:", exc_info=True)
-            return []
+        from codeanalyzer.pipeline.passes import pycg_call_graph_edges
+        return pycg_call_graph_edges(self.project_dir, symbol_table, jedi_edges, self.options)
