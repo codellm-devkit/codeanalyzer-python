@@ -4,6 +4,15 @@ Runs the CLI on copies of fixtures placed OUTSIDE any git tree (so
 `repository_info` returns None and the output is deterministic), normalizes the
 one volatile field (`analyzer.version`), and compares against committed goldens.
 Regenerate with `REGEN=1 pytest test/test_pipeline_equivalence.py`.
+
+Coverage caveat: the `-a 4` goldens require the optional `python-scalpel`
+dependency. When it is absent those cases `pytest.skip`, so in a scalpel-free
+environment this gate enforces byte-identical output for **L1–L3 only**. L4
+behavior-preservation is instead guaranteed by (a) the interproc pass being a
+verbatim relocation of the old `analyze()` L4 block, and (b) the structural L4
+suites `test_v2_l4.py` / `test_v2_l4_summary.py` / `test_dataflow_sdg.py` plus
+the L4 ordering happy-path `test_pipeline_level4_runs_intraproc_before_interproc`
+in `test_pipeline.py`.
 """
 import json
 import os
@@ -73,6 +82,9 @@ def _run(proj: Path, level: int) -> dict:
 @pytest.mark.parametrize("level", [1, 2, 3, 4])
 def test_pipeline_output_matches_golden(tmp_path, fixture, level):
     if level == 4 and not _scalpel_available():
+        # Optional dep absent -> skip. This means byte-identity here is enforced
+        # for L1-L3 only; L4 is covered by the structural suites noted in the
+        # module docstring.
         pytest.skip("L4 golden requires python-scalpel (optional soft dependency)")
     proj = tmp_path / fixture
     shutil.copytree(FIXTURE_ROOT / fixture, proj)

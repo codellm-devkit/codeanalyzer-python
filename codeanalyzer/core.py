@@ -26,7 +26,6 @@ class Codeanalyzer:
     def __init__(self, options: AnalysisOptions) -> None:
         self.options = options
         self.project_dir = Path(options.input).resolve()
-        self.skip_tests = options.skip_tests
         self.analysis_level = options.analysis_level
         self.rebuild_analysis = options.rebuild_analysis
         self.no_venv = options.no_venv
@@ -35,8 +34,6 @@ class Codeanalyzer:
         ) / ".codeanalyzer"
         self.clear_cache = options.clear_cache
         self.virtualenv: Optional[Path] = None
-        self.using_ray: bool = options.using_ray
-        self.file_name: Optional[Path] = options.file_name
 
     @staticmethod
     def _cmd_exec_helper(
