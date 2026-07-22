@@ -1,7 +1,6 @@
 """The vendored, typed_ast-free scalpel slice: it must import and compute SSA
 with no external scalpel / typed_ast / graphviz, and never pull in typeinfer."""
 import sys
-import importlib
 
 
 def test_vendored_scalpel_imports_and_computes_ssa_typed_ast_free():
@@ -24,3 +23,31 @@ def test_vendored_scalpel_imports_and_computes_ssa_typed_ast_free():
     assert "typed_ast" not in sys.modules
     loaded = [m for m in sys.modules if m.startswith("codeanalyzer.dataflow.scalpel")]
     assert not any("typeinfer" in m for m in loaded), f"typeinfer leaked: {loaded}"
+
+
+import ast
+
+
+def test_make_alias_oracle_defaults_to_scalpel_without_typed_ast():
+    import sys
+    assert "typed_ast" not in sys.modules
+    from codeanalyzer.dataflow.scalpel_oracle import make_alias_oracle, ScalpelAliasOracle
+
+    src = "def f(a):\n    b = a\n    c = b\n    return c\n"
+    func_ast = ast.parse(src).body[0]
+    oracle = make_alias_oracle(pycallable=None, func_ast=func_ast, base_types={})
+    # The whole point: scalpel is the default, not the type-based fallback.
+    assert isinstance(oracle, ScalpelAliasOracle), type(oracle).__name__
+    # It answers queries (copies alias; unrelated locals do not).
+    assert oracle.may_alias("b", "c") is True
+
+
+def test_make_alias_oracle_is_deterministic():
+    import ast as _ast
+    from codeanalyzer.dataflow.scalpel_oracle import make_alias_oracle
+    src = "def f(a):\n    b = a\n    c = b\n    return c\n"
+    fa = _ast.parse(src).body[0]
+    o1 = make_alias_oracle(None, _ast.parse(src).body[0], {})
+    o2 = make_alias_oracle(None, _ast.parse(src).body[0], {})
+    pairs = [("a", "b"), ("b", "c"), ("a", "c"), ("b", "b")]
+    assert [o1.may_alias(x, y) for x, y in pairs] == [o2.may_alias(x, y) for x, y in pairs]
