@@ -23,3 +23,18 @@ def test_context_defaults(tmp_path):
     assert ctx.sig_to_id is None
     assert ctx.infos is None
     assert ctx.ir is None
+
+
+from codeanalyzer.pipeline.symbol_table import build_symbol_table
+
+
+def test_build_symbol_table_free_function(tmp_path):
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "m.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+    opts = AnalysisOptions(
+        input=proj, output=None, format=OutputFormat.JSON,
+        analysis_level=1, skip_tests=True, no_venv=True,
+    )
+    table = build_symbol_table(proj, None, opts, cached_symbol_table={})
+    assert "m.py" in table
