@@ -4,32 +4,17 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional, List
-
-import time
+from typing import Optional, List
 
 from codeanalyzer.utils import logger
 from codeanalyzer.schema import (
     Analysis,
-    PyApplication,
-    PyModule,
     model_dump_json,
     model_validate_json,
 )
-from codeanalyzer.schema.assign_ids import assign_ids
-from codeanalyzer.schema.l1_body import populate_l1_body
-from codeanalyzer.schema.l2_callees import backfill_callees
-from codeanalyzer.schema.call_graph_ids import reidentify_call_graph
-from codeanalyzer.schema.py_schema import PyCallEdge
-from codeanalyzer.semantic_analysis.call_graph import (
-    filter_external_edges,
-    jedi_call_graph_edges,
-    merge_edges,
-    resolve_unresolved_constructors,
-)
-from codeanalyzer.syntactic_analysis.import_resolver import resolve_imports
 from codeanalyzer.options import AnalysisOptions
-from codeanalyzer.provenance import analyzer_info, repository_info
+from codeanalyzer.pipeline import AnalysisContext, AnalysisPipeline
+from codeanalyzer.provenance import analyzer_info
 
 class Codeanalyzer:
     """Core static analysis engine for Python projects.
@@ -489,19 +474,14 @@ class Codeanalyzer:
             logger.info(f"Clearing cache directory: {self.cache_dir}")
             shutil.rmtree(self.cache_dir)
 
-    @staticmethod
-    def _home_external_symbols(app, app_id, sig_to_id):
-        from codeanalyzer.pipeline.passes import home_external_symbols
-        return home_external_symbols(app, app_id, sig_to_id)
-
     def analyze(self) -> Analysis:
         """Analyze the project and return the v2 ``Analysis`` envelope.
 
-        Uses caching to avoid re-analyzing unchanged files.
+        Loads any cache seed, runs the fluent AnalysisPipeline, and persists the
+        result. The per-level work lives in the pipeline passes.
         """
         cache_file = self.cache_dir / "analysis_cache.json"
 
-        # Try to load existing cached analysis
         cached = None
         if not self.rebuild_analysis and cache_file.exists():
             try:
@@ -517,114 +497,25 @@ class Codeanalyzer:
                 logger.info("Analysis cache written by a different analyzer version; rebuilding.")
             cached = None
 
-        # Build symbol table from cached application if available (if no available, the build a new one)
-        symbol_table = self._build_symbol_table(cached.application.symbol_table if cached else {})
+        ctx = AnalysisContext(
+            options=self.options,
+            project_dir=self.project_dir,
+            virtualenv=self.virtualenv,
+            analysis_level=self.analysis_level,
+            app_name=self.options.app_name or self.project_dir.name,
+            cached_symbol_table=cached.application.symbol_table if cached else {},
+        )
 
-        resolve_unresolved_constructors(symbol_table)
-
-        # Level 1: Jedi call graph.
-        t0_jedi = time.perf_counter()
-        jedi_edges = jedi_call_graph_edges(symbol_table)
-        call_graph = list(jedi_edges)
-        logger.info("✅ Jedi: %d edges in %.1fs", len(call_graph), time.perf_counter() - t0_jedi)
-
-        if self.analysis_level >= 2:
-            # Level 2: also add PyCG edges. The Jedi edges double as the
-            # coupling graph that drives coupling-aware PyCG sharding.
-            pycg_edges = self._get_pycg_call_graph(symbol_table, jedi_edges)
-            call_graph = merge_edges(call_graph, pycg_edges)
-
-        call_graph = filter_external_edges(call_graph, symbol_table)
-        # Canonical edge order: backend iteration order (PyCG dicts, Counter
-        # insertion) is not a contract — sort so identical edge SETS always
-        # serialize identically (issue #99 determinism gate), and so the
-        # external-symbol homing below assigns ids in a stable order.
-        call_graph.sort(key=lambda e: (e.src, e.dst))
-
-        # Recreate pyapplication
-        app = (
-            PyApplication.builder()
-            .symbol_table(symbol_table)
-            .call_graph(call_graph)
+        analysis = (
+            AnalysisPipeline(ctx)
+            .with_symbol_table()
+            .with_call_graph()
+            .with_intraproc_dataflow()
+            .with_interproc_dataflow()
             .build()
         )
 
-        # Every run re-resolves import spellings against the analyzed module
-        # set -- pure and cheap; cached modules from older caches default to
-        # resolved_module=None and get stamped here (issue #82).
-        resolve_imports(app, self.project_dir)
-
-        # Single choke point for provenance: every produced app (fresh symbol
-        # table or reused-from-cache) passes through here before being cached
-        # or returned, so repository provenance always reflects *this* checkout
-        # even when the symbol table itself came from the on-disk cache. The
-        # analyzer identity rides the envelope below (keystone home).
-        app.repository = repository_info(self.project_dir)
-
-        app_name = self.options.app_name or self.project_dir.name
-        sig_to_id = assign_ids(app, app_name)
-        # Home call-graph endpoints that are not declared in the symbol table
-        # (imported library / builtin members) onto @external ids once, so the
-        # JSON and Neo4j backends share one authoritative external-symbol set
-        # and every edge endpoint joins the id space (no dangling endpoints).
-        app.external_symbols = self._home_external_symbols(app, app.id, sig_to_id)
-        populate_l1_body(app)
-        if self.analysis_level >= 2:
-            backfill_callees(app, sig_to_id)
-        reidentify_call_graph(app, sig_to_id)
-
-        # L3: intraprocedural dataflow (CFG/CDG/DDG) emitted onto the v2 tree.
-        if self.analysis_level >= 3:
-            from codeanalyzer.dataflow.builder import (
-                build_function_pdgs,
-                emit_l3_body,
-            )
-            from codeanalyzer.dataflow.syntactic import SyntacticOracle
-
-            infos, _func_asts = build_function_pdgs(
-                app,
-                k=self.options.graph_field_depth,
-                oracle_factory=lambda c, fast: SyntacticOracle(),
-            )
-            emit_l3_body(app, infos, sig_to_id, set(self.options.graphs.split(",")))
-
-        # L4: interprocedural dataflow (param vertices + summary + param_in/out)
-        # layered on top of the L3 syntactic overlay (L3 ⊆ L4). Scalpel is the
-        # primary may-alias oracle, with the type-based total fallback.
-        if self.analysis_level >= 4:
-            from codeanalyzer.dataflow.builder import (
-                _base_types,
-                build_program_graphs,
-                emit_ddg_pointsto_delta,
-                emit_l4,
-            )
-            from codeanalyzer.dataflow.scalpel_oracle import make_alias_oracle
-
-            ir = build_program_graphs(
-                app,
-                k=self.options.graph_field_depth,
-                oracle_factory=lambda c, fast: make_alias_oracle(
-                    c, fast, _base_types(c)
-                ),
-            )
-            emit_l4(app, ir, sig_to_id)
-            # Semantic ddg delta: the alias-derived def-use edges the real
-            # oracle adds beyond the L3 syntactic set, tagged prov=["points-to"].
-            # ``infos`` are the syntactic (L3) PDGs from the >=3 block above.
-            emit_ddg_pointsto_delta(app, infos, ir, sig_to_id)
-
-        # Build the v2 envelope, then persist it (the cache stores the full
-        # ``Analysis`` envelope so a reused cache round-trips schema_version).
-        # k_limit is an L3+ envelope key: below the dataflow levels it stays
-        # None and exclude_none drops it from the payload.
-        analysis = Analysis(
-            max_level=self.analysis_level,
-            k_limit=self.options.graph_field_depth if self.analysis_level >= 3 else None,
-            analyzer=analyzer_info(self.analysis_level),
-            application=app,
-        )
         self._save_analysis_cache(analysis, cache_file)
-
         return analysis
 
     @staticmethod
@@ -706,17 +597,3 @@ class Codeanalyzer:
         for py_file in sorted(root.rglob("*.py")):
             sha256.update(py_file.read_bytes())
         return sha256.hexdigest()
-
-    def _build_symbol_table(self, cached_symbol_table=None):
-        from codeanalyzer.pipeline.symbol_table import build_symbol_table
-        return build_symbol_table(
-            self.project_dir, self.virtualenv, self.options, cached_symbol_table or {}
-        )
-
-    def _get_pycg_call_graph(
-        self,
-        symbol_table: Dict[str, PyModule],
-        jedi_edges: List[PyCallEdge],
-    ) -> List[PyCallEdge]:
-        from codeanalyzer.pipeline.passes import pycg_call_graph_edges
-        return pycg_call_graph_edges(self.project_dir, symbol_table, jedi_edges, self.options)

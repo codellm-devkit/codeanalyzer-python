@@ -494,7 +494,7 @@ class PyCG:
             if any(part in self._SKIP_DIRS for part in p.parts):
                 continue
             # Skip test files using exact path-component matching, consistent
-            # with core.py's _build_symbol_table filter.  Substring matching
+            # with pipeline.symbol_table.build_symbol_table filter.  Substring matching
             # (e.g. "/test" in full_path_str) incorrectly excludes files in
             # paths like "test/fixtures/..." that are source files, not tests.
             rel_parts = p.relative_to(self.project_dir).parts

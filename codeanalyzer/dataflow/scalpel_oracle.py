@@ -253,7 +253,8 @@ def make_alias_oracle(pycallable, func_ast, base_types) -> object:
     Returns a :class:`ScalpelAliasOracle` when ``python-scalpel`` is importable
     *and* builds successfully on ``func_ast``; otherwise logs once (INFO) and
     returns a :class:`TypeBasedAliasOracle` over ``base_types``.  Never raises —
-    mirrors how ``core._get_pycg_call_graph`` degrades on a missing/failed PyCG.
+    mirrors how ``pipeline.passes.pycg_call_graph_edges`` degrades on a
+    missing/failed PyCG.
     """
     fallback = TypeBasedAliasOracle(base_types)
     try:
