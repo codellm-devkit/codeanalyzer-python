@@ -3,6 +3,7 @@ from pathlib import Path
 from codeanalyzer.options import AnalysisOptions
 from codeanalyzer.config import OutputFormat
 from codeanalyzer.pipeline import AnalysisContext
+from codeanalyzer.pipeline.symbol_table import build_symbol_table
 
 
 def _opts(tmp_path):
@@ -23,9 +24,6 @@ def test_context_defaults(tmp_path):
     assert ctx.sig_to_id is None
     assert ctx.infos is None
     assert ctx.ir is None
-
-
-from codeanalyzer.pipeline.symbol_table import build_symbol_table
 
 
 def test_build_symbol_table_free_function(tmp_path):

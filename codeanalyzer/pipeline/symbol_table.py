@@ -99,7 +99,8 @@ def build_symbol_table(
         project_dir: Root directory of the project.
         virtualenv: Path to the virtual environment directory, if any.
         options: Analysis configuration options.
-        cached_app: Previously cached PyApplication to reuse unchanged files
+        cached_symbol_table: Previously cached ``Dict[str, PyModule]`` symbol
+            table whose unchanged files are reused.
 
     Returns:
         Dict[str, PyModule]: A dictionary mapping file paths to PyModule objects.

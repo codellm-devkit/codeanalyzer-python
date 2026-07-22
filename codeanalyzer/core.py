@@ -4,7 +4,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional, Union, List
+from typing import Any, Dict, Optional, List
 
 import time
 
@@ -29,10 +29,7 @@ from codeanalyzer.semantic_analysis.call_graph import (
     resolve_unresolved_constructors,
 )
 from codeanalyzer.semantic_analysis.pycg import PyCG, PyCGExceptions
-from codeanalyzer.syntactic_analysis.exceptions import SymbolTableBuilderRayError
 from codeanalyzer.syntactic_analysis.import_resolver import resolve_imports
-from codeanalyzer.syntactic_analysis.symbol_table_builder import SymbolTableBuilder
-from codeanalyzer.utils import ProgressBar
 from codeanalyzer.options import AnalysisOptions
 from codeanalyzer.provenance import analyzer_info, repository_info
 
