@@ -120,6 +120,7 @@ def test_pipeline_gating_skips_dataflow_below_level(tmp_path):
         .build()
     )
     assert isinstance(analysis, Analysis)
+    assert ctx.app is not None and ctx.sig_to_id is not None  # call-graph pass RAN
     assert ctx.infos is None and ctx.ir is None            # gates fired
     assert analysis.max_level == 2
     assert analysis.k_limit is None                         # L3+ only
@@ -128,7 +129,14 @@ def test_pipeline_gating_skips_dataflow_below_level(tmp_path):
 def test_pipeline_with_methods_return_self(tmp_path):
     ctx = _ctx(tmp_path, 1)
     pipe = AnalysisPipeline(ctx)
-    assert pipe.with_symbol_table() is pipe
+    # both the run path (symbol_table/call_graph at L1) and the gated skip path
+    # (intraproc/interproc gated off at L1) return self
+    assert (
+        pipe.with_symbol_table()
+            .with_call_graph()
+            .with_intraproc_dataflow()
+            .with_interproc_dataflow()
+    ) is pipe
 
 
 def test_pipeline_level4_runs_intraproc_before_interproc(tmp_path):
