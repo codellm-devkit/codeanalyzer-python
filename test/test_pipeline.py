@@ -3,7 +3,10 @@ from pathlib import Path
 from codeanalyzer.options import AnalysisOptions
 from codeanalyzer.config import OutputFormat
 from codeanalyzer.pipeline import AnalysisContext
+from codeanalyzer.pipeline.passes import home_external_symbols
 from codeanalyzer.pipeline.symbol_table import build_symbol_table
+from codeanalyzer.schema import PyApplication
+from codeanalyzer.schema.py_schema import PyCallEdge
 
 
 def _opts(tmp_path):
@@ -38,15 +41,10 @@ def test_build_symbol_table_free_function(tmp_path):
     assert "m.py" in table
 
 
-from codeanalyzer.pipeline.passes import home_external_symbols
-from codeanalyzer.schema import PyApplication
-
-
 def test_home_external_symbols_homes_undeclared_endpoints():
     app = PyApplication.builder().symbol_table({}).call_graph([]).build()
     app.id = "can://python/proj"
     # a call edge whose endpoints are not declared callables
-    from codeanalyzer.schema.py_schema import PyCallEdge
     app.call_graph = [PyCallEdge(src="a.b", dst="os.getcwd", prov=["jedi"], weight=1)]
     sig_to_id = {}
     externals = home_external_symbols(app, app.id, sig_to_id)

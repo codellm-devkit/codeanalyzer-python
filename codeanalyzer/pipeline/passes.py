@@ -8,7 +8,9 @@ from codeanalyzer.semantic_analysis.pycg import PyCG, PyCGExceptions
 from codeanalyzer.utils import logger
 
 
-def home_external_symbols(app, app_id, sig_to_id) -> Dict[str, PyExternalSymbol]:
+def home_external_symbols(
+    app: PyApplication, app_id: str, sig_to_id: Dict[str, str]
+) -> Dict[str, PyExternalSymbol]:
     """Home every call-graph endpoint that is not a declared callable onto a
     ``can://…/@external/<module>/<name>`` id. Moved verbatim from
     ``Codeanalyzer._home_external_symbols`` (static method, no ``self``)."""
@@ -25,7 +27,9 @@ def home_external_symbols(app, app_id, sig_to_id) -> Dict[str, PyExternalSymbol]
     return externals
 
 
-def pycg_call_graph_edges(project_dir, symbol_table, jedi_edges, options) -> List[PyCallEdge]:
+def pycg_call_graph_edges(
+    project_dir: Path, symbol_table, jedi_edges, options: AnalysisOptions
+) -> List[PyCallEdge]:
     """Build PyCG-resolved call edges, degrading to Jedi-only on failure. Moved
     from ``Codeanalyzer._get_pycg_call_graph`` (``self.X`` -> ``options.X`` /
     ``project_dir``)."""
