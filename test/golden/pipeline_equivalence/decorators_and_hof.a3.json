@@ -1,0 +1,5709 @@
+{
+  "analyzer": {
+    "config": {
+      "analysis_level": 3
+    },
+    "name": "codeanalyzer-python"
+  },
+  "application": {
+    "call_graph": [
+      {
+        "dst": "can://python/decorators_and_hof/@external/functools/update_wrapper",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/decorators_and_hof/main.py/Timer/__init__(self,func)",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/decorators_and_hof/main.py/double(x)",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/decorators_and_hof/main.py/apply(func,value)",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/decorators_and_hof/main.py/double(x)",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/decorators_and_hof/main.py/compose(f,g)/h(x)",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/decorators_and_hof/main.py/triple(x)",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/decorators_and_hof/main.py/compose(f,g)/h(x)",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/decorators_and_hof/@external/functools/wraps",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/decorators_and_hof/main.py/log_call(func)",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/decorators_and_hof/main.py/Timer",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/decorators_and_hof/main.py/main()",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/decorators_and_hof/main.py/apply(func,value)",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/decorators_and_hof/main.py/main()",
+        "weight": 2
+      },
+      {
+        "dst": "can://python/decorators_and_hof/main.py/compose(f,g)",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/decorators_and_hof/main.py/main()",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/decorators_and_hof/main.py/make_adder(n)",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/decorators_and_hof/main.py/main()",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/decorators_and_hof/main.py/make_multiplier(n)",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/decorators_and_hof/main.py/main()",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/decorators_and_hof/@external/functools/wraps",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/decorators_and_hof/main.py/repeat(n)/decorator(func)",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/decorators_and_hof/@external/builtins.range/__init__",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/decorators_and_hof/main.py/repeat(n)/decorator(func)/wrapper(args,kwargs)",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/decorators_and_hof/@external/builtins/print",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/decorators_and_hof/main.py/say_hello()",
+        "weight": 1
+      }
+    ],
+    "external_symbols": {
+      "can://python/decorators_and_hof/@external/builtins.range/__init__": {
+        "id": "can://python/decorators_and_hof/@external/builtins.range/__init__",
+        "kind": "external",
+        "module": "builtins.range",
+        "name": "__init__"
+      },
+      "can://python/decorators_and_hof/@external/builtins/print": {
+        "id": "can://python/decorators_and_hof/@external/builtins/print",
+        "kind": "external",
+        "module": "builtins",
+        "name": "print"
+      },
+      "can://python/decorators_and_hof/@external/functools/update_wrapper": {
+        "id": "can://python/decorators_and_hof/@external/functools/update_wrapper",
+        "kind": "external",
+        "module": "functools",
+        "name": "update_wrapper"
+      },
+      "can://python/decorators_and_hof/@external/functools/wraps": {
+        "id": "can://python/decorators_and_hof/@external/functools/wraps",
+        "kind": "external",
+        "module": "functools",
+        "name": "wraps"
+      }
+    },
+    "id": "can://python/decorators_and_hof",
+    "kind": "application",
+    "param_in": [],
+    "param_out": [],
+    "symbol_table": {
+      "main.py": {
+        "comments": [
+          {
+            "content": "Decorator and higher-order function patterns.\n\nExercises:\n- Simple function wrapper (functools.wraps)\n- Parameterised decorator factory\n- Class-based decorator (__call__)\n- Higher-order function (function passed as argument)\n- Closure / function factory\n- Decorator stacking\n",
+            "end_column": 3,
+            "end_line": 10,
+            "is_docstring": true,
+            "start_column": 0,
+            "start_line": 1
+          }
+        ],
+        "content_hash": "705388028325c87c86d513288b2b45d6668d0da3fd6370d90515b334c41d969a",
+        "file_size": 3407,
+        "functions": {
+          "apply": {
+            "accessed_symbols": [
+              {
+                "col_offset": 11,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 63,
+                "name": "func",
+                "qualified_name": "main.double",
+                "scope": "local",
+                "type": "double"
+              },
+              {
+                "col_offset": 16,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 63,
+                "name": "value",
+                "qualified_name": "builtins.int",
+                "scope": "local",
+                "type": "int"
+              }
+            ],
+            "body": {
+              "62:4": {
+                "kind": "statement",
+                "span": {
+                  "bytes": [
+                    1788,
+                    1841
+                  ],
+                  "end": [
+                    62,
+                    57
+                  ],
+                  "start": [
+                    62,
+                    4
+                  ]
+                }
+              },
+              "63:11": {
+                "callee": "can://python/decorators_and_hof/main.py/double(x)",
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    1853,
+                    1864
+                  ],
+                  "end": [
+                    63,
+                    22
+                  ],
+                  "start": [
+                    63,
+                    11
+                  ]
+                }
+              },
+              "63:4": {
+                "kind": "return",
+                "span": {
+                  "bytes": [
+                    1846,
+                    1864
+                  ],
+                  "end": [
+                    63,
+                    22
+                  ],
+                  "start": [
+                    63,
+                    4
+                  ]
+                }
+              },
+              "@entry": {
+                "kind": "entry"
+              },
+              "@exit": {
+                "kind": "exit"
+              }
+            },
+            "call_sites": [
+              {
+                "argument_types": [
+                  "int"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Name",
+                    "inferred_type": "int"
+                  }
+                ],
+                "callee_signature": "main.double",
+                "end_column": 22,
+                "end_line": 63,
+                "is_constructor_call": false,
+                "method_name": "func",
+                "return_type": "int",
+                "start_column": 11,
+                "start_line": 63
+              }
+            ],
+            "callables": {},
+            "cdg": [
+              {
+                "dst": "62:4",
+                "src": "@entry"
+              },
+              {
+                "dst": "63:4",
+                "src": "@entry"
+              }
+            ],
+            "cfg": [
+              {
+                "dst": "62:4",
+                "kind": "fallthrough",
+                "src": "@entry"
+              },
+              {
+                "dst": "63:4",
+                "kind": "fallthrough",
+                "src": "62:4"
+              },
+              {
+                "dst": "@exit",
+                "kind": "exception",
+                "src": "63:4"
+              },
+              {
+                "dst": "@exit",
+                "kind": "return",
+                "src": "63:4"
+              }
+            ],
+            "code_start_line": 62,
+            "comments": [
+              {
+                "content": "Call *func* with *value* and return the result.",
+                "end_column": 57,
+                "end_line": 62,
+                "is_docstring": true,
+                "start_column": 4,
+                "start_line": 62
+              }
+            ],
+            "cyclomatic_complexity": 2,
+            "ddg": [
+              {
+                "dst": "63:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "func"
+              },
+              {
+                "dst": "63:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "value"
+              }
+            ],
+            "decorators": [],
+            "end_line": 63,
+            "id": "can://python/decorators_and_hof/main.py/apply(func,value)",
+            "kind": "function",
+            "local_variables": [],
+            "name": "apply",
+            "parameters": [
+              {
+                "end_column": 14,
+                "end_line": 61,
+                "name": "func",
+                "start_column": 10,
+                "start_line": 61,
+                "type": "double"
+              },
+              {
+                "end_column": 21,
+                "end_line": 61,
+                "name": "value",
+                "start_column": 16,
+                "start_line": 61,
+                "type": "int"
+              }
+            ],
+            "signature": "main.apply",
+            "span": {
+              "bytes": [
+                1760,
+                1864
+              ],
+              "end": [
+                63,
+                22
+              ],
+              "start": [
+                61,
+                0
+              ]
+            },
+            "start_line": 61,
+            "summary": [],
+            "types": {}
+          },
+          "compose": {
+            "accessed_symbols": [
+              {
+                "col_offset": 11,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 78,
+                "name": "h",
+                "scope": "local",
+                "type": "h"
+              },
+              {
+                "col_offset": 15,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 77,
+                "name": "f",
+                "qualified_name": "main.triple",
+                "scope": "local",
+                "type": "triple"
+              },
+              {
+                "col_offset": 17,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 77,
+                "name": "g",
+                "qualified_name": "main.double",
+                "scope": "local",
+                "type": "double"
+              },
+              {
+                "col_offset": 19,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 77,
+                "name": "x",
+                "scope": "local"
+              }
+            ],
+            "body": {
+              "75:4": {
+                "kind": "statement",
+                "span": {
+                  "bytes": [
+                    1958,
+                    2001
+                  ],
+                  "end": [
+                    75,
+                    47
+                  ],
+                  "start": [
+                    75,
+                    4
+                  ]
+                }
+              },
+              "76:4": {
+                "kind": "statement",
+                "span": {
+                  "bytes": [
+                    2006,
+                    2038
+                  ],
+                  "end": [
+                    77,
+                    22
+                  ],
+                  "start": [
+                    76,
+                    4
+                  ]
+                }
+              },
+              "78:4": {
+                "kind": "return",
+                "span": {
+                  "bytes": [
+                    2043,
+                    2051
+                  ],
+                  "end": [
+                    78,
+                    12
+                  ],
+                  "start": [
+                    78,
+                    4
+                  ]
+                }
+              },
+              "@entry": {
+                "kind": "entry"
+              },
+              "@exit": {
+                "kind": "exit"
+              }
+            },
+            "call_sites": [],
+            "callables": {
+              "h": {
+                "accessed_symbols": [
+                  {
+                    "col_offset": 15,
+                    "is_builtin": false,
+                    "kind": "function",
+                    "lineno": 77,
+                    "name": "f",
+                    "qualified_name": "main.triple",
+                    "scope": "local",
+                    "type": "triple"
+                  },
+                  {
+                    "col_offset": 17,
+                    "is_builtin": false,
+                    "kind": "function",
+                    "lineno": 77,
+                    "name": "g",
+                    "qualified_name": "main.double",
+                    "scope": "local",
+                    "type": "double"
+                  },
+                  {
+                    "col_offset": 19,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 77,
+                    "name": "x",
+                    "scope": "local"
+                  }
+                ],
+                "body": {
+                  "77:15": {
+                    "callee": "can://python/decorators_and_hof/main.py/triple(x)",
+                    "kind": "call",
+                    "span": {
+                      "bytes": [
+                        2031,
+                        2038
+                      ],
+                      "end": [
+                        77,
+                        22
+                      ],
+                      "start": [
+                        77,
+                        15
+                      ]
+                    }
+                  },
+                  "77:17": {
+                    "callee": "can://python/decorators_and_hof/main.py/double(x)",
+                    "kind": "call",
+                    "span": {
+                      "bytes": [
+                        2033,
+                        2037
+                      ],
+                      "end": [
+                        77,
+                        21
+                      ],
+                      "start": [
+                        77,
+                        17
+                      ]
+                    }
+                  },
+                  "77:8": {
+                    "kind": "return",
+                    "span": {
+                      "bytes": [
+                        2024,
+                        2038
+                      ],
+                      "end": [
+                        77,
+                        22
+                      ],
+                      "start": [
+                        77,
+                        8
+                      ]
+                    }
+                  },
+                  "@entry": {
+                    "kind": "entry"
+                  },
+                  "@exit": {
+                    "kind": "exit"
+                  }
+                },
+                "call_sites": [
+                  {
+                    "argument_types": [
+                      "double"
+                    ],
+                    "arguments": [
+                      {
+                        "ast_kind": "Call",
+                        "inferred_type": "double"
+                      }
+                    ],
+                    "callee_signature": "main.triple",
+                    "end_column": 22,
+                    "end_line": 77,
+                    "is_constructor_call": false,
+                    "method_name": "f",
+                    "return_type": "int",
+                    "start_column": 15,
+                    "start_line": 77
+                  },
+                  {
+                    "argument_types": [
+                      "Name"
+                    ],
+                    "arguments": [
+                      {
+                        "ast_kind": "Name"
+                      }
+                    ],
+                    "callee_signature": "main.double",
+                    "end_column": 21,
+                    "end_line": 77,
+                    "is_constructor_call": false,
+                    "method_name": "g",
+                    "return_type": "int",
+                    "start_column": 17,
+                    "start_line": 77
+                  }
+                ],
+                "callables": {},
+                "cdg": [
+                  {
+                    "dst": "77:8",
+                    "src": "@entry"
+                  }
+                ],
+                "cfg": [
+                  {
+                    "dst": "77:8",
+                    "kind": "fallthrough",
+                    "src": "@entry"
+                  },
+                  {
+                    "dst": "@exit",
+                    "kind": "exception",
+                    "src": "77:8"
+                  },
+                  {
+                    "dst": "@exit",
+                    "kind": "return",
+                    "src": "77:8"
+                  }
+                ],
+                "code_start_line": 77,
+                "comments": [],
+                "cyclomatic_complexity": 2,
+                "ddg": [
+                  {
+                    "dst": "77:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "@entry",
+                    "var": "f"
+                  },
+                  {
+                    "dst": "77:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "@entry",
+                    "var": "g"
+                  },
+                  {
+                    "dst": "77:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "@entry",
+                    "var": "x"
+                  }
+                ],
+                "decorators": [],
+                "end_line": 77,
+                "id": "can://python/decorators_and_hof/main.py/compose(f,g)/h(x)",
+                "kind": "function",
+                "local_variables": [],
+                "name": "h",
+                "parameters": [
+                  {
+                    "end_column": 11,
+                    "end_line": 76,
+                    "name": "x",
+                    "start_column": 10,
+                    "start_line": 76
+                  }
+                ],
+                "signature": "main.compose.h",
+                "span": {
+                  "bytes": [
+                    2006,
+                    2038
+                  ],
+                  "end": [
+                    77,
+                    22
+                  ],
+                  "start": [
+                    76,
+                    4
+                  ]
+                },
+                "start_line": 76,
+                "summary": [],
+                "types": {}
+              }
+            },
+            "cdg": [
+              {
+                "dst": "75:4",
+                "src": "@entry"
+              },
+              {
+                "dst": "76:4",
+                "src": "@entry"
+              },
+              {
+                "dst": "78:4",
+                "src": "76:4"
+              }
+            ],
+            "cfg": [
+              {
+                "dst": "75:4",
+                "kind": "fallthrough",
+                "src": "@entry"
+              },
+              {
+                "dst": "76:4",
+                "kind": "fallthrough",
+                "src": "75:4"
+              },
+              {
+                "dst": "78:4",
+                "kind": "fallthrough",
+                "src": "76:4"
+              },
+              {
+                "dst": "@exit",
+                "kind": "exception",
+                "src": "76:4"
+              },
+              {
+                "dst": "@exit",
+                "kind": "return",
+                "src": "78:4"
+              }
+            ],
+            "code_start_line": 75,
+            "comments": [
+              {
+                "content": "Return a new function h(x) = f(g(x)).",
+                "end_column": 47,
+                "end_line": 75,
+                "is_docstring": true,
+                "start_column": 4,
+                "start_line": 75
+              }
+            ],
+            "cyclomatic_complexity": 3,
+            "ddg": [
+              {
+                "dst": "76:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "f"
+              },
+              {
+                "dst": "76:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "g"
+              },
+              {
+                "dst": "78:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "76:4",
+                "var": "h"
+              }
+            ],
+            "decorators": [],
+            "end_line": 78,
+            "id": "can://python/decorators_and_hof/main.py/compose(f,g)",
+            "kind": "function",
+            "local_variables": [],
+            "name": "compose",
+            "parameters": [
+              {
+                "end_column": 13,
+                "end_line": 74,
+                "name": "f",
+                "start_column": 12,
+                "start_line": 74,
+                "type": "triple"
+              },
+              {
+                "end_column": 16,
+                "end_line": 74,
+                "name": "g",
+                "start_column": 15,
+                "start_line": 74,
+                "type": "double"
+              }
+            ],
+            "signature": "main.compose",
+            "span": {
+              "bytes": [
+                1935,
+                2051
+              ],
+              "end": [
+                78,
+                12
+              ],
+              "start": [
+                74,
+                0
+              ]
+            },
+            "start_line": 74,
+            "summary": [],
+            "types": {}
+          },
+          "compute": {
+            "accessed_symbols": [
+              {
+                "col_offset": 1,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 111,
+                "name": "Timer",
+                "qualified_name": "main.Timer",
+                "scope": "local",
+                "type": "Timer"
+              },
+              {
+                "col_offset": 11,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 113,
+                "name": "x",
+                "scope": "local"
+              },
+              {
+                "col_offset": 15,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 113,
+                "name": "y",
+                "scope": "local"
+              }
+            ],
+            "body": {
+              "113:4": {
+                "kind": "return",
+                "span": {
+                  "bytes": [
+                    2752,
+                    2764
+                  ],
+                  "end": [
+                    113,
+                    16
+                  ],
+                  "start": [
+                    113,
+                    4
+                  ]
+                }
+              },
+              "@entry": {
+                "kind": "entry"
+              },
+              "@exit": {
+                "kind": "exit"
+              }
+            },
+            "call_sites": [],
+            "callables": {},
+            "cdg": [
+              {
+                "dst": "113:4",
+                "src": "@entry"
+              }
+            ],
+            "cfg": [
+              {
+                "dst": "113:4",
+                "kind": "fallthrough",
+                "src": "@entry"
+              },
+              {
+                "dst": "@exit",
+                "kind": "return",
+                "src": "113:4"
+              }
+            ],
+            "code_start_line": 113,
+            "comments": [],
+            "cyclomatic_complexity": 2,
+            "ddg": [
+              {
+                "dst": "113:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "x"
+              },
+              {
+                "dst": "113:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "y"
+              }
+            ],
+            "decorators": [
+              "Timer"
+            ],
+            "end_line": 113,
+            "id": "can://python/decorators_and_hof/main.py/compute(x,y)",
+            "kind": "function",
+            "local_variables": [],
+            "name": "compute",
+            "parameters": [
+              {
+                "end_column": 13,
+                "end_line": 112,
+                "name": "x",
+                "start_column": 12,
+                "start_line": 112
+              },
+              {
+                "end_column": 16,
+                "end_line": 112,
+                "name": "y",
+                "start_column": 15,
+                "start_line": 112
+              }
+            ],
+            "signature": "main.compute",
+            "span": {
+              "bytes": [
+                2729,
+                2764
+              ],
+              "end": [
+                113,
+                16
+              ],
+              "start": [
+                112,
+                0
+              ]
+            },
+            "start_line": 112,
+            "summary": [],
+            "types": {}
+          },
+          "double": {
+            "accessed_symbols": [
+              {
+                "col_offset": 11,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 67,
+                "name": "x",
+                "scope": "local"
+              }
+            ],
+            "body": {
+              "67:4": {
+                "kind": "return",
+                "span": {
+                  "bytes": [
+                    1886,
+                    1898
+                  ],
+                  "end": [
+                    67,
+                    16
+                  ],
+                  "start": [
+                    67,
+                    4
+                  ]
+                }
+              },
+              "@entry": {
+                "kind": "entry"
+              },
+              "@exit": {
+                "kind": "exit"
+              }
+            },
+            "call_sites": [],
+            "callables": {},
+            "cdg": [
+              {
+                "dst": "67:4",
+                "src": "@entry"
+              }
+            ],
+            "cfg": [
+              {
+                "dst": "67:4",
+                "kind": "fallthrough",
+                "src": "@entry"
+              },
+              {
+                "dst": "@exit",
+                "kind": "return",
+                "src": "67:4"
+              }
+            ],
+            "code_start_line": 67,
+            "comments": [],
+            "cyclomatic_complexity": 2,
+            "ddg": [
+              {
+                "dst": "67:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "x"
+              }
+            ],
+            "decorators": [],
+            "end_line": 67,
+            "id": "can://python/decorators_and_hof/main.py/double(x)",
+            "kind": "function",
+            "local_variables": [],
+            "name": "double",
+            "parameters": [
+              {
+                "end_column": 12,
+                "end_line": 66,
+                "name": "x",
+                "start_column": 11,
+                "start_line": 66
+              }
+            ],
+            "signature": "main.double",
+            "span": {
+              "bytes": [
+                1867,
+                1898
+              ],
+              "end": [
+                67,
+                16
+              ],
+              "start": [
+                66,
+                0
+              ]
+            },
+            "start_line": 66,
+            "summary": [],
+            "types": {}
+          },
+          "greet": {
+            "accessed_symbols": [
+              {
+                "col_offset": 1,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 101,
+                "name": "log_call",
+                "qualified_name": "main.log_call",
+                "scope": "local",
+                "type": "log_call"
+              },
+              {
+                "col_offset": 24,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 102,
+                "name": "str",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              },
+              {
+                "col_offset": 16,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 102,
+                "name": "str",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              },
+              {
+                "col_offset": 21,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 103,
+                "name": "name",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              }
+            ],
+            "body": {
+              "103:4": {
+                "kind": "return",
+                "span": {
+                  "bytes": [
+                    2647,
+                    2670
+                  ],
+                  "end": [
+                    103,
+                    27
+                  ],
+                  "start": [
+                    103,
+                    4
+                  ]
+                }
+              },
+              "@entry": {
+                "kind": "entry"
+              },
+              "@exit": {
+                "kind": "exit"
+              }
+            },
+            "call_sites": [],
+            "callables": {},
+            "cdg": [
+              {
+                "dst": "103:4",
+                "src": "@entry"
+              }
+            ],
+            "cfg": [
+              {
+                "dst": "103:4",
+                "kind": "fallthrough",
+                "src": "@entry"
+              },
+              {
+                "dst": "@exit",
+                "kind": "return",
+                "src": "103:4"
+              }
+            ],
+            "code_start_line": 103,
+            "comments": [],
+            "cyclomatic_complexity": 2,
+            "ddg": [
+              {
+                "dst": "103:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "name"
+              }
+            ],
+            "decorators": [
+              "log_call"
+            ],
+            "end_line": 103,
+            "id": "can://python/decorators_and_hof/main.py/greet(name)",
+            "kind": "function",
+            "local_variables": [],
+            "name": "greet",
+            "parameters": [
+              {
+                "end_column": 19,
+                "end_line": 102,
+                "name": "name",
+                "start_column": 10,
+                "start_line": 102,
+                "type": "str"
+              }
+            ],
+            "return_type": "str",
+            "signature": "main.greet",
+            "span": {
+              "bytes": [
+                2614,
+                2670
+              ],
+              "end": [
+                103,
+                27
+              ],
+              "start": [
+                102,
+                0
+              ]
+            },
+            "start_line": 102,
+            "summary": [],
+            "types": {}
+          },
+          "log_call": {
+            "accessed_symbols": [
+              {
+                "col_offset": 11,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 23,
+                "name": "wrapper",
+                "scope": "local",
+                "type": "wrapper"
+              },
+              {
+                "col_offset": 15,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 22,
+                "name": "result",
+                "scope": "local"
+              },
+              {
+                "col_offset": 21,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 19,
+                "name": "func",
+                "scope": "local"
+              },
+              {
+                "col_offset": 17,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 21,
+                "name": "func",
+                "scope": "local"
+              },
+              {
+                "col_offset": 5,
+                "is_builtin": false,
+                "kind": "module",
+                "lineno": 19,
+                "name": "functools",
+                "qualified_name": "functools",
+                "scope": "global",
+                "type": "functools"
+              },
+              {
+                "col_offset": 23,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 21,
+                "name": "args",
+                "qualified_name": "builtins.tuple",
+                "scope": "local",
+                "type": "tuple"
+              },
+              {
+                "col_offset": 31,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 21,
+                "name": "kwargs",
+                "qualified_name": "builtins.dict",
+                "scope": "local",
+                "type": "dict"
+              }
+            ],
+            "body": {
+              "19:5": {
+                "callee": "can://python/decorators_and_hof/@external/functools/wraps",
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    513,
+                    534
+                  ],
+                  "end": [
+                    19,
+                    26
+                  ],
+                  "start": [
+                    19,
+                    5
+                  ]
+                }
+              },
+              "20:4": {
+                "kind": "statement",
+                "span": {
+                  "bytes": [
+                    539,
+                    629
+                  ],
+                  "end": [
+                    22,
+                    21
+                  ],
+                  "start": [
+                    20,
+                    4
+                  ]
+                }
+              },
+              "23:4": {
+                "kind": "return",
+                "span": {
+                  "bytes": [
+                    634,
+                    648
+                  ],
+                  "end": [
+                    23,
+                    18
+                  ],
+                  "start": [
+                    23,
+                    4
+                  ]
+                }
+              },
+              "@entry": {
+                "kind": "entry"
+              },
+              "@exit": {
+                "kind": "exit"
+              }
+            },
+            "call_sites": [
+              {
+                "argument_types": [
+                  "Name"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Name"
+                  }
+                ],
+                "callee_signature": "functools.wraps",
+                "end_column": 26,
+                "end_line": 19,
+                "is_constructor_call": false,
+                "method_name": "wraps",
+                "receiver_expr": "functools",
+                "receiver_type": "functools",
+                "start_column": 5,
+                "start_line": 19
+              }
+            ],
+            "callables": {
+              "wrapper": {
+                "accessed_symbols": [
+                  {
+                    "col_offset": 15,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 22,
+                    "name": "result",
+                    "scope": "local"
+                  },
+                  {
+                    "col_offset": 21,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 19,
+                    "name": "func",
+                    "scope": "local"
+                  },
+                  {
+                    "col_offset": 17,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 21,
+                    "name": "func",
+                    "scope": "local"
+                  },
+                  {
+                    "col_offset": 5,
+                    "is_builtin": false,
+                    "kind": "module",
+                    "lineno": 19,
+                    "name": "functools",
+                    "qualified_name": "functools",
+                    "scope": "global",
+                    "type": "functools"
+                  },
+                  {
+                    "col_offset": 23,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 21,
+                    "name": "args",
+                    "qualified_name": "builtins.tuple",
+                    "scope": "local",
+                    "type": "tuple"
+                  },
+                  {
+                    "col_offset": 31,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 21,
+                    "name": "kwargs",
+                    "qualified_name": "builtins.dict",
+                    "scope": "local",
+                    "type": "dict"
+                  }
+                ],
+                "body": {
+                  "21:17": {
+                    "kind": "call",
+                    "span": {
+                      "bytes": [
+                        586,
+                        607
+                      ],
+                      "end": [
+                        21,
+                        38
+                      ],
+                      "start": [
+                        21,
+                        17
+                      ]
+                    }
+                  },
+                  "21:8": {
+                    "kind": "statement",
+                    "span": {
+                      "bytes": [
+                        577,
+                        607
+                      ],
+                      "end": [
+                        21,
+                        38
+                      ],
+                      "start": [
+                        21,
+                        8
+                      ]
+                    }
+                  },
+                  "22:8": {
+                    "kind": "return",
+                    "span": {
+                      "bytes": [
+                        616,
+                        629
+                      ],
+                      "end": [
+                        22,
+                        21
+                      ],
+                      "start": [
+                        22,
+                        8
+                      ]
+                    }
+                  },
+                  "@entry": {
+                    "kind": "entry"
+                  },
+                  "@exit": {
+                    "kind": "exit"
+                  }
+                },
+                "call_sites": [
+                  {
+                    "argument_types": [
+                      "Starred"
+                    ],
+                    "arguments": [
+                      {
+                        "ast_kind": "Starred"
+                      }
+                    ],
+                    "end_column": 38,
+                    "end_line": 21,
+                    "is_constructor_call": false,
+                    "method_name": "func",
+                    "start_column": 17,
+                    "start_line": 21
+                  }
+                ],
+                "callables": {},
+                "cdg": [
+                  {
+                    "dst": "21:8",
+                    "src": "@entry"
+                  },
+                  {
+                    "dst": "22:8",
+                    "src": "21:8"
+                  }
+                ],
+                "cfg": [
+                  {
+                    "dst": "21:8",
+                    "kind": "fallthrough",
+                    "src": "@entry"
+                  },
+                  {
+                    "dst": "22:8",
+                    "kind": "fallthrough",
+                    "src": "21:8"
+                  },
+                  {
+                    "dst": "@exit",
+                    "kind": "exception",
+                    "src": "21:8"
+                  },
+                  {
+                    "dst": "@exit",
+                    "kind": "return",
+                    "src": "22:8"
+                  }
+                ],
+                "code_start_line": 21,
+                "comments": [],
+                "cyclomatic_complexity": 2,
+                "ddg": [
+                  {
+                    "dst": "21:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "@entry",
+                    "var": "args"
+                  },
+                  {
+                    "dst": "21:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "@entry",
+                    "var": "func"
+                  },
+                  {
+                    "dst": "21:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "@entry",
+                    "var": "kwargs"
+                  },
+                  {
+                    "dst": "22:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "21:8",
+                    "var": "result"
+                  }
+                ],
+                "decorators": [
+                  "functools.wraps(func)"
+                ],
+                "end_line": 22,
+                "id": "can://python/decorators_and_hof/main.py/log_call(func)/wrapper(args,kwargs)",
+                "kind": "function",
+                "local_variables": [
+                  {
+                    "end_column": 14,
+                    "end_line": 21,
+                    "initializer": "func(*args, **kwargs)",
+                    "name": "result",
+                    "scope": "function",
+                    "start_column": 8,
+                    "start_line": 21
+                  }
+                ],
+                "name": "wrapper",
+                "parameters": [
+                  {
+                    "end_column": 21,
+                    "end_line": 20,
+                    "name": "args",
+                    "start_column": 17,
+                    "start_line": 20,
+                    "type": "tuple"
+                  },
+                  {
+                    "end_column": 31,
+                    "end_line": 20,
+                    "name": "kwargs",
+                    "start_column": 25,
+                    "start_line": 20,
+                    "type": "dict"
+                  }
+                ],
+                "signature": "main.log_call.wrapper",
+                "span": {
+                  "bytes": [
+                    539,
+                    629
+                  ],
+                  "end": [
+                    22,
+                    21
+                  ],
+                  "start": [
+                    20,
+                    4
+                  ]
+                },
+                "start_line": 20,
+                "summary": [],
+                "types": {}
+              }
+            },
+            "cdg": [
+              {
+                "dst": "20:4",
+                "src": "@entry"
+              },
+              {
+                "dst": "23:4",
+                "src": "20:4"
+              }
+            ],
+            "cfg": [
+              {
+                "dst": "20:4",
+                "kind": "fallthrough",
+                "src": "@entry"
+              },
+              {
+                "dst": "23:4",
+                "kind": "fallthrough",
+                "src": "20:4"
+              },
+              {
+                "dst": "@exit",
+                "kind": "exception",
+                "src": "20:4"
+              },
+              {
+                "dst": "@exit",
+                "kind": "return",
+                "src": "23:4"
+              }
+            ],
+            "code_start_line": 20,
+            "comments": [],
+            "cyclomatic_complexity": 3,
+            "ddg": [
+              {
+                "dst": "20:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "func"
+              },
+              {
+                "dst": "20:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "main::functools.wraps"
+              },
+              {
+                "dst": "23:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "20:4",
+                "var": "wrapper"
+              }
+            ],
+            "decorators": [],
+            "end_line": 23,
+            "id": "can://python/decorators_and_hof/main.py/log_call(func)",
+            "kind": "function",
+            "local_variables": [
+              {
+                "end_column": 14,
+                "end_line": 21,
+                "initializer": "func(*args, **kwargs)",
+                "name": "result",
+                "scope": "function",
+                "start_column": 8,
+                "start_line": 21
+              }
+            ],
+            "name": "log_call",
+            "parameters": [
+              {
+                "end_column": 17,
+                "end_line": 18,
+                "name": "func",
+                "start_column": 13,
+                "start_line": 18
+              }
+            ],
+            "signature": "main.log_call",
+            "span": {
+              "bytes": [
+                488,
+                648
+              ],
+              "end": [
+                23,
+                18
+              ],
+              "start": [
+                18,
+                0
+              ]
+            },
+            "start_line": 18,
+            "summary": [],
+            "types": {}
+          },
+          "main": {
+            "accessed_symbols": [
+              {
+                "col_offset": 9,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 127,
+                "name": "apply",
+                "qualified_name": "main.apply",
+                "scope": "local",
+                "type": "apply"
+              },
+              {
+                "col_offset": 15,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 127,
+                "name": "double",
+                "qualified_name": "main.double",
+                "scope": "local",
+                "type": "double"
+              },
+              {
+                "col_offset": 9,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 128,
+                "name": "apply",
+                "qualified_name": "main.apply",
+                "scope": "local",
+                "type": "apply"
+              },
+              {
+                "col_offset": 15,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 128,
+                "name": "triple",
+                "qualified_name": "main.triple",
+                "scope": "local",
+                "type": "triple"
+              },
+              {
+                "col_offset": 25,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 130,
+                "name": "compose",
+                "qualified_name": "main.compose",
+                "scope": "local",
+                "type": "compose"
+              },
+              {
+                "col_offset": 33,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 130,
+                "name": "triple",
+                "qualified_name": "main.triple",
+                "scope": "local",
+                "type": "triple"
+              },
+              {
+                "col_offset": 41,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 130,
+                "name": "double",
+                "qualified_name": "main.double",
+                "scope": "local",
+                "type": "double"
+              },
+              {
+                "col_offset": 9,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 131,
+                "name": "double_then_triple",
+                "scope": "local",
+                "type": "h"
+              },
+              {
+                "col_offset": 11,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 133,
+                "name": "make_adder",
+                "qualified_name": "main.make_adder",
+                "scope": "local",
+                "type": "make_adder"
+              },
+              {
+                "col_offset": 11,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 134,
+                "name": "make_multiplier",
+                "qualified_name": "main.make_multiplier",
+                "scope": "local",
+                "type": "make_multiplier"
+              },
+              {
+                "col_offset": 9,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 135,
+                "name": "add5",
+                "scope": "local",
+                "type": "adder"
+              },
+              {
+                "col_offset": 9,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 136,
+                "name": "mul3",
+                "scope": "local",
+                "type": "multiplier"
+              },
+              {
+                "col_offset": 9,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 138,
+                "name": "greet",
+                "scope": "local",
+                "type": "greet"
+              },
+              {
+                "col_offset": 4,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 139,
+                "name": "say_hello",
+                "scope": "local",
+                "type": "say_hello"
+              },
+              {
+                "col_offset": 9,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 140,
+                "name": "compute",
+                "qualified_name": "main.Timer",
+                "scope": "local",
+                "type": "Timer"
+              },
+              {
+                "col_offset": 9,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 141,
+                "name": "stacked",
+                "scope": "local",
+                "type": "stacked"
+              },
+              {
+                "col_offset": 11,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 143,
+                "name": "r1",
+                "qualified_name": "builtins.int",
+                "scope": "local",
+                "type": "int"
+              },
+              {
+                "col_offset": 15,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 143,
+                "name": "r2",
+                "qualified_name": "builtins.int",
+                "scope": "local",
+                "type": "int"
+              },
+              {
+                "col_offset": 19,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 143,
+                "name": "r3",
+                "qualified_name": "builtins.int",
+                "scope": "local",
+                "type": "int"
+              },
+              {
+                "col_offset": 23,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 143,
+                "name": "r4",
+                "qualified_name": "builtins.int",
+                "scope": "local",
+                "type": "int"
+              },
+              {
+                "col_offset": 27,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 143,
+                "name": "r5",
+                "qualified_name": "builtins.int",
+                "scope": "local",
+                "type": "int"
+              },
+              {
+                "col_offset": 31,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 143,
+                "name": "r6",
+                "qualified_name": "builtins.str",
+                "scope": "local",
+                "type": "str"
+              },
+              {
+                "col_offset": 35,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 143,
+                "name": "r7",
+                "qualified_name": "builtins.int",
+                "scope": "local",
+                "type": "int"
+              },
+              {
+                "col_offset": 39,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 143,
+                "name": "r8",
+                "qualified_name": "builtins.int",
+                "scope": "local",
+                "type": "int"
+              }
+            ],
+            "body": {
+              "127:4": {
+                "kind": "statement",
+                "span": {
+                  "bytes": [
+                    3017,
+                    3039
+                  ],
+                  "end": [
+                    127,
+                    26
+                  ],
+                  "start": [
+                    127,
+                    4
+                  ]
+                }
+              },
+              "127:9": {
+                "callee": "can://python/decorators_and_hof/main.py/apply(func,value)",
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    3022,
+                    3039
+                  ],
+                  "end": [
+                    127,
+                    26
+                  ],
+                  "start": [
+                    127,
+                    9
+                  ]
+                }
+              },
+              "128:4": {
+                "kind": "statement",
+                "span": {
+                  "bytes": [
+                    3044,
+                    3066
+                  ],
+                  "end": [
+                    128,
+                    26
+                  ],
+                  "start": [
+                    128,
+                    4
+                  ]
+                }
+              },
+              "128:9": {
+                "callee": "can://python/decorators_and_hof/main.py/apply(func,value)",
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    3049,
+                    3066
+                  ],
+                  "end": [
+                    128,
+                    26
+                  ],
+                  "start": [
+                    128,
+                    9
+                  ]
+                }
+              },
+              "130:25": {
+                "callee": "can://python/decorators_and_hof/main.py/compose(f,g)",
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    3093,
+                    3116
+                  ],
+                  "end": [
+                    130,
+                    48
+                  ],
+                  "start": [
+                    130,
+                    25
+                  ]
+                }
+              },
+              "130:4": {
+                "kind": "statement",
+                "span": {
+                  "bytes": [
+                    3072,
+                    3116
+                  ],
+                  "end": [
+                    130,
+                    48
+                  ],
+                  "start": [
+                    130,
+                    4
+                  ]
+                }
+              },
+              "131:4": {
+                "kind": "statement",
+                "span": {
+                  "bytes": [
+                    3121,
+                    3147
+                  ],
+                  "end": [
+                    131,
+                    30
+                  ],
+                  "start": [
+                    131,
+                    4
+                  ]
+                }
+              },
+              "131:9": {
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    3126,
+                    3147
+                  ],
+                  "end": [
+                    131,
+                    30
+                  ],
+                  "start": [
+                    131,
+                    9
+                  ]
+                }
+              },
+              "133:11": {
+                "callee": "can://python/decorators_and_hof/main.py/make_adder(n)",
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    3160,
+                    3173
+                  ],
+                  "end": [
+                    133,
+                    24
+                  ],
+                  "start": [
+                    133,
+                    11
+                  ]
+                }
+              },
+              "133:4": {
+                "kind": "statement",
+                "span": {
+                  "bytes": [
+                    3153,
+                    3173
+                  ],
+                  "end": [
+                    133,
+                    24
+                  ],
+                  "start": [
+                    133,
+                    4
+                  ]
+                }
+              },
+              "134:11": {
+                "callee": "can://python/decorators_and_hof/main.py/make_multiplier(n)",
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    3185,
+                    3203
+                  ],
+                  "end": [
+                    134,
+                    29
+                  ],
+                  "start": [
+                    134,
+                    11
+                  ]
+                }
+              },
+              "134:4": {
+                "kind": "statement",
+                "span": {
+                  "bytes": [
+                    3178,
+                    3203
+                  ],
+                  "end": [
+                    134,
+                    29
+                  ],
+                  "start": [
+                    134,
+                    4
+                  ]
+                }
+              },
+              "135:4": {
+                "kind": "statement",
+                "span": {
+                  "bytes": [
+                    3208,
+                    3221
+                  ],
+                  "end": [
+                    135,
+                    17
+                  ],
+                  "start": [
+                    135,
+                    4
+                  ]
+                }
+              },
+              "135:9": {
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    3213,
+                    3221
+                  ],
+                  "end": [
+                    135,
+                    17
+                  ],
+                  "start": [
+                    135,
+                    9
+                  ]
+                }
+              },
+              "136:4": {
+                "kind": "statement",
+                "span": {
+                  "bytes": [
+                    3226,
+                    3239
+                  ],
+                  "end": [
+                    136,
+                    17
+                  ],
+                  "start": [
+                    136,
+                    4
+                  ]
+                }
+              },
+              "136:9": {
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    3231,
+                    3239
+                  ],
+                  "end": [
+                    136,
+                    17
+                  ],
+                  "start": [
+                    136,
+                    9
+                  ]
+                }
+              },
+              "138:4": {
+                "kind": "statement",
+                "span": {
+                  "bytes": [
+                    3245,
+                    3264
+                  ],
+                  "end": [
+                    138,
+                    23
+                  ],
+                  "start": [
+                    138,
+                    4
+                  ]
+                }
+              },
+              "138:9": {
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    3250,
+                    3264
+                  ],
+                  "end": [
+                    138,
+                    23
+                  ],
+                  "start": [
+                    138,
+                    9
+                  ]
+                }
+              },
+              "139:4": {
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    3269,
+                    3280
+                  ],
+                  "end": [
+                    139,
+                    15
+                  ],
+                  "start": [
+                    139,
+                    4
+                  ]
+                }
+              },
+              "140:4": {
+                "kind": "statement",
+                "span": {
+                  "bytes": [
+                    3285,
+                    3303
+                  ],
+                  "end": [
+                    140,
+                    22
+                  ],
+                  "start": [
+                    140,
+                    4
+                  ]
+                }
+              },
+              "140:9": {
+                "callee": "can://python/decorators_and_hof/main.py/Timer",
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    3290,
+                    3303
+                  ],
+                  "end": [
+                    140,
+                    22
+                  ],
+                  "start": [
+                    140,
+                    9
+                  ]
+                }
+              },
+              "141:4": {
+                "kind": "statement",
+                "span": {
+                  "bytes": [
+                    3308,
+                    3323
+                  ],
+                  "end": [
+                    141,
+                    19
+                  ],
+                  "start": [
+                    141,
+                    4
+                  ]
+                }
+              },
+              "141:9": {
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    3313,
+                    3323
+                  ],
+                  "end": [
+                    141,
+                    19
+                  ],
+                  "start": [
+                    141,
+                    9
+                  ]
+                }
+              },
+              "143:4": {
+                "kind": "return",
+                "span": {
+                  "bytes": [
+                    3329,
+                    3366
+                  ],
+                  "end": [
+                    143,
+                    41
+                  ],
+                  "start": [
+                    143,
+                    4
+                  ]
+                }
+              },
+              "@entry": {
+                "kind": "entry"
+              },
+              "@exit": {
+                "kind": "exit"
+              }
+            },
+            "call_sites": [
+              {
+                "argument_types": [
+                  "double",
+                  "int"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Name",
+                    "inferred_type": "double"
+                  },
+                  {
+                    "ast_kind": "Constant",
+                    "inferred_type": "int"
+                  }
+                ],
+                "callee_signature": "main.apply",
+                "end_column": 26,
+                "end_line": 127,
+                "is_constructor_call": false,
+                "method_name": "apply",
+                "start_column": 9,
+                "start_line": 127
+              },
+              {
+                "argument_types": [
+                  "triple",
+                  "int"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Name",
+                    "inferred_type": "triple"
+                  },
+                  {
+                    "ast_kind": "Constant",
+                    "inferred_type": "int"
+                  }
+                ],
+                "callee_signature": "main.apply",
+                "end_column": 26,
+                "end_line": 128,
+                "is_constructor_call": false,
+                "method_name": "apply",
+                "start_column": 9,
+                "start_line": 128
+              },
+              {
+                "argument_types": [
+                  "triple",
+                  "double"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Name",
+                    "inferred_type": "triple"
+                  },
+                  {
+                    "ast_kind": "Name",
+                    "inferred_type": "double"
+                  }
+                ],
+                "callee_signature": "main.compose",
+                "end_column": 48,
+                "end_line": 130,
+                "is_constructor_call": false,
+                "method_name": "compose",
+                "return_type": "h",
+                "start_column": 25,
+                "start_line": 130
+              },
+              {
+                "argument_types": [
+                  "int"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Constant",
+                    "inferred_type": "int"
+                  }
+                ],
+                "end_column": 30,
+                "end_line": 131,
+                "is_constructor_call": false,
+                "method_name": "double_then_triple",
+                "return_type": "int",
+                "start_column": 9,
+                "start_line": 131
+              },
+              {
+                "argument_types": [
+                  "int"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Constant",
+                    "inferred_type": "int"
+                  }
+                ],
+                "callee_signature": "main.make_adder",
+                "end_column": 24,
+                "end_line": 133,
+                "is_constructor_call": false,
+                "method_name": "make_adder",
+                "return_type": "adder",
+                "start_column": 11,
+                "start_line": 133
+              },
+              {
+                "argument_types": [
+                  "int"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Constant",
+                    "inferred_type": "int"
+                  }
+                ],
+                "callee_signature": "main.make_multiplier",
+                "end_column": 29,
+                "end_line": 134,
+                "is_constructor_call": false,
+                "method_name": "make_multiplier",
+                "return_type": "multiplier",
+                "start_column": 11,
+                "start_line": 134
+              },
+              {
+                "argument_types": [
+                  "int"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Constant",
+                    "inferred_type": "int"
+                  }
+                ],
+                "end_column": 17,
+                "end_line": 135,
+                "is_constructor_call": false,
+                "method_name": "add5",
+                "return_type": "int",
+                "start_column": 9,
+                "start_line": 135
+              },
+              {
+                "argument_types": [
+                  "int"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Constant",
+                    "inferred_type": "int"
+                  }
+                ],
+                "end_column": 17,
+                "end_line": 136,
+                "is_constructor_call": false,
+                "method_name": "mul3",
+                "return_type": "int",
+                "start_column": 9,
+                "start_line": 136
+              },
+              {
+                "argument_types": [
+                  "str"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Constant",
+                    "inferred_type": "str"
+                  }
+                ],
+                "end_column": 23,
+                "end_line": 138,
+                "is_constructor_call": false,
+                "method_name": "greet",
+                "return_type": "str",
+                "start_column": 9,
+                "start_line": 138
+              },
+              {
+                "argument_types": [],
+                "arguments": [],
+                "end_column": 15,
+                "end_line": 139,
+                "is_constructor_call": false,
+                "method_name": "say_hello",
+                "start_column": 4,
+                "start_line": 139
+              },
+              {
+                "argument_types": [
+                  "int",
+                  "int"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Constant",
+                    "inferred_type": "int"
+                  },
+                  {
+                    "ast_kind": "Constant",
+                    "inferred_type": "int"
+                  }
+                ],
+                "callee_signature": "main.Timer",
+                "end_column": 22,
+                "end_line": 140,
+                "is_constructor_call": false,
+                "method_name": "compute",
+                "start_column": 9,
+                "start_line": 140
+              },
+              {
+                "argument_types": [
+                  "int"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Constant",
+                    "inferred_type": "int"
+                  }
+                ],
+                "end_column": 19,
+                "end_line": 141,
+                "is_constructor_call": false,
+                "method_name": "stacked",
+                "return_type": "int",
+                "start_column": 9,
+                "start_line": 141
+              }
+            ],
+            "callables": {},
+            "cdg": [
+              {
+                "dst": "127:4",
+                "src": "@entry"
+              },
+              {
+                "dst": "128:4",
+                "src": "127:4"
+              },
+              {
+                "dst": "130:4",
+                "src": "128:4"
+              },
+              {
+                "dst": "131:4",
+                "src": "130:4"
+              },
+              {
+                "dst": "133:4",
+                "src": "131:4"
+              },
+              {
+                "dst": "134:4",
+                "src": "133:4"
+              },
+              {
+                "dst": "135:4",
+                "src": "134:4"
+              },
+              {
+                "dst": "136:4",
+                "src": "135:4"
+              },
+              {
+                "dst": "138:4",
+                "src": "136:4"
+              },
+              {
+                "dst": "139:4",
+                "src": "138:4"
+              },
+              {
+                "dst": "140:4",
+                "src": "139:4"
+              },
+              {
+                "dst": "141:4",
+                "src": "140:4"
+              },
+              {
+                "dst": "143:4",
+                "src": "141:4"
+              }
+            ],
+            "cfg": [
+              {
+                "dst": "127:4",
+                "kind": "fallthrough",
+                "src": "@entry"
+              },
+              {
+                "dst": "128:4",
+                "kind": "fallthrough",
+                "src": "127:4"
+              },
+              {
+                "dst": "@exit",
+                "kind": "exception",
+                "src": "127:4"
+              },
+              {
+                "dst": "130:4",
+                "kind": "fallthrough",
+                "src": "128:4"
+              },
+              {
+                "dst": "@exit",
+                "kind": "exception",
+                "src": "128:4"
+              },
+              {
+                "dst": "131:4",
+                "kind": "fallthrough",
+                "src": "130:4"
+              },
+              {
+                "dst": "@exit",
+                "kind": "exception",
+                "src": "130:4"
+              },
+              {
+                "dst": "133:4",
+                "kind": "fallthrough",
+                "src": "131:4"
+              },
+              {
+                "dst": "@exit",
+                "kind": "exception",
+                "src": "131:4"
+              },
+              {
+                "dst": "134:4",
+                "kind": "fallthrough",
+                "src": "133:4"
+              },
+              {
+                "dst": "@exit",
+                "kind": "exception",
+                "src": "133:4"
+              },
+              {
+                "dst": "135:4",
+                "kind": "fallthrough",
+                "src": "134:4"
+              },
+              {
+                "dst": "@exit",
+                "kind": "exception",
+                "src": "134:4"
+              },
+              {
+                "dst": "136:4",
+                "kind": "fallthrough",
+                "src": "135:4"
+              },
+              {
+                "dst": "@exit",
+                "kind": "exception",
+                "src": "135:4"
+              },
+              {
+                "dst": "138:4",
+                "kind": "fallthrough",
+                "src": "136:4"
+              },
+              {
+                "dst": "@exit",
+                "kind": "exception",
+                "src": "136:4"
+              },
+              {
+                "dst": "139:4",
+                "kind": "fallthrough",
+                "src": "138:4"
+              },
+              {
+                "dst": "@exit",
+                "kind": "exception",
+                "src": "138:4"
+              },
+              {
+                "dst": "140:4",
+                "kind": "fallthrough",
+                "src": "139:4"
+              },
+              {
+                "dst": "@exit",
+                "kind": "exception",
+                "src": "139:4"
+              },
+              {
+                "dst": "141:4",
+                "kind": "fallthrough",
+                "src": "140:4"
+              },
+              {
+                "dst": "@exit",
+                "kind": "exception",
+                "src": "140:4"
+              },
+              {
+                "dst": "143:4",
+                "kind": "fallthrough",
+                "src": "141:4"
+              },
+              {
+                "dst": "@exit",
+                "kind": "exception",
+                "src": "141:4"
+              },
+              {
+                "dst": "@exit",
+                "kind": "return",
+                "src": "143:4"
+              }
+            ],
+            "code_start_line": 127,
+            "comments": [],
+            "cyclomatic_complexity": 2,
+            "ddg": [
+              {
+                "dst": "127:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "main::apply"
+              },
+              {
+                "dst": "127:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "main::double"
+              },
+              {
+                "dst": "128:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "main::apply"
+              },
+              {
+                "dst": "128:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "main::triple"
+              },
+              {
+                "dst": "130:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "main::compose"
+              },
+              {
+                "dst": "130:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "main::double"
+              },
+              {
+                "dst": "130:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "main::triple"
+              },
+              {
+                "dst": "133:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "main::make_adder"
+              },
+              {
+                "dst": "134:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "main::make_multiplier"
+              },
+              {
+                "dst": "138:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "main::greet"
+              },
+              {
+                "dst": "139:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "main::say_hello"
+              },
+              {
+                "dst": "140:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "main::compute"
+              },
+              {
+                "dst": "141:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "main::stacked"
+              },
+              {
+                "dst": "130:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "127:4",
+                "var": "main::double"
+              },
+              {
+                "dst": "143:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "127:4",
+                "var": "r1"
+              },
+              {
+                "dst": "130:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "128:4",
+                "var": "main::triple"
+              },
+              {
+                "dst": "143:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "128:4",
+                "var": "r2"
+              },
+              {
+                "dst": "131:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "130:4",
+                "var": "double_then_triple"
+              },
+              {
+                "dst": "143:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "131:4",
+                "var": "r3"
+              },
+              {
+                "dst": "135:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "133:4",
+                "var": "add5"
+              },
+              {
+                "dst": "136:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "134:4",
+                "var": "mul3"
+              },
+              {
+                "dst": "143:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "135:4",
+                "var": "r4"
+              },
+              {
+                "dst": "143:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "136:4",
+                "var": "r5"
+              },
+              {
+                "dst": "143:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "138:4",
+                "var": "r6"
+              },
+              {
+                "dst": "143:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "140:4",
+                "var": "r7"
+              },
+              {
+                "dst": "143:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "141:4",
+                "var": "r8"
+              }
+            ],
+            "decorators": [],
+            "end_line": 143,
+            "id": "can://python/decorators_and_hof/main.py/main()",
+            "kind": "function",
+            "local_variables": [
+              {
+                "end_column": 6,
+                "end_line": 127,
+                "initializer": "apply(double, 10)",
+                "name": "r1",
+                "scope": "function",
+                "start_column": 4,
+                "start_line": 127,
+                "type": "int"
+              },
+              {
+                "end_column": 6,
+                "end_line": 128,
+                "initializer": "apply(triple, 10)",
+                "name": "r2",
+                "scope": "function",
+                "start_column": 4,
+                "start_line": 128,
+                "type": "int"
+              },
+              {
+                "end_column": 22,
+                "end_line": 130,
+                "initializer": "compose(triple, double)",
+                "name": "double_then_triple",
+                "scope": "function",
+                "start_column": 4,
+                "start_line": 130,
+                "type": "h"
+              },
+              {
+                "end_column": 6,
+                "end_line": 131,
+                "initializer": "double_then_triple(5)",
+                "name": "r3",
+                "scope": "function",
+                "start_column": 4,
+                "start_line": 131,
+                "type": "int"
+              },
+              {
+                "end_column": 8,
+                "end_line": 133,
+                "initializer": "make_adder(5)",
+                "name": "add5",
+                "scope": "function",
+                "start_column": 4,
+                "start_line": 133,
+                "type": "adder"
+              },
+              {
+                "end_column": 8,
+                "end_line": 134,
+                "initializer": "make_multiplier(3)",
+                "name": "mul3",
+                "scope": "function",
+                "start_column": 4,
+                "start_line": 134,
+                "type": "multiplier"
+              },
+              {
+                "end_column": 6,
+                "end_line": 135,
+                "initializer": "add5(10)",
+                "name": "r4",
+                "scope": "function",
+                "start_column": 4,
+                "start_line": 135,
+                "type": "int"
+              },
+              {
+                "end_column": 6,
+                "end_line": 136,
+                "initializer": "mul3(10)",
+                "name": "r5",
+                "scope": "function",
+                "start_column": 4,
+                "start_line": 136,
+                "type": "int"
+              },
+              {
+                "end_column": 6,
+                "end_line": 138,
+                "initializer": "greet('world')",
+                "name": "r6",
+                "scope": "function",
+                "start_column": 4,
+                "start_line": 138,
+                "type": "str"
+              },
+              {
+                "end_column": 6,
+                "end_line": 140,
+                "initializer": "compute(2, 3)",
+                "name": "r7",
+                "scope": "function",
+                "start_column": 4,
+                "start_line": 140,
+                "type": "int"
+              },
+              {
+                "end_column": 6,
+                "end_line": 141,
+                "initializer": "stacked(7)",
+                "name": "r8",
+                "scope": "function",
+                "start_column": 4,
+                "start_line": 141,
+                "type": "int"
+              }
+            ],
+            "name": "main",
+            "parameters": [],
+            "signature": "main.main",
+            "span": {
+              "bytes": [
+                3001,
+                3366
+              ],
+              "end": [
+                143,
+                41
+              ],
+              "start": [
+                126,
+                0
+              ]
+            },
+            "start_line": 126,
+            "summary": [],
+            "types": {}
+          },
+          "make_adder": {
+            "accessed_symbols": [
+              {
+                "col_offset": 11,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 88,
+                "name": "adder",
+                "scope": "local",
+                "type": "adder"
+              },
+              {
+                "col_offset": 18,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 85,
+                "name": "int",
+                "qualified_name": "builtins.int",
+                "scope": "local",
+                "type": "int"
+              },
+              {
+                "col_offset": 15,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 87,
+                "name": "x",
+                "scope": "local"
+              },
+              {
+                "col_offset": 19,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 87,
+                "name": "n",
+                "qualified_name": "builtins.int",
+                "scope": "local",
+                "type": "int"
+              }
+            ],
+            "body": {
+              "86:4": {
+                "kind": "statement",
+                "span": {
+                  "bytes": [
+                    2271,
+                    2305
+                  ],
+                  "end": [
+                    87,
+                    20
+                  ],
+                  "start": [
+                    86,
+                    4
+                  ]
+                }
+              },
+              "88:4": {
+                "kind": "return",
+                "span": {
+                  "bytes": [
+                    2310,
+                    2322
+                  ],
+                  "end": [
+                    88,
+                    16
+                  ],
+                  "start": [
+                    88,
+                    4
+                  ]
+                }
+              },
+              "@entry": {
+                "kind": "entry"
+              },
+              "@exit": {
+                "kind": "exit"
+              }
+            },
+            "call_sites": [],
+            "callables": {
+              "adder": {
+                "accessed_symbols": [
+                  {
+                    "col_offset": 15,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 87,
+                    "name": "x",
+                    "scope": "local"
+                  },
+                  {
+                    "col_offset": 19,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 87,
+                    "name": "n",
+                    "qualified_name": "builtins.int",
+                    "scope": "local",
+                    "type": "int"
+                  }
+                ],
+                "body": {
+                  "87:8": {
+                    "kind": "return",
+                    "span": {
+                      "bytes": [
+                        2293,
+                        2305
+                      ],
+                      "end": [
+                        87,
+                        20
+                      ],
+                      "start": [
+                        87,
+                        8
+                      ]
+                    }
+                  },
+                  "@entry": {
+                    "kind": "entry"
+                  },
+                  "@exit": {
+                    "kind": "exit"
+                  }
+                },
+                "call_sites": [],
+                "callables": {},
+                "cdg": [
+                  {
+                    "dst": "87:8",
+                    "src": "@entry"
+                  }
+                ],
+                "cfg": [
+                  {
+                    "dst": "87:8",
+                    "kind": "fallthrough",
+                    "src": "@entry"
+                  },
+                  {
+                    "dst": "@exit",
+                    "kind": "return",
+                    "src": "87:8"
+                  }
+                ],
+                "code_start_line": 87,
+                "comments": [],
+                "cyclomatic_complexity": 2,
+                "ddg": [
+                  {
+                    "dst": "87:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "@entry",
+                    "var": "n"
+                  },
+                  {
+                    "dst": "87:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "@entry",
+                    "var": "x"
+                  }
+                ],
+                "decorators": [],
+                "end_line": 87,
+                "id": "can://python/decorators_and_hof/main.py/make_adder(n)/adder(x)",
+                "kind": "function",
+                "local_variables": [],
+                "name": "adder",
+                "parameters": [
+                  {
+                    "end_column": 15,
+                    "end_line": 86,
+                    "name": "x",
+                    "start_column": 14,
+                    "start_line": 86
+                  }
+                ],
+                "signature": "main.make_adder.adder",
+                "span": {
+                  "bytes": [
+                    2271,
+                    2305
+                  ],
+                  "end": [
+                    87,
+                    20
+                  ],
+                  "start": [
+                    86,
+                    4
+                  ]
+                },
+                "start_line": 86,
+                "summary": [],
+                "types": {}
+              }
+            },
+            "cdg": [
+              {
+                "dst": "86:4",
+                "src": "@entry"
+              },
+              {
+                "dst": "88:4",
+                "src": "@entry"
+              }
+            ],
+            "cfg": [
+              {
+                "dst": "86:4",
+                "kind": "fallthrough",
+                "src": "@entry"
+              },
+              {
+                "dst": "88:4",
+                "kind": "fallthrough",
+                "src": "86:4"
+              },
+              {
+                "dst": "@exit",
+                "kind": "return",
+                "src": "88:4"
+              }
+            ],
+            "code_start_line": 86,
+            "comments": [],
+            "cyclomatic_complexity": 3,
+            "ddg": [
+              {
+                "dst": "86:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "n"
+              },
+              {
+                "dst": "88:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "86:4",
+                "var": "adder"
+              }
+            ],
+            "decorators": [],
+            "end_line": 88,
+            "id": "can://python/decorators_and_hof/main.py/make_adder(n)",
+            "kind": "function",
+            "local_variables": [],
+            "name": "make_adder",
+            "parameters": [
+              {
+                "end_column": 21,
+                "end_line": 85,
+                "name": "n",
+                "start_column": 15,
+                "start_line": 85,
+                "type": "int"
+              }
+            ],
+            "signature": "main.make_adder",
+            "span": {
+              "bytes": [
+                2243,
+                2322
+              ],
+              "end": [
+                88,
+                16
+              ],
+              "start": [
+                85,
+                0
+              ]
+            },
+            "start_line": 85,
+            "summary": [],
+            "types": {}
+          },
+          "make_multiplier": {
+            "accessed_symbols": [
+              {
+                "col_offset": 11,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 94,
+                "name": "multiplier",
+                "scope": "local",
+                "type": "multiplier"
+              },
+              {
+                "col_offset": 23,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 91,
+                "name": "int",
+                "qualified_name": "builtins.int",
+                "scope": "local",
+                "type": "int"
+              },
+              {
+                "col_offset": 15,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 93,
+                "name": "x",
+                "scope": "local"
+              },
+              {
+                "col_offset": 19,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 93,
+                "name": "n",
+                "qualified_name": "builtins.int",
+                "scope": "local",
+                "type": "int"
+              }
+            ],
+            "body": {
+              "92:4": {
+                "kind": "statement",
+                "span": {
+                  "bytes": [
+                    2358,
+                    2397
+                  ],
+                  "end": [
+                    93,
+                    20
+                  ],
+                  "start": [
+                    92,
+                    4
+                  ]
+                }
+              },
+              "94:4": {
+                "kind": "return",
+                "span": {
+                  "bytes": [
+                    2402,
+                    2419
+                  ],
+                  "end": [
+                    94,
+                    21
+                  ],
+                  "start": [
+                    94,
+                    4
+                  ]
+                }
+              },
+              "@entry": {
+                "kind": "entry"
+              },
+              "@exit": {
+                "kind": "exit"
+              }
+            },
+            "call_sites": [],
+            "callables": {
+              "multiplier": {
+                "accessed_symbols": [
+                  {
+                    "col_offset": 15,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 93,
+                    "name": "x",
+                    "scope": "local"
+                  },
+                  {
+                    "col_offset": 19,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 93,
+                    "name": "n",
+                    "qualified_name": "builtins.int",
+                    "scope": "local",
+                    "type": "int"
+                  }
+                ],
+                "body": {
+                  "93:8": {
+                    "kind": "return",
+                    "span": {
+                      "bytes": [
+                        2385,
+                        2397
+                      ],
+                      "end": [
+                        93,
+                        20
+                      ],
+                      "start": [
+                        93,
+                        8
+                      ]
+                    }
+                  },
+                  "@entry": {
+                    "kind": "entry"
+                  },
+                  "@exit": {
+                    "kind": "exit"
+                  }
+                },
+                "call_sites": [],
+                "callables": {},
+                "cdg": [
+                  {
+                    "dst": "93:8",
+                    "src": "@entry"
+                  }
+                ],
+                "cfg": [
+                  {
+                    "dst": "93:8",
+                    "kind": "fallthrough",
+                    "src": "@entry"
+                  },
+                  {
+                    "dst": "@exit",
+                    "kind": "return",
+                    "src": "93:8"
+                  }
+                ],
+                "code_start_line": 93,
+                "comments": [],
+                "cyclomatic_complexity": 2,
+                "ddg": [
+                  {
+                    "dst": "93:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "@entry",
+                    "var": "n"
+                  },
+                  {
+                    "dst": "93:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "@entry",
+                    "var": "x"
+                  }
+                ],
+                "decorators": [],
+                "end_line": 93,
+                "id": "can://python/decorators_and_hof/main.py/make_multiplier(n)/multiplier(x)",
+                "kind": "function",
+                "local_variables": [],
+                "name": "multiplier",
+                "parameters": [
+                  {
+                    "end_column": 20,
+                    "end_line": 92,
+                    "name": "x",
+                    "start_column": 19,
+                    "start_line": 92
+                  }
+                ],
+                "signature": "main.make_multiplier.multiplier",
+                "span": {
+                  "bytes": [
+                    2358,
+                    2397
+                  ],
+                  "end": [
+                    93,
+                    20
+                  ],
+                  "start": [
+                    92,
+                    4
+                  ]
+                },
+                "start_line": 92,
+                "summary": [],
+                "types": {}
+              }
+            },
+            "cdg": [
+              {
+                "dst": "92:4",
+                "src": "@entry"
+              },
+              {
+                "dst": "94:4",
+                "src": "@entry"
+              }
+            ],
+            "cfg": [
+              {
+                "dst": "92:4",
+                "kind": "fallthrough",
+                "src": "@entry"
+              },
+              {
+                "dst": "94:4",
+                "kind": "fallthrough",
+                "src": "92:4"
+              },
+              {
+                "dst": "@exit",
+                "kind": "return",
+                "src": "94:4"
+              }
+            ],
+            "code_start_line": 92,
+            "comments": [],
+            "cyclomatic_complexity": 3,
+            "ddg": [
+              {
+                "dst": "92:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "n"
+              },
+              {
+                "dst": "94:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "92:4",
+                "var": "multiplier"
+              }
+            ],
+            "decorators": [],
+            "end_line": 94,
+            "id": "can://python/decorators_and_hof/main.py/make_multiplier(n)",
+            "kind": "function",
+            "local_variables": [],
+            "name": "make_multiplier",
+            "parameters": [
+              {
+                "end_column": 26,
+                "end_line": 91,
+                "name": "n",
+                "start_column": 20,
+                "start_line": 91,
+                "type": "int"
+              }
+            ],
+            "signature": "main.make_multiplier",
+            "span": {
+              "bytes": [
+                2325,
+                2419
+              ],
+              "end": [
+                94,
+                21
+              ],
+              "start": [
+                91,
+                0
+              ]
+            },
+            "start_line": 91,
+            "summary": [],
+            "types": {}
+          },
+          "repeat": {
+            "accessed_symbols": [
+              {
+                "col_offset": 11,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 39,
+                "name": "decorator",
+                "scope": "local",
+                "type": "decorator"
+              },
+              {
+                "col_offset": 14,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 30,
+                "name": "int",
+                "qualified_name": "builtins.int",
+                "scope": "local",
+                "type": "int"
+              },
+              {
+                "col_offset": 15,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 38,
+                "name": "wrapper",
+                "scope": "local",
+                "type": "wrapper"
+              },
+              {
+                "col_offset": 19,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 37,
+                "name": "result",
+                "scope": "local"
+              },
+              {
+                "col_offset": 25,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 32,
+                "name": "func",
+                "scope": "local"
+              },
+              {
+                "col_offset": 21,
+                "is_builtin": false,
+                "kind": "class",
+                "lineno": 35,
+                "name": "range",
+                "qualified_name": "builtins.range",
+                "scope": "local",
+                "type": "range"
+              },
+              {
+                "col_offset": 27,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 35,
+                "name": "n",
+                "qualified_name": "builtins.int",
+                "scope": "local",
+                "type": "int"
+              },
+              {
+                "col_offset": 9,
+                "is_builtin": false,
+                "kind": "module",
+                "lineno": 32,
+                "name": "functools",
+                "qualified_name": "functools",
+                "scope": "global",
+                "type": "functools"
+              },
+              {
+                "col_offset": 25,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 36,
+                "name": "func",
+                "scope": "local"
+              },
+              {
+                "col_offset": 31,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 36,
+                "name": "args",
+                "qualified_name": "builtins.tuple",
+                "scope": "local",
+                "type": "tuple"
+              },
+              {
+                "col_offset": 39,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 36,
+                "name": "kwargs",
+                "qualified_name": "builtins.dict",
+                "scope": "local",
+                "type": "dict"
+              }
+            ],
+            "body": {
+              "31:4": {
+                "kind": "statement",
+                "span": {
+                  "bytes": [
+                    869,
+                    1111
+                  ],
+                  "end": [
+                    38,
+                    22
+                  ],
+                  "start": [
+                    31,
+                    4
+                  ]
+                }
+              },
+              "39:4": {
+                "kind": "return",
+                "span": {
+                  "bytes": [
+                    1116,
+                    1132
+                  ],
+                  "end": [
+                    39,
+                    20
+                  ],
+                  "start": [
+                    39,
+                    4
+                  ]
+                }
+              },
+              "@entry": {
+                "kind": "entry"
+              },
+              "@exit": {
+                "kind": "exit"
+              }
+            },
+            "call_sites": [],
+            "callables": {
+              "decorator": {
+                "accessed_symbols": [
+                  {
+                    "col_offset": 15,
+                    "is_builtin": false,
+                    "kind": "function",
+                    "lineno": 38,
+                    "name": "wrapper",
+                    "scope": "local",
+                    "type": "wrapper"
+                  },
+                  {
+                    "col_offset": 19,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 37,
+                    "name": "result",
+                    "scope": "local"
+                  },
+                  {
+                    "col_offset": 25,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 32,
+                    "name": "func",
+                    "scope": "local"
+                  },
+                  {
+                    "col_offset": 21,
+                    "is_builtin": false,
+                    "kind": "class",
+                    "lineno": 35,
+                    "name": "range",
+                    "qualified_name": "builtins.range",
+                    "scope": "local",
+                    "type": "range"
+                  },
+                  {
+                    "col_offset": 27,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 35,
+                    "name": "n",
+                    "qualified_name": "builtins.int",
+                    "scope": "local",
+                    "type": "int"
+                  },
+                  {
+                    "col_offset": 9,
+                    "is_builtin": false,
+                    "kind": "module",
+                    "lineno": 32,
+                    "name": "functools",
+                    "qualified_name": "functools",
+                    "scope": "global",
+                    "type": "functools"
+                  },
+                  {
+                    "col_offset": 25,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 36,
+                    "name": "func",
+                    "scope": "local"
+                  },
+                  {
+                    "col_offset": 31,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 36,
+                    "name": "args",
+                    "qualified_name": "builtins.tuple",
+                    "scope": "local",
+                    "type": "tuple"
+                  },
+                  {
+                    "col_offset": 39,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 36,
+                    "name": "kwargs",
+                    "qualified_name": "builtins.dict",
+                    "scope": "local",
+                    "type": "dict"
+                  }
+                ],
+                "body": {
+                  "32:9": {
+                    "callee": "can://python/decorators_and_hof/@external/functools/wraps",
+                    "kind": "call",
+                    "span": {
+                      "bytes": [
+                        899,
+                        920
+                      ],
+                      "end": [
+                        32,
+                        30
+                      ],
+                      "start": [
+                        32,
+                        9
+                      ]
+                    }
+                  },
+                  "33:8": {
+                    "kind": "statement",
+                    "span": {
+                      "bytes": [
+                        929,
+                        1088
+                      ],
+                      "end": [
+                        37,
+                        25
+                      ],
+                      "start": [
+                        33,
+                        8
+                      ]
+                    }
+                  },
+                  "38:8": {
+                    "kind": "return",
+                    "span": {
+                      "bytes": [
+                        1097,
+                        1111
+                      ],
+                      "end": [
+                        38,
+                        22
+                      ],
+                      "start": [
+                        38,
+                        8
+                      ]
+                    }
+                  },
+                  "@entry": {
+                    "kind": "entry"
+                  },
+                  "@exit": {
+                    "kind": "exit"
+                  }
+                },
+                "call_sites": [
+                  {
+                    "argument_types": [
+                      "Name"
+                    ],
+                    "arguments": [
+                      {
+                        "ast_kind": "Name"
+                      }
+                    ],
+                    "callee_signature": "functools.wraps",
+                    "end_column": 30,
+                    "end_line": 32,
+                    "is_constructor_call": false,
+                    "method_name": "wraps",
+                    "receiver_expr": "functools",
+                    "receiver_type": "functools",
+                    "start_column": 9,
+                    "start_line": 32
+                  }
+                ],
+                "callables": {
+                  "wrapper": {
+                    "accessed_symbols": [
+                      {
+                        "col_offset": 19,
+                        "is_builtin": false,
+                        "kind": "variable",
+                        "lineno": 37,
+                        "name": "result",
+                        "scope": "local"
+                      },
+                      {
+                        "col_offset": 25,
+                        "is_builtin": false,
+                        "kind": "variable",
+                        "lineno": 32,
+                        "name": "func",
+                        "scope": "local"
+                      },
+                      {
+                        "col_offset": 21,
+                        "is_builtin": false,
+                        "kind": "class",
+                        "lineno": 35,
+                        "name": "range",
+                        "qualified_name": "builtins.range",
+                        "scope": "local",
+                        "type": "range"
+                      },
+                      {
+                        "col_offset": 27,
+                        "is_builtin": false,
+                        "kind": "variable",
+                        "lineno": 35,
+                        "name": "n",
+                        "qualified_name": "builtins.int",
+                        "scope": "local",
+                        "type": "int"
+                      },
+                      {
+                        "col_offset": 9,
+                        "is_builtin": false,
+                        "kind": "module",
+                        "lineno": 32,
+                        "name": "functools",
+                        "qualified_name": "functools",
+                        "scope": "global",
+                        "type": "functools"
+                      },
+                      {
+                        "col_offset": 25,
+                        "is_builtin": false,
+                        "kind": "variable",
+                        "lineno": 36,
+                        "name": "func",
+                        "scope": "local"
+                      },
+                      {
+                        "col_offset": 31,
+                        "is_builtin": false,
+                        "kind": "variable",
+                        "lineno": 36,
+                        "name": "args",
+                        "qualified_name": "builtins.tuple",
+                        "scope": "local",
+                        "type": "tuple"
+                      },
+                      {
+                        "col_offset": 39,
+                        "is_builtin": false,
+                        "kind": "variable",
+                        "lineno": 36,
+                        "name": "kwargs",
+                        "qualified_name": "builtins.dict",
+                        "scope": "local",
+                        "type": "dict"
+                      }
+                    ],
+                    "body": {
+                      "34:12": {
+                        "kind": "statement",
+                        "span": {
+                          "bytes": [
+                            971,
+                            984
+                          ],
+                          "end": [
+                            34,
+                            25
+                          ],
+                          "start": [
+                            34,
+                            12
+                          ]
+                        }
+                      },
+                      "35:21": {
+                        "callee": "can://python/decorators_and_hof/@external/builtins.range/__init__",
+                        "kind": "call",
+                        "span": {
+                          "bytes": [
+                            1006,
+                            1014
+                          ],
+                          "end": [
+                            35,
+                            29
+                          ],
+                          "start": [
+                            35,
+                            21
+                          ]
+                        }
+                      },
+                      "36:16": {
+                        "kind": "statement",
+                        "span": {
+                          "bytes": [
+                            1032,
+                            1062
+                          ],
+                          "end": [
+                            36,
+                            46
+                          ],
+                          "start": [
+                            36,
+                            16
+                          ]
+                        }
+                      },
+                      "36:25": {
+                        "kind": "call",
+                        "span": {
+                          "bytes": [
+                            1041,
+                            1062
+                          ],
+                          "end": [
+                            36,
+                            46
+                          ],
+                          "start": [
+                            36,
+                            25
+                          ]
+                        }
+                      },
+                      "37:12": {
+                        "kind": "return",
+                        "span": {
+                          "bytes": [
+                            1075,
+                            1088
+                          ],
+                          "end": [
+                            37,
+                            25
+                          ],
+                          "start": [
+                            37,
+                            12
+                          ]
+                        }
+                      },
+                      "@entry": {
+                        "kind": "entry"
+                      },
+                      "@exit": {
+                        "kind": "exit"
+                      }
+                    },
+                    "call_sites": [
+                      {
+                        "argument_types": [
+                          "int"
+                        ],
+                        "arguments": [
+                          {
+                            "ast_kind": "Name",
+                            "inferred_type": "int"
+                          }
+                        ],
+                        "callee_signature": "builtins.range.__init__",
+                        "end_column": 29,
+                        "end_line": 35,
+                        "is_constructor_call": true,
+                        "method_name": "range",
+                        "return_type": "range",
+                        "start_column": 21,
+                        "start_line": 35
+                      },
+                      {
+                        "argument_types": [
+                          "Starred"
+                        ],
+                        "arguments": [
+                          {
+                            "ast_kind": "Starred"
+                          }
+                        ],
+                        "end_column": 46,
+                        "end_line": 36,
+                        "is_constructor_call": false,
+                        "method_name": "func",
+                        "start_column": 25,
+                        "start_line": 36
+                      }
+                    ],
+                    "callables": {},
+                    "cdg": [
+                      {
+                        "dst": "34:12",
+                        "src": "@entry"
+                      },
+                      {
+                        "dst": "36:16",
+                        "src": "35:21"
+                      },
+                      {
+                        "dst": "37:12",
+                        "src": "35:21"
+                      },
+                      {
+                        "dst": "35:21",
+                        "src": "36:16"
+                      }
+                    ],
+                    "cfg": [
+                      {
+                        "dst": "34:12",
+                        "kind": "fallthrough",
+                        "src": "@entry"
+                      },
+                      {
+                        "dst": "35:21",
+                        "kind": "fallthrough",
+                        "src": "34:12"
+                      },
+                      {
+                        "dst": "36:16",
+                        "kind": "true",
+                        "src": "35:21"
+                      },
+                      {
+                        "dst": "37:12",
+                        "kind": "false",
+                        "src": "35:21"
+                      },
+                      {
+                        "dst": "@exit",
+                        "kind": "exception",
+                        "src": "35:21"
+                      },
+                      {
+                        "dst": "35:21",
+                        "kind": "loop_back",
+                        "src": "36:16"
+                      },
+                      {
+                        "dst": "@exit",
+                        "kind": "exception",
+                        "src": "36:16"
+                      },
+                      {
+                        "dst": "@exit",
+                        "kind": "return",
+                        "src": "37:12"
+                      }
+                    ],
+                    "code_start_line": 34,
+                    "comments": [],
+                    "cyclomatic_complexity": 3,
+                    "ddg": [
+                      {
+                        "dst": "35:21",
+                        "prov": [
+                          "ssa"
+                        ],
+                        "src": "@entry",
+                        "var": "n"
+                      },
+                      {
+                        "dst": "35:21",
+                        "prov": [
+                          "ssa"
+                        ],
+                        "src": "@entry",
+                        "var": "range"
+                      },
+                      {
+                        "dst": "36:16",
+                        "prov": [
+                          "ssa"
+                        ],
+                        "src": "@entry",
+                        "var": "args"
+                      },
+                      {
+                        "dst": "36:16",
+                        "prov": [
+                          "ssa"
+                        ],
+                        "src": "@entry",
+                        "var": "func"
+                      },
+                      {
+                        "dst": "36:16",
+                        "prov": [
+                          "ssa"
+                        ],
+                        "src": "@entry",
+                        "var": "kwargs"
+                      },
+                      {
+                        "dst": "37:12",
+                        "prov": [
+                          "ssa"
+                        ],
+                        "src": "34:12",
+                        "var": "result"
+                      },
+                      {
+                        "dst": "35:21",
+                        "prov": [
+                          "ssa"
+                        ],
+                        "src": "35:21",
+                        "var": "n"
+                      },
+                      {
+                        "dst": "36:16",
+                        "prov": [
+                          "ssa"
+                        ],
+                        "src": "36:16",
+                        "var": "kwargs"
+                      },
+                      {
+                        "dst": "37:12",
+                        "prov": [
+                          "ssa"
+                        ],
+                        "src": "36:16",
+                        "var": "result"
+                      }
+                    ],
+                    "decorators": [
+                      "functools.wraps(func)"
+                    ],
+                    "end_line": 37,
+                    "id": "can://python/decorators_and_hof/main.py/repeat(n)/decorator(func)/wrapper(args,kwargs)",
+                    "kind": "function",
+                    "local_variables": [
+                      {
+                        "end_column": 18,
+                        "end_line": 34,
+                        "initializer": "None",
+                        "name": "result",
+                        "scope": "function",
+                        "start_column": 12,
+                        "start_line": 34,
+                        "type": "NoneType"
+                      },
+                      {
+                        "end_column": 22,
+                        "end_line": 36,
+                        "initializer": "func(*args, **kwargs)",
+                        "name": "result",
+                        "scope": "function",
+                        "start_column": 16,
+                        "start_line": 36
+                      }
+                    ],
+                    "name": "wrapper",
+                    "parameters": [
+                      {
+                        "end_column": 25,
+                        "end_line": 33,
+                        "name": "args",
+                        "start_column": 21,
+                        "start_line": 33,
+                        "type": "tuple"
+                      },
+                      {
+                        "end_column": 35,
+                        "end_line": 33,
+                        "name": "kwargs",
+                        "start_column": 29,
+                        "start_line": 33,
+                        "type": "dict"
+                      }
+                    ],
+                    "signature": "main.repeat.decorator.wrapper",
+                    "span": {
+                      "bytes": [
+                        929,
+                        1088
+                      ],
+                      "end": [
+                        37,
+                        25
+                      ],
+                      "start": [
+                        33,
+                        8
+                      ]
+                    },
+                    "start_line": 33,
+                    "summary": [],
+                    "types": {}
+                  }
+                },
+                "cdg": [
+                  {
+                    "dst": "33:8",
+                    "src": "@entry"
+                  },
+                  {
+                    "dst": "38:8",
+                    "src": "33:8"
+                  }
+                ],
+                "cfg": [
+                  {
+                    "dst": "33:8",
+                    "kind": "fallthrough",
+                    "src": "@entry"
+                  },
+                  {
+                    "dst": "38:8",
+                    "kind": "fallthrough",
+                    "src": "33:8"
+                  },
+                  {
+                    "dst": "@exit",
+                    "kind": "exception",
+                    "src": "33:8"
+                  },
+                  {
+                    "dst": "@exit",
+                    "kind": "return",
+                    "src": "38:8"
+                  }
+                ],
+                "code_start_line": 33,
+                "comments": [],
+                "cyclomatic_complexity": 4,
+                "ddg": [
+                  {
+                    "dst": "33:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "@entry",
+                    "var": "func"
+                  },
+                  {
+                    "dst": "33:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "@entry",
+                    "var": "main::functools.wraps"
+                  },
+                  {
+                    "dst": "33:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "@entry",
+                    "var": "n"
+                  },
+                  {
+                    "dst": "38:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "33:8",
+                    "var": "wrapper"
+                  }
+                ],
+                "decorators": [],
+                "end_line": 38,
+                "id": "can://python/decorators_and_hof/main.py/repeat(n)/decorator(func)",
+                "kind": "function",
+                "local_variables": [
+                  {
+                    "end_column": 18,
+                    "end_line": 34,
+                    "initializer": "None",
+                    "name": "result",
+                    "scope": "function",
+                    "start_column": 12,
+                    "start_line": 34,
+                    "type": "NoneType"
+                  },
+                  {
+                    "end_column": 22,
+                    "end_line": 36,
+                    "initializer": "func(*args, **kwargs)",
+                    "name": "result",
+                    "scope": "function",
+                    "start_column": 16,
+                    "start_line": 36
+                  }
+                ],
+                "name": "decorator",
+                "parameters": [
+                  {
+                    "end_column": 22,
+                    "end_line": 31,
+                    "name": "func",
+                    "start_column": 18,
+                    "start_line": 31
+                  }
+                ],
+                "signature": "main.repeat.decorator",
+                "span": {
+                  "bytes": [
+                    869,
+                    1111
+                  ],
+                  "end": [
+                    38,
+                    22
+                  ],
+                  "start": [
+                    31,
+                    4
+                  ]
+                },
+                "start_line": 31,
+                "summary": [],
+                "types": {}
+              }
+            },
+            "cdg": [
+              {
+                "dst": "31:4",
+                "src": "@entry"
+              },
+              {
+                "dst": "39:4",
+                "src": "@entry"
+              }
+            ],
+            "cfg": [
+              {
+                "dst": "31:4",
+                "kind": "fallthrough",
+                "src": "@entry"
+              },
+              {
+                "dst": "39:4",
+                "kind": "fallthrough",
+                "src": "31:4"
+              },
+              {
+                "dst": "@exit",
+                "kind": "return",
+                "src": "39:4"
+              }
+            ],
+            "code_start_line": 31,
+            "comments": [],
+            "cyclomatic_complexity": 5,
+            "ddg": [
+              {
+                "dst": "31:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "n"
+              },
+              {
+                "dst": "39:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "31:4",
+                "var": "decorator"
+              }
+            ],
+            "decorators": [],
+            "end_line": 39,
+            "id": "can://python/decorators_and_hof/main.py/repeat(n)",
+            "kind": "function",
+            "local_variables": [
+              {
+                "end_column": 18,
+                "end_line": 34,
+                "initializer": "None",
+                "name": "result",
+                "scope": "function",
+                "start_column": 12,
+                "start_line": 34,
+                "type": "NoneType"
+              },
+              {
+                "end_column": 22,
+                "end_line": 36,
+                "initializer": "func(*args, **kwargs)",
+                "name": "result",
+                "scope": "function",
+                "start_column": 16,
+                "start_line": 36
+              }
+            ],
+            "name": "repeat",
+            "parameters": [
+              {
+                "end_column": 17,
+                "end_line": 30,
+                "name": "n",
+                "start_column": 11,
+                "start_line": 30,
+                "type": "int"
+              }
+            ],
+            "signature": "main.repeat",
+            "span": {
+              "bytes": [
+                845,
+                1132
+              ],
+              "end": [
+                39,
+                20
+              ],
+              "start": [
+                30,
+                0
+              ]
+            },
+            "start_line": 30,
+            "summary": [],
+            "types": {}
+          },
+          "say_hello": {
+            "accessed_symbols": [
+              {
+                "col_offset": 1,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 106,
+                "name": "repeat",
+                "qualified_name": "main.repeat",
+                "scope": "local",
+                "type": "repeat"
+              },
+              {
+                "col_offset": 4,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 108,
+                "name": "print",
+                "qualified_name": "builtins.print",
+                "scope": "local",
+                "type": "print"
+              }
+            ],
+            "body": {
+              "108:4": {
+                "callee": "can://python/decorators_and_hof/@external/builtins/print",
+                "kind": "call",
+                "span": {
+                  "bytes": [
+                    2705,
+                    2719
+                  ],
+                  "end": [
+                    108,
+                    18
+                  ],
+                  "start": [
+                    108,
+                    4
+                  ]
+                }
+              },
+              "@entry": {
+                "kind": "entry"
+              },
+              "@exit": {
+                "kind": "exit"
+              }
+            },
+            "call_sites": [
+              {
+                "argument_types": [
+                  "str"
+                ],
+                "arguments": [
+                  {
+                    "ast_kind": "Constant",
+                    "inferred_type": "str"
+                  }
+                ],
+                "callee_signature": "builtins.print",
+                "end_column": 18,
+                "end_line": 108,
+                "is_constructor_call": false,
+                "method_name": "print",
+                "start_column": 4,
+                "start_line": 108
+              }
+            ],
+            "callables": {},
+            "cdg": [
+              {
+                "dst": "108:4",
+                "src": "@entry"
+              }
+            ],
+            "cfg": [
+              {
+                "dst": "108:4",
+                "kind": "fallthrough",
+                "src": "@entry"
+              },
+              {
+                "dst": "@exit",
+                "kind": "exception",
+                "src": "108:4"
+              },
+              {
+                "dst": "@exit",
+                "kind": "return",
+                "src": "108:4"
+              }
+            ],
+            "code_start_line": 108,
+            "comments": [],
+            "cyclomatic_complexity": 1,
+            "ddg": [
+              {
+                "dst": "108:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "print"
+              }
+            ],
+            "decorators": [
+              "repeat(3)"
+            ],
+            "end_line": 108,
+            "id": "can://python/decorators_and_hof/main.py/say_hello()",
+            "kind": "function",
+            "local_variables": [],
+            "name": "say_hello",
+            "parameters": [],
+            "signature": "main.say_hello",
+            "span": {
+              "bytes": [
+                2684,
+                2719
+              ],
+              "end": [
+                108,
+                18
+              ],
+              "start": [
+                107,
+                0
+              ]
+            },
+            "start_line": 107,
+            "summary": [],
+            "types": {}
+          },
+          "stacked": {
+            "accessed_symbols": [
+              {
+                "col_offset": 1,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 116,
+                "name": "log_call",
+                "qualified_name": "main.log_call",
+                "scope": "local",
+                "type": "log_call"
+              },
+              {
+                "col_offset": 1,
+                "is_builtin": false,
+                "kind": "function",
+                "lineno": 117,
+                "name": "repeat",
+                "qualified_name": "main.repeat",
+                "scope": "local",
+                "type": "repeat"
+              },
+              {
+                "col_offset": 11,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 119,
+                "name": "value",
+                "scope": "local"
+              }
+            ],
+            "body": {
+              "119:4": {
+                "kind": "return",
+                "span": {
+                  "bytes": [
+                    2812,
+                    2829
+                  ],
+                  "end": [
+                    119,
+                    21
+                  ],
+                  "start": [
+                    119,
+                    4
+                  ]
+                }
+              },
+              "@entry": {
+                "kind": "entry"
+              },
+              "@exit": {
+                "kind": "exit"
+              }
+            },
+            "call_sites": [],
+            "callables": {},
+            "cdg": [
+              {
+                "dst": "119:4",
+                "src": "@entry"
+              }
+            ],
+            "cfg": [
+              {
+                "dst": "119:4",
+                "kind": "fallthrough",
+                "src": "@entry"
+              },
+              {
+                "dst": "@exit",
+                "kind": "return",
+                "src": "119:4"
+              }
+            ],
+            "code_start_line": 119,
+            "comments": [],
+            "cyclomatic_complexity": 2,
+            "ddg": [
+              {
+                "dst": "119:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "value"
+              }
+            ],
+            "decorators": [
+              "log_call",
+              "repeat(2)"
+            ],
+            "end_line": 119,
+            "id": "can://python/decorators_and_hof/main.py/stacked(value)",
+            "kind": "function",
+            "local_variables": [],
+            "name": "stacked",
+            "parameters": [
+              {
+                "end_column": 17,
+                "end_line": 118,
+                "name": "value",
+                "start_column": 12,
+                "start_line": 118
+              }
+            ],
+            "signature": "main.stacked",
+            "span": {
+              "bytes": [
+                2788,
+                2829
+              ],
+              "end": [
+                119,
+                21
+              ],
+              "start": [
+                118,
+                0
+              ]
+            },
+            "start_line": 118,
+            "summary": [],
+            "types": {}
+          },
+          "triple": {
+            "accessed_symbols": [
+              {
+                "col_offset": 11,
+                "is_builtin": false,
+                "kind": "variable",
+                "lineno": 71,
+                "name": "x",
+                "scope": "local"
+              }
+            ],
+            "body": {
+              "71:4": {
+                "kind": "return",
+                "span": {
+                  "bytes": [
+                    1920,
+                    1932
+                  ],
+                  "end": [
+                    71,
+                    16
+                  ],
+                  "start": [
+                    71,
+                    4
+                  ]
+                }
+              },
+              "@entry": {
+                "kind": "entry"
+              },
+              "@exit": {
+                "kind": "exit"
+              }
+            },
+            "call_sites": [],
+            "callables": {},
+            "cdg": [
+              {
+                "dst": "71:4",
+                "src": "@entry"
+              }
+            ],
+            "cfg": [
+              {
+                "dst": "71:4",
+                "kind": "fallthrough",
+                "src": "@entry"
+              },
+              {
+                "dst": "@exit",
+                "kind": "return",
+                "src": "71:4"
+              }
+            ],
+            "code_start_line": 71,
+            "comments": [],
+            "cyclomatic_complexity": 2,
+            "ddg": [
+              {
+                "dst": "71:4",
+                "prov": [
+                  "ssa"
+                ],
+                "src": "@entry",
+                "var": "x"
+              }
+            ],
+            "decorators": [],
+            "end_line": 71,
+            "id": "can://python/decorators_and_hof/main.py/triple(x)",
+            "kind": "function",
+            "local_variables": [],
+            "name": "triple",
+            "parameters": [
+              {
+                "end_column": 12,
+                "end_line": 70,
+                "name": "x",
+                "start_column": 11,
+                "start_line": 70
+              }
+            ],
+            "signature": "main.triple",
+            "span": {
+              "bytes": [
+                1901,
+                1932
+              ],
+              "end": [
+                71,
+                16
+              ],
+              "start": [
+                70,
+                0
+              ]
+            },
+            "start_line": 70,
+            "summary": [],
+            "types": {}
+          }
+        },
+        "id": "can://python/decorators_and_hof/main.py",
+        "imports": [
+          {
+            "end_column": 16,
+            "end_line": 11,
+            "module": "functools",
+            "name": "functools",
+            "start_column": 0,
+            "start_line": 11
+          }
+        ],
+        "kind": "module",
+        "module_name": "main",
+        "source": "\"\"\"Decorator and higher-order function patterns.\n\nExercises:\n- Simple function wrapper (functools.wraps)\n- Parameterised decorator factory\n- Class-based decorator (__call__)\n- Higher-order function (function passed as argument)\n- Closure / function factory\n- Decorator stacking\n\"\"\"\nimport functools\n\n\n# ---------------------------------------------------------------------------\n# 1. Simple wrapper decorator\n# ---------------------------------------------------------------------------\n\ndef log_call(func):\n    @functools.wraps(func)\n    def wrapper(*args, **kwargs):\n        result = func(*args, **kwargs)\n        return result\n    return wrapper\n\n\n# ---------------------------------------------------------------------------\n# 2. Parameterised decorator factory\n# ---------------------------------------------------------------------------\n\ndef repeat(n: int):\n    def decorator(func):\n        @functools.wraps(func)\n        def wrapper(*args, **kwargs):\n            result = None\n            for _ in range(n):\n                result = func(*args, **kwargs)\n            return result\n        return wrapper\n    return decorator\n\n\n# ---------------------------------------------------------------------------\n# 3. Class-based decorator\n# ---------------------------------------------------------------------------\n\nclass Timer:\n    def __init__(self, func):\n        functools.update_wrapper(self, func)\n        self.func = func\n        self.call_count = 0\n\n    def __call__(self, *args, **kwargs):\n        self.call_count += 1\n        return self.func(*args, **kwargs)\n\n\n# ---------------------------------------------------------------------------\n# 4. Higher-order functions\n# ---------------------------------------------------------------------------\n\ndef apply(func, value):\n    \"\"\"Call *func* with *value* and return the result.\"\"\"\n    return func(value)\n\n\ndef double(x):\n    return x * 2\n\n\ndef triple(x):\n    return x * 3\n\n\ndef compose(f, g):\n    \"\"\"Return a new function h(x) = f(g(x)).\"\"\"\n    def h(x):\n        return f(g(x))\n    return h\n\n\n# ---------------------------------------------------------------------------\n# 5. Closure / function factory\n# ---------------------------------------------------------------------------\n\ndef make_adder(n: int):\n    def adder(x):\n        return x + n\n    return adder\n\n\ndef make_multiplier(n: int):\n    def multiplier(x):\n        return x * n\n    return multiplier\n\n\n# ---------------------------------------------------------------------------\n# 6. Decorated callables\n# ---------------------------------------------------------------------------\n\n@log_call\ndef greet(name: str) -> str:\n    return f\"Hello, {name}\"\n\n\n@repeat(3)\ndef say_hello():\n    print(\"hello\")\n\n\n@Timer\ndef compute(x, y):\n    return x + y\n\n\n@log_call\n@repeat(2)\ndef stacked(value):\n    return value * 10\n\n\n# ---------------------------------------------------------------------------\n# 7. Driver\n# ---------------------------------------------------------------------------\n\ndef main():\n    r1 = apply(double, 10)\n    r2 = apply(triple, 10)\n\n    double_then_triple = compose(triple, double)\n    r3 = double_then_triple(5)\n\n    add5 = make_adder(5)\n    mul3 = make_multiplier(3)\n    r4 = add5(10)\n    r5 = mul3(10)\n\n    r6 = greet(\"world\")\n    say_hello()\n    r7 = compute(2, 3)\n    r8 = stacked(7)\n\n    return r1, r2, r3, r4, r5, r6, r7, r8\n\n\nif __name__ == \"__main__\":\n    main()\n",
+        "types": {
+          "main.Timer": {
+            "attributes": {},
+            "base_classes": [],
+            "callables": {
+              "__call__": {
+                "accessed_symbols": [
+                  {
+                    "col_offset": 8,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 53,
+                    "name": "self",
+                    "qualified_name": "main.Timer",
+                    "scope": "local",
+                    "type": "Timer"
+                  },
+                  {
+                    "col_offset": 15,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 54,
+                    "name": "self",
+                    "qualified_name": "main.Timer",
+                    "scope": "local",
+                    "type": "Timer"
+                  },
+                  {
+                    "col_offset": 26,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 54,
+                    "name": "args",
+                    "qualified_name": "builtins.tuple",
+                    "scope": "local",
+                    "type": "tuple"
+                  },
+                  {
+                    "col_offset": 34,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 54,
+                    "name": "kwargs",
+                    "qualified_name": "builtins.dict",
+                    "scope": "local",
+                    "type": "dict"
+                  }
+                ],
+                "body": {
+                  "53:8": {
+                    "kind": "statement",
+                    "span": {
+                      "bytes": [
+                        1510,
+                        1530
+                      ],
+                      "end": [
+                        53,
+                        28
+                      ],
+                      "start": [
+                        53,
+                        8
+                      ]
+                    }
+                  },
+                  "54:15": {
+                    "kind": "call",
+                    "span": {
+                      "bytes": [
+                        1546,
+                        1572
+                      ],
+                      "end": [
+                        54,
+                        41
+                      ],
+                      "start": [
+                        54,
+                        15
+                      ]
+                    }
+                  },
+                  "54:8": {
+                    "kind": "return",
+                    "span": {
+                      "bytes": [
+                        1539,
+                        1572
+                      ],
+                      "end": [
+                        54,
+                        41
+                      ],
+                      "start": [
+                        54,
+                        8
+                      ]
+                    }
+                  },
+                  "@entry": {
+                    "kind": "entry"
+                  },
+                  "@exit": {
+                    "kind": "exit"
+                  }
+                },
+                "call_sites": [
+                  {
+                    "argument_types": [
+                      "Starred"
+                    ],
+                    "arguments": [
+                      {
+                        "ast_kind": "Starred"
+                      }
+                    ],
+                    "end_column": 41,
+                    "end_line": 54,
+                    "is_constructor_call": false,
+                    "method_name": "func",
+                    "receiver_expr": "self",
+                    "receiver_type": "Timer",
+                    "start_column": 15,
+                    "start_line": 54
+                  }
+                ],
+                "callables": {},
+                "cdg": [
+                  {
+                    "dst": "53:8",
+                    "src": "@entry"
+                  },
+                  {
+                    "dst": "54:8",
+                    "src": "53:8"
+                  }
+                ],
+                "cfg": [
+                  {
+                    "dst": "53:8",
+                    "kind": "fallthrough",
+                    "src": "@entry"
+                  },
+                  {
+                    "dst": "54:8",
+                    "kind": "fallthrough",
+                    "src": "53:8"
+                  },
+                  {
+                    "dst": "@exit",
+                    "kind": "exception",
+                    "src": "53:8"
+                  },
+                  {
+                    "dst": "@exit",
+                    "kind": "exception",
+                    "src": "54:8"
+                  },
+                  {
+                    "dst": "@exit",
+                    "kind": "return",
+                    "src": "54:8"
+                  }
+                ],
+                "code_start_line": 53,
+                "comments": [],
+                "cyclomatic_complexity": 2,
+                "ddg": [
+                  {
+                    "dst": "53:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "@entry",
+                    "var": "self"
+                  },
+                  {
+                    "dst": "53:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "@entry",
+                    "var": "self.call_count"
+                  },
+                  {
+                    "dst": "54:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "@entry",
+                    "var": "args"
+                  },
+                  {
+                    "dst": "54:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "@entry",
+                    "var": "kwargs"
+                  },
+                  {
+                    "dst": "54:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "@entry",
+                    "var": "self"
+                  },
+                  {
+                    "dst": "54:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "@entry",
+                    "var": "self.func"
+                  },
+                  {
+                    "dst": "54:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "53:8",
+                    "var": "self"
+                  }
+                ],
+                "decorators": [],
+                "end_line": 54,
+                "id": "can://python/decorators_and_hof/main.py/Timer/__call__(self,args,kwargs)",
+                "kind": "function",
+                "local_variables": [],
+                "name": "__call__",
+                "parameters": [
+                  {
+                    "end_column": 21,
+                    "end_line": 52,
+                    "name": "self",
+                    "start_column": 17,
+                    "start_line": 52,
+                    "type": "Timer"
+                  },
+                  {
+                    "end_column": 28,
+                    "end_line": 52,
+                    "name": "args",
+                    "start_column": 24,
+                    "start_line": 52,
+                    "type": "tuple"
+                  },
+                  {
+                    "end_column": 38,
+                    "end_line": 52,
+                    "name": "kwargs",
+                    "start_column": 32,
+                    "start_line": 52,
+                    "type": "dict"
+                  }
+                ],
+                "signature": "main.Timer.__call__",
+                "span": {
+                  "bytes": [
+                    1465,
+                    1572
+                  ],
+                  "end": [
+                    54,
+                    41
+                  ],
+                  "start": [
+                    52,
+                    4
+                  ]
+                },
+                "start_line": 52,
+                "summary": [],
+                "types": {}
+              },
+              "__init__": {
+                "accessed_symbols": [
+                  {
+                    "col_offset": 20,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 49,
+                    "name": "func",
+                    "scope": "local"
+                  },
+                  {
+                    "col_offset": 33,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 48,
+                    "name": "self",
+                    "qualified_name": "main.Timer",
+                    "scope": "local",
+                    "type": "Timer"
+                  },
+                  {
+                    "col_offset": 39,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 48,
+                    "name": "func",
+                    "scope": "local"
+                  },
+                  {
+                    "col_offset": 8,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 49,
+                    "name": "self",
+                    "qualified_name": "main.Timer",
+                    "scope": "local",
+                    "type": "Timer"
+                  },
+                  {
+                    "col_offset": 8,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 50,
+                    "name": "self",
+                    "qualified_name": "main.Timer",
+                    "scope": "local",
+                    "type": "Timer"
+                  },
+                  {
+                    "col_offset": 8,
+                    "is_builtin": false,
+                    "kind": "module",
+                    "lineno": 48,
+                    "name": "functools",
+                    "qualified_name": "functools",
+                    "scope": "global",
+                    "type": "functools"
+                  }
+                ],
+                "body": {
+                  "48:8": {
+                    "callee": "can://python/decorators_and_hof/@external/functools/update_wrapper",
+                    "kind": "call",
+                    "span": {
+                      "bytes": [
+                        1370,
+                        1406
+                      ],
+                      "end": [
+                        48,
+                        44
+                      ],
+                      "start": [
+                        48,
+                        8
+                      ]
+                    }
+                  },
+                  "49:8": {
+                    "kind": "statement",
+                    "span": {
+                      "bytes": [
+                        1415,
+                        1431
+                      ],
+                      "end": [
+                        49,
+                        24
+                      ],
+                      "start": [
+                        49,
+                        8
+                      ]
+                    }
+                  },
+                  "50:8": {
+                    "kind": "statement",
+                    "span": {
+                      "bytes": [
+                        1440,
+                        1459
+                      ],
+                      "end": [
+                        50,
+                        27
+                      ],
+                      "start": [
+                        50,
+                        8
+                      ]
+                    }
+                  },
+                  "@entry": {
+                    "kind": "entry"
+                  },
+                  "@exit": {
+                    "kind": "exit"
+                  }
+                },
+                "call_sites": [
+                  {
+                    "argument_types": [
+                      "Timer",
+                      "Name"
+                    ],
+                    "arguments": [
+                      {
+                        "ast_kind": "Name",
+                        "inferred_type": "Timer"
+                      },
+                      {
+                        "ast_kind": "Name"
+                      }
+                    ],
+                    "callee_signature": "functools.update_wrapper",
+                    "end_column": 44,
+                    "end_line": 48,
+                    "is_constructor_call": false,
+                    "method_name": "update_wrapper",
+                    "receiver_expr": "functools",
+                    "receiver_type": "functools",
+                    "start_column": 8,
+                    "start_line": 48
+                  }
+                ],
+                "callables": {},
+                "cdg": [
+                  {
+                    "dst": "48:8",
+                    "src": "@entry"
+                  },
+                  {
+                    "dst": "49:8",
+                    "src": "48:8"
+                  },
+                  {
+                    "dst": "50:8",
+                    "src": "49:8"
+                  }
+                ],
+                "cfg": [
+                  {
+                    "dst": "48:8",
+                    "kind": "fallthrough",
+                    "src": "@entry"
+                  },
+                  {
+                    "dst": "49:8",
+                    "kind": "fallthrough",
+                    "src": "48:8"
+                  },
+                  {
+                    "dst": "@exit",
+                    "kind": "exception",
+                    "src": "48:8"
+                  },
+                  {
+                    "dst": "50:8",
+                    "kind": "fallthrough",
+                    "src": "49:8"
+                  },
+                  {
+                    "dst": "@exit",
+                    "kind": "exception",
+                    "src": "49:8"
+                  },
+                  {
+                    "dst": "@exit",
+                    "kind": "exception",
+                    "src": "50:8"
+                  },
+                  {
+                    "dst": "@exit",
+                    "kind": "return",
+                    "src": "50:8"
+                  }
+                ],
+                "code_start_line": 48,
+                "comments": [],
+                "cyclomatic_complexity": 1,
+                "ddg": [
+                  {
+                    "dst": "48:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "@entry",
+                    "var": "func"
+                  },
+                  {
+                    "dst": "48:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "@entry",
+                    "var": "main::functools"
+                  },
+                  {
+                    "dst": "48:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "@entry",
+                    "var": "main::functools.update_wrapper"
+                  },
+                  {
+                    "dst": "48:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "@entry",
+                    "var": "self"
+                  },
+                  {
+                    "dst": "49:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "@entry",
+                    "var": "func"
+                  },
+                  {
+                    "dst": "49:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "@entry",
+                    "var": "self"
+                  },
+                  {
+                    "dst": "50:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "@entry",
+                    "var": "self"
+                  },
+                  {
+                    "dst": "49:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "48:8",
+                    "var": "func"
+                  },
+                  {
+                    "dst": "49:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "48:8",
+                    "var": "self"
+                  },
+                  {
+                    "dst": "50:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "48:8",
+                    "var": "self"
+                  },
+                  {
+                    "dst": "50:8",
+                    "prov": [
+                      "ssa"
+                    ],
+                    "src": "49:8",
+                    "var": "self"
+                  }
+                ],
+                "decorators": [],
+                "end_line": 50,
+                "id": "can://python/decorators_and_hof/main.py/Timer/__init__(self,func)",
+                "kind": "function",
+                "local_variables": [
+                  {
+                    "end_column": 17,
+                    "end_line": 49,
+                    "initializer": "func",
+                    "name": "func",
+                    "scope": "class",
+                    "start_column": 8,
+                    "start_line": 49,
+                    "type": "Timer"
+                  },
+                  {
+                    "end_column": 23,
+                    "end_line": 50,
+                    "initializer": "0",
+                    "name": "call_count",
+                    "scope": "class",
+                    "start_column": 8,
+                    "start_line": 50,
+                    "type": "Timer"
+                  }
+                ],
+                "name": "__init__",
+                "parameters": [
+                  {
+                    "end_column": 21,
+                    "end_line": 47,
+                    "name": "self",
+                    "start_column": 17,
+                    "start_line": 47,
+                    "type": "Timer"
+                  },
+                  {
+                    "end_column": 27,
+                    "end_line": 47,
+                    "name": "func",
+                    "start_column": 23,
+                    "start_line": 47
+                  }
+                ],
+                "signature": "main.Timer.__init__",
+                "span": {
+                  "bytes": [
+                    1336,
+                    1459
+                  ],
+                  "end": [
+                    50,
+                    27
+                  ],
+                  "start": [
+                    47,
+                    4
+                  ]
+                },
+                "start_line": 47,
+                "summary": [],
+                "types": {}
+              }
+            },
+            "comments": [],
+            "end_line": 54,
+            "id": "can://python/decorators_and_hof/main.py/Timer",
+            "kind": "class",
+            "name": "Timer",
+            "signature": "main.Timer",
+            "span": {
+              "bytes": [
+                1319,
+                1572
+              ],
+              "end": [
+                54,
+                41
+              ],
+              "start": [
+                46,
+                0
+              ]
+            },
+            "start_line": 46,
+            "types": {}
+          }
+        },
+        "variables": []
+      }
+    }
+  },
+  "k_limit": 3,
+  "language": "python",
+  "max_level": 3,
+  "schema_version": "2.0.0"
+}

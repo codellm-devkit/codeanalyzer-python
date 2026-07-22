@@ -4,78 +4,17 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional, Union, List
+from typing import Optional, List
 
-import time
-
-import ray
 from codeanalyzer.utils import logger
 from codeanalyzer.schema import (
     Analysis,
-    PyApplication,
-    PyExternalSymbol,
-    PyModule,
     model_dump_json,
     model_validate_json,
 )
-from codeanalyzer.schema.assign_ids import assign_ids
-from codeanalyzer.schema.l1_body import populate_l1_body
-from codeanalyzer.schema.l2_callees import backfill_callees
-from codeanalyzer.schema.call_graph_ids import reidentify_call_graph
-from codeanalyzer.schema.py_schema import PyCallEdge
-from codeanalyzer.semantic_analysis.call_graph import (
-    filter_external_edges,
-    jedi_call_graph_edges,
-    merge_edges,
-    resolve_unresolved_constructors,
-)
-from codeanalyzer.semantic_analysis.pycg import PyCG, PyCGExceptions
-from codeanalyzer.syntactic_analysis.exceptions import SymbolTableBuilderRayError
-from codeanalyzer.syntactic_analysis.import_resolver import resolve_imports
-from codeanalyzer.syntactic_analysis.symbol_table_builder import SymbolTableBuilder
-from codeanalyzer.utils import ProgressBar
 from codeanalyzer.options import AnalysisOptions
-from codeanalyzer.provenance import analyzer_info, repository_info
-
-def _ensure_ray() -> None:
-    """Initialize Ray with the driver's pinned hash seed in the workers.
-
-    An implicit auto-init would not carry PYTHONHASHSEED into worker
-    interpreters, so PyCG shards (and Jedi inference) run there with random
-    set-iteration order and the emitted edges vary run to run (issue #99)."""
-    if not ray.is_initialized():
-        ray.init(
-            runtime_env={
-                "env_vars": {
-                    "PYTHONHASHSEED": os.environ.get("PYTHONHASHSEED", "0")
-                }
-            },
-        )
-
-
-@ray.remote
-def _process_file_with_ray(py_file: Union[Path, str], project_dir: Union[Path, str], virtualenv: Union[Path, str, None]) -> Dict[str, PyModule]:
-    """Processes files in the project directory using Ray for distributed processing.
-    
-    Args:
-        py_file (Union[Path, str]): Path to the Python file to process.
-        project_dir (Union[Path, str]): Path to the project directory.
-        virtualenv (Union[Path, str, None]): Path to the virtual environment directory.
-    Returns:
-        Dict[str, PyModule]: A dictionary mapping file paths to PyModule objects.
-    """
-    from rich.console import Console
-    console = Console()
-    module_map: Dict[str, PyModule] = {}
-    try:
-        py_file = Path(py_file)
-        symbol_table_builder = SymbolTableBuilder(project_dir, virtualenv)
-        module_map[str(py_file.relative_to(Path(project_dir)))] = symbol_table_builder.build_pymodule_from_file(py_file)
-    except Exception as e:
-        console.log(f"❌ Failed to process {py_file}: {e}")
-        raise SymbolTableBuilderRayError(f"Ray processing error for {py_file}: {e}")
-    return module_map
-
+from codeanalyzer.pipeline import AnalysisContext, AnalysisPipeline
+from codeanalyzer.provenance import analyzer_info
 
 class Codeanalyzer:
     """Core static analysis engine for Python projects.
@@ -87,7 +26,6 @@ class Codeanalyzer:
     def __init__(self, options: AnalysisOptions) -> None:
         self.options = options
         self.project_dir = Path(options.input).resolve()
-        self.skip_tests = options.skip_tests
         self.analysis_level = options.analysis_level
         self.rebuild_analysis = options.rebuild_analysis
         self.no_venv = options.no_venv
@@ -96,8 +34,6 @@ class Codeanalyzer:
         ) / ".codeanalyzer"
         self.clear_cache = options.clear_cache
         self.virtualenv: Optional[Path] = None
-        self.using_ray: bool = options.using_ray
-        self.file_name: Optional[Path] = options.file_name
 
     @staticmethod
     def _cmd_exec_helper(
@@ -535,36 +471,14 @@ class Codeanalyzer:
             logger.info(f"Clearing cache directory: {self.cache_dir}")
             shutil.rmtree(self.cache_dir)
 
-    @staticmethod
-    def _home_external_symbols(app, app_id, sig_to_id):
-        """Home every call-graph endpoint that is not a declared class/callable
-        onto a ``can://…/@external/<module>/<name>`` id (the keystone edge-endpoint
-        id home). Registers each homed id in ``sig_to_id`` so callee backfill and
-        call-graph re-identity map the dotted signature to it, and returns the
-        id-keyed external-symbol map. ``name``/``module`` are derived from the
-        signature (best effort: split on the last dot)."""
-        externals: Dict[str, PyExternalSymbol] = {}
-        for edge in app.call_graph:
-            for sig in (edge.src, edge.dst):
-                if sig in sig_to_id:
-                    continue
-                module, name = sig.rsplit(".", 1) if "." in sig else (None, sig)
-                ext_id = f"{app_id}/@external/{module}/{name}" if module else \
-                    f"{app_id}/@external/{name}"
-                sig_to_id[sig] = ext_id
-                externals[ext_id] = PyExternalSymbol(
-                    id=ext_id, name=name, module=module
-                )
-        return externals
-
     def analyze(self) -> Analysis:
         """Analyze the project and return the v2 ``Analysis`` envelope.
 
-        Uses caching to avoid re-analyzing unchanged files.
+        Loads any cache seed, runs the fluent AnalysisPipeline, and persists the
+        result. The per-level work lives in the pipeline passes.
         """
         cache_file = self.cache_dir / "analysis_cache.json"
 
-        # Try to load existing cached analysis
         cached = None
         if not self.rebuild_analysis and cache_file.exists():
             try:
@@ -580,114 +494,25 @@ class Codeanalyzer:
                 logger.info("Analysis cache written by a different analyzer version; rebuilding.")
             cached = None
 
-        # Build symbol table from cached application if available (if no available, the build a new one)
-        symbol_table = self._build_symbol_table(cached.application.symbol_table if cached else {})
+        ctx = AnalysisContext(
+            options=self.options,
+            project_dir=self.project_dir,
+            virtualenv=self.virtualenv,
+            analysis_level=self.analysis_level,
+            app_name=self.options.app_name or self.project_dir.name,
+            cached_symbol_table=cached.application.symbol_table if cached else {},
+        )
 
-        resolve_unresolved_constructors(symbol_table)
-
-        # Level 1: Jedi call graph.
-        t0_jedi = time.perf_counter()
-        jedi_edges = jedi_call_graph_edges(symbol_table)
-        call_graph = list(jedi_edges)
-        logger.info("✅ Jedi: %d edges in %.1fs", len(call_graph), time.perf_counter() - t0_jedi)
-
-        if self.analysis_level >= 2:
-            # Level 2: also add PyCG edges. The Jedi edges double as the
-            # coupling graph that drives coupling-aware PyCG sharding.
-            pycg_edges = self._get_pycg_call_graph(symbol_table, jedi_edges)
-            call_graph = merge_edges(call_graph, pycg_edges)
-
-        call_graph = filter_external_edges(call_graph, symbol_table)
-        # Canonical edge order: backend iteration order (PyCG dicts, Counter
-        # insertion) is not a contract — sort so identical edge SETS always
-        # serialize identically (issue #99 determinism gate), and so the
-        # external-symbol homing below assigns ids in a stable order.
-        call_graph.sort(key=lambda e: (e.src, e.dst))
-
-        # Recreate pyapplication
-        app = (
-            PyApplication.builder()
-            .symbol_table(symbol_table)
-            .call_graph(call_graph)
+        analysis = (
+            AnalysisPipeline(ctx)
+            .with_symbol_table()
+            .with_call_graph()
+            .with_intraproc_dataflow()
+            .with_interproc_dataflow()
             .build()
         )
 
-        # Every run re-resolves import spellings against the analyzed module
-        # set -- pure and cheap; cached modules from older caches default to
-        # resolved_module=None and get stamped here (issue #82).
-        resolve_imports(app, self.project_dir)
-
-        # Single choke point for provenance: every produced app (fresh symbol
-        # table or reused-from-cache) passes through here before being cached
-        # or returned, so repository provenance always reflects *this* checkout
-        # even when the symbol table itself came from the on-disk cache. The
-        # analyzer identity rides the envelope below (keystone home).
-        app.repository = repository_info(self.project_dir)
-
-        app_name = self.options.app_name or self.project_dir.name
-        sig_to_id = assign_ids(app, app_name)
-        # Home call-graph endpoints that are not declared in the symbol table
-        # (imported library / builtin members) onto @external ids once, so the
-        # JSON and Neo4j backends share one authoritative external-symbol set
-        # and every edge endpoint joins the id space (no dangling endpoints).
-        app.external_symbols = self._home_external_symbols(app, app.id, sig_to_id)
-        populate_l1_body(app)
-        if self.analysis_level >= 2:
-            backfill_callees(app, sig_to_id)
-        reidentify_call_graph(app, sig_to_id)
-
-        # L3: intraprocedural dataflow (CFG/CDG/DDG) emitted onto the v2 tree.
-        if self.analysis_level >= 3:
-            from codeanalyzer.dataflow.builder import (
-                build_function_pdgs,
-                emit_l3_body,
-            )
-            from codeanalyzer.dataflow.syntactic import SyntacticOracle
-
-            infos, _func_asts = build_function_pdgs(
-                app,
-                k=self.options.graph_field_depth,
-                oracle_factory=lambda c, fast: SyntacticOracle(),
-            )
-            emit_l3_body(app, infos, sig_to_id, set(self.options.graphs.split(",")))
-
-        # L4: interprocedural dataflow (param vertices + summary + param_in/out)
-        # layered on top of the L3 syntactic overlay (L3 ⊆ L4). Scalpel is the
-        # primary may-alias oracle, with the type-based total fallback.
-        if self.analysis_level >= 4:
-            from codeanalyzer.dataflow.builder import (
-                _base_types,
-                build_program_graphs,
-                emit_ddg_pointsto_delta,
-                emit_l4,
-            )
-            from codeanalyzer.dataflow.scalpel_oracle import make_alias_oracle
-
-            ir = build_program_graphs(
-                app,
-                k=self.options.graph_field_depth,
-                oracle_factory=lambda c, fast: make_alias_oracle(
-                    c, fast, _base_types(c)
-                ),
-            )
-            emit_l4(app, ir, sig_to_id)
-            # Semantic ddg delta: the alias-derived def-use edges the real
-            # oracle adds beyond the L3 syntactic set, tagged prov=["points-to"].
-            # ``infos`` are the syntactic (L3) PDGs from the >=3 block above.
-            emit_ddg_pointsto_delta(app, infos, ir, sig_to_id)
-
-        # Build the v2 envelope, then persist it (the cache stores the full
-        # ``Analysis`` envelope so a reused cache round-trips schema_version).
-        # k_limit is an L3+ envelope key: below the dataflow levels it stays
-        # None and exclude_none drops it from the payload.
-        analysis = Analysis(
-            max_level=self.analysis_level,
-            k_limit=self.options.graph_field_depth if self.analysis_level >= 3 else None,
-            analyzer=analyzer_info(self.analysis_level),
-            application=app,
-        )
         self._save_analysis_cache(analysis, cache_file)
-
         return analysis
 
     @staticmethod
@@ -755,35 +580,6 @@ class Codeanalyzer:
 
         logger.info(f"Analysis cached to {cache_file}")
 
-    def _file_unchanged(self, file_path: Path, cached_module: PyModule) -> bool:
-        """Check if a file has changed since it was cached.
-        
-        Args:
-            file_path: Path to the file to check
-            cached_module: The cached PyModule for this file
-            
-        Returns:
-            bool: True if file is unchanged, False otherwise
-        """
-        try:
-            # Check last modified time and file size
-            if (cached_module.last_modified is not None and
-                cached_module.file_size is not None and
-                cached_module.last_modified == file_path.stat().st_mtime and
-                cached_module.file_size == file_path.stat().st_size):
-                return True
-            # Also check content hash for extra safety
-            if cached_module.content_hash is not None:
-                content_hash = hashlib.sha256(file_path.read_bytes()).hexdigest()
-                return content_hash == cached_module.content_hash
-
-            # No cached metadata mismatch, assume file changed
-            return False
-            
-        except Exception as e:
-            logger.debug(f"Error checking file {file_path}: {e}")
-            return False
-
     def _compute_checksum(self, root: Path) -> str:
         """Compute SHA256 checksum of all Python source files in a project directory. If somethings changes, the
         checksum will change and thus the analysis will be redone.
@@ -798,177 +594,3 @@ class Codeanalyzer:
         for py_file in sorted(root.rglob("*.py")):
             sha256.update(py_file.read_bytes())
         return sha256.hexdigest()
-
-    def _build_symbol_table(self, cached_symbol_table: Optional[Dict[str, PyModule]] = None) -> Dict[str, PyModule]:
-        """Builds the symbol table for the project.
-
-        This method scans the project directory, identifies Python files,
-        and constructs a symbol table containing information about classes,
-        functions, and variables defined in those files.
-        
-        Args:
-            cached_app: Previously cached PyApplication to reuse unchanged files
-        
-        Returns:
-            Dict[str, PyModule]: A dictionary mapping file paths to PyModule objects.
-        """
-        symbol_table: Dict[str, PyModule] = {}
-        t0_st = time.perf_counter()
-
-        # Handle single file analysis
-        if self.file_name is not None:
-            single_file = self.project_dir / self.file_name
-            logger.info(f"Analyzing single file: {single_file}")
-
-            # Check if file is in cache and unchanged
-            file_key = str(single_file.relative_to(self.project_dir))
-            if file_key in cached_symbol_table and not self.rebuild_analysis:
-                # Compute file checksum to see if it changed
-                if self._file_unchanged(single_file, cached_symbol_table[file_key]):
-                    logger.info(f"Using cached analysis for {single_file}")
-                    symbol_table[file_key] = cached_symbol_table[file_key]
-                    return symbol_table
-            
-            # File is new or changed, analyze it
-            try:
-                symbol_table_builder = SymbolTableBuilder(self.project_dir, self.virtualenv)
-                py_module = symbol_table_builder.build_pymodule_from_file(single_file)
-                symbol_table[file_key] = py_module
-                logger.info("✅ Single file analysis complete.")
-                return symbol_table
-            except Exception as e:
-                logger.error(f"Failed to process {single_file}: {e}")
-                return symbol_table
-        
-        # Get all Python files first to show accurate progress
-        py_files = []
-        for py_file in self.project_dir.rglob("*.py"):
-            rel_path = py_file.relative_to(self.project_dir)
-            path_parts = rel_path.parts
-            filename = py_file.name
-
-            # Skip directories we don't care about
-            if (
-                "site-packages" in path_parts
-                or ".venv" in path_parts
-                or ".codeanalyzer" in path_parts
-            ):
-                continue
-
-            # Skip test files if enabled
-            if self.skip_tests and (
-                "test" in path_parts
-                or "tests" in path_parts
-                or filename.startswith("test_")
-                or filename.endswith("_test.py")
-            ):
-                continue
-
-            py_files.append(py_file)
-
-        if self.using_ray:
-            logger.info("Using Ray for distributed symbol table generation.")
-            # Separate files into cached and new/changed
-            files_to_process = []
-            for py_file in py_files:
-                file_key = str(py_file.relative_to(self.project_dir))
-                if file_key in cached_symbol_table and not self.rebuild_analysis:
-                    if self._file_unchanged(py_file, cached_symbol_table[file_key]):
-                        # Use cached version
-                        symbol_table[file_key] = cached_symbol_table[file_key]
-                        continue
-                files_to_process.append(py_file)
-            
-            # Process only new/changed files with Ray
-            if files_to_process:
-                _ensure_ray()
-                futures = [_process_file_with_ray.remote(py_file, self.project_dir, str(self.virtualenv) if self.virtualenv else None) for py_file in files_to_process]
-                
-                with ProgressBar(len(futures), "Building symbol table (parallel)") as progress:
-                    pending = futures[:]
-                    while pending:
-                        done, pending = ray.wait(pending, num_returns=1)
-                        result = ray.get(done[0])
-                        if result:
-                            symbol_table.update(result)
-                        progress.advance()
-        else:
-            logger.info("Building symbol table serially.")
-            symbol_table_builder = SymbolTableBuilder(self.project_dir, self.virtualenv)
-            files_processed = 0
-            files_from_cache = 0
-            
-            with ProgressBar(len(py_files), "Building symbol table") as progress:
-                for py_file in py_files:
-                    file_key = str(py_file.relative_to(self.project_dir))
-                    
-                    # Check if file is cached and unchanged
-                    if file_key in cached_symbol_table and not self.rebuild_analysis:
-                        if self._file_unchanged(py_file, cached_symbol_table[file_key]):
-                            symbol_table[file_key] = cached_symbol_table[file_key]
-                            files_from_cache += 1
-                            progress.advance()
-                            continue
-                    
-                    # File is new or changed, analyze it
-                    try:
-                        py_module = symbol_table_builder.build_pymodule_from_file(py_file)
-                        symbol_table[file_key] = py_module
-                        files_processed += 1
-                    except Exception as e:
-                        logger.error(f"Failed to process {py_file}: {e}")
-                    progress.advance()
-            
-            if files_from_cache > 0:
-                logger.info(f"Reused {files_from_cache} files from cache, processed {files_processed} new/changed files")
-
-        if py_files and not symbol_table:
-            logger.error(
-                "Every one of the %d discovered Python files failed to process — "
-                "the symbol table is empty. This usually means the analysis "
-                "environment's interpreter is newer than the installed jedi/parso "
-                "stack supports (#107); check the per-file errors above.",
-                len(py_files),
-            )
-
-        logger.info(
-            "✅ Symbol table: %d modules in %.1fs",
-            len(symbol_table), time.perf_counter() - t0_st,
-        )
-        return symbol_table
-
-    def _get_pycg_call_graph(
-        self,
-        symbol_table: Dict[str, PyModule],
-        jedi_edges: List[PyCallEdge],
-    ) -> List[PyCallEdge]:
-        """Build PyCG-resolved call edges.
-
-        Runs PyCG's iterative name-pointer analysis over the whole project
-        and returns edges with ``prov=["pycg"]``.  Falls back to an
-        empty list and logs a warning on any failure so the caller can
-        continue with Jedi-only edges.
-
-        *jedi_edges* are the level-1 call edges; under the ``jedi`` shard
-        strategy they drive coupling-aware partitioning (see
-        :func:`shard_planner.plan_shards`).
-        """
-        try:
-            pycg = PyCG(
-                self.project_dir,
-                skip_tests=self.skip_tests,
-                shard=self.options.pycg_shard,
-                shard_ceiling=self.options.pycg_shard_ceiling,
-                shard_timeout=self.options.pycg_shard_timeout,
-                shard_strategy=self.options.pycg_shard_strategy,
-                max_iter=self.options.pycg_max_iter,
-                using_ray=self.using_ray,
-            )
-            return pycg.build_call_graph_edges(symbol_table, jedi_edges=jedi_edges)
-        except PyCGExceptions.PyCGImportError as exc:
-            logger.warning(f"PyCG not installed — level 2 edges will be Jedi-only: {exc}")
-            return []
-        except PyCGExceptions.PyCGAnalysisError as exc:
-            logger.warning(f"PyCG analysis failed — level 2 edges will be Jedi-only: {exc}")
-            logger.debug("PyCG full traceback:", exc_info=True)
-            return []

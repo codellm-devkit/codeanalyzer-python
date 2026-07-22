@@ -1,0 +1,653 @@
+{
+  "analyzer": {
+    "config": {
+      "analysis_level": 1
+    },
+    "name": "codeanalyzer-python"
+  },
+  "application": {
+    "call_graph": [
+      {
+        "dst": "can://python/method_call_resolution/@external/builtins/len",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/method_call_resolution/main.py/AccountMove/action_post(self)",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/method_call_resolution/@external/builtins.str/__init__",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/method_call_resolution/main.py/AccountMove/action_post(self)",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/method_call_resolution/main.py/Model/helper(self)",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/method_call_resolution/main.py/AccountMove/action_post(self)",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/method_call_resolution/main.py/Model/search(self,domain)",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/method_call_resolution/main.py/AccountMove/action_post(self)",
+        "weight": 1
+      },
+      {
+        "dst": "can://python/method_call_resolution/@external/main.Model/__init__",
+        "prov": [
+          "jedi"
+        ],
+        "src": "can://python/method_call_resolution/main.py/Environment/__getitem__(self,name)",
+        "weight": 1
+      }
+    ],
+    "external_symbols": {
+      "can://python/method_call_resolution/@external/builtins.str/__init__": {
+        "id": "can://python/method_call_resolution/@external/builtins.str/__init__",
+        "kind": "external",
+        "module": "builtins.str",
+        "name": "__init__"
+      },
+      "can://python/method_call_resolution/@external/builtins/len": {
+        "id": "can://python/method_call_resolution/@external/builtins/len",
+        "kind": "external",
+        "module": "builtins",
+        "name": "len"
+      },
+      "can://python/method_call_resolution/@external/main.Model/__init__": {
+        "id": "can://python/method_call_resolution/@external/main.Model/__init__",
+        "kind": "external",
+        "module": "main.Model",
+        "name": "__init__"
+      }
+    },
+    "id": "can://python/method_call_resolution",
+    "kind": "application",
+    "param_in": [],
+    "param_out": [],
+    "symbol_table": {
+      "main.py": {
+        "comments": [],
+        "content_hash": "286d25d0f8854ad5fc4d879dd9e9f7b3747e38081c3b971c7362ea0ea11c1901",
+        "file_size": 432,
+        "functions": {},
+        "id": "can://python/method_call_resolution/main.py",
+        "imports": [],
+        "kind": "module",
+        "module_name": "main",
+        "source": "class Environment:\n    def __getitem__(self, name):\n        return Model()\n\n\nclass Model:\n    env = Environment()\n\n    def search(self, domain):\n        return []\n\n    def helper(self):\n        return 42\n\n\nclass AccountMove(Model):\n    _name = 'account.move'\n    _inherit = ['mail.thread']\n\n    def action_post(self):\n        accounts = self.env['account.account'].search([])\n        self.helper()\n        return str(len(accounts))\n",
+        "types": {
+          "main.AccountMove": {
+            "attributes": {
+              "_inherit": {
+                "comments": [],
+                "end_line": 18,
+                "initializer": "['mail.thread']",
+                "name": "_inherit",
+                "start_line": 18,
+                "type": "list"
+              },
+              "_name": {
+                "comments": [],
+                "end_line": 17,
+                "initializer": "'account.move'",
+                "name": "_name",
+                "start_line": 17,
+                "type": "str"
+              }
+            },
+            "base_classes": [
+              "Model"
+            ],
+            "callables": {
+              "action_post": {
+                "accessed_symbols": [
+                  {
+                    "col_offset": 15,
+                    "is_builtin": false,
+                    "kind": "class",
+                    "lineno": 23,
+                    "name": "str",
+                    "qualified_name": "builtins.str",
+                    "scope": "local",
+                    "type": "str"
+                  },
+                  {
+                    "col_offset": 8,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 22,
+                    "name": "self",
+                    "qualified_name": "main.AccountMove",
+                    "scope": "local",
+                    "type": "AccountMove"
+                  },
+                  {
+                    "col_offset": 19,
+                    "is_builtin": false,
+                    "kind": "function",
+                    "lineno": 23,
+                    "name": "len",
+                    "qualified_name": "builtins.len",
+                    "scope": "local",
+                    "type": "len"
+                  },
+                  {
+                    "col_offset": 23,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 23,
+                    "name": "accounts",
+                    "qualified_name": "builtins.list",
+                    "scope": "local",
+                    "type": "list"
+                  },
+                  {
+                    "col_offset": 19,
+                    "is_builtin": false,
+                    "kind": "variable",
+                    "lineno": 21,
+                    "name": "self",
+                    "qualified_name": "main.AccountMove",
+                    "scope": "local",
+                    "type": "AccountMove"
+                  }
+                ],
+                "body": {
+                  "21:19": {
+                    "kind": "call",
+                    "span": {
+                      "bytes": [
+                        337,
+                        375
+                      ],
+                      "end": [
+                        21,
+                        57
+                      ],
+                      "start": [
+                        21,
+                        19
+                      ]
+                    }
+                  },
+                  "22:8": {
+                    "kind": "call",
+                    "span": {
+                      "bytes": [
+                        384,
+                        397
+                      ],
+                      "end": [
+                        22,
+                        21
+                      ],
+                      "start": [
+                        22,
+                        8
+                      ]
+                    }
+                  },
+                  "23:15": {
+                    "kind": "call",
+                    "span": {
+                      "bytes": [
+                        413,
+                        431
+                      ],
+                      "end": [
+                        23,
+                        33
+                      ],
+                      "start": [
+                        23,
+                        15
+                      ]
+                    }
+                  },
+                  "23:19": {
+                    "kind": "call",
+                    "span": {
+                      "bytes": [
+                        417,
+                        430
+                      ],
+                      "end": [
+                        23,
+                        32
+                      ],
+                      "start": [
+                        23,
+                        19
+                      ]
+                    }
+                  }
+                },
+                "call_sites": [
+                  {
+                    "argument_types": [
+                      "list"
+                    ],
+                    "arguments": [
+                      {
+                        "ast_kind": "List",
+                        "inferred_type": "list"
+                      }
+                    ],
+                    "callee_signature": "main.Model.search",
+                    "end_column": 57,
+                    "end_line": 21,
+                    "is_constructor_call": false,
+                    "method_name": "search",
+                    "receiver_expr": "self.env['account.account']",
+                    "receiver_type": "AccountMove",
+                    "return_type": "list",
+                    "start_column": 19,
+                    "start_line": 21
+                  },
+                  {
+                    "argument_types": [],
+                    "arguments": [],
+                    "callee_signature": "main.Model.helper",
+                    "end_column": 21,
+                    "end_line": 22,
+                    "is_constructor_call": false,
+                    "method_name": "helper",
+                    "receiver_expr": "self",
+                    "receiver_type": "AccountMove",
+                    "return_type": "int",
+                    "start_column": 8,
+                    "start_line": 22
+                  },
+                  {
+                    "argument_types": [
+                      "len"
+                    ],
+                    "arguments": [
+                      {
+                        "ast_kind": "Call",
+                        "inferred_type": "len"
+                      }
+                    ],
+                    "callee_signature": "builtins.str.__init__",
+                    "end_column": 33,
+                    "end_line": 23,
+                    "is_constructor_call": true,
+                    "method_name": "str",
+                    "return_type": "str",
+                    "start_column": 15,
+                    "start_line": 23
+                  },
+                  {
+                    "argument_types": [
+                      "list"
+                    ],
+                    "arguments": [
+                      {
+                        "ast_kind": "Name",
+                        "inferred_type": "list"
+                      }
+                    ],
+                    "callee_signature": "builtins.len",
+                    "end_column": 32,
+                    "end_line": 23,
+                    "is_constructor_call": false,
+                    "method_name": "len",
+                    "return_type": "int",
+                    "start_column": 19,
+                    "start_line": 23
+                  }
+                ],
+                "callables": {},
+                "cdg": [],
+                "cfg": [],
+                "code_start_line": 21,
+                "comments": [],
+                "cyclomatic_complexity": 2,
+                "ddg": [],
+                "decorators": [],
+                "end_line": 23,
+                "id": "can://python/method_call_resolution/main.py/AccountMove/action_post(self)",
+                "kind": "function",
+                "local_variables": [
+                  {
+                    "end_column": 16,
+                    "end_line": 21,
+                    "initializer": "self.env['account.account'].search([])",
+                    "name": "accounts",
+                    "scope": "function",
+                    "start_column": 8,
+                    "start_line": 21,
+                    "type": "list"
+                  }
+                ],
+                "name": "action_post",
+                "parameters": [
+                  {
+                    "end_column": 24,
+                    "end_line": 20,
+                    "name": "self",
+                    "start_column": 20,
+                    "start_line": 20,
+                    "type": "AccountMove"
+                  }
+                ],
+                "signature": "main.AccountMove.action_post",
+                "span": {
+                  "bytes": [
+                    295,
+                    431
+                  ],
+                  "end": [
+                    23,
+                    33
+                  ],
+                  "start": [
+                    20,
+                    4
+                  ]
+                },
+                "start_line": 20,
+                "summary": [],
+                "types": {}
+              }
+            },
+            "comments": [],
+            "end_line": 23,
+            "id": "can://python/method_call_resolution/main.py/AccountMove",
+            "kind": "class",
+            "name": "AccountMove",
+            "signature": "main.AccountMove",
+            "span": {
+              "bytes": [
+                206,
+                431
+              ],
+              "end": [
+                23,
+                33
+              ],
+              "start": [
+                16,
+                0
+              ]
+            },
+            "start_line": 16,
+            "types": {}
+          },
+          "main.Environment": {
+            "attributes": {},
+            "base_classes": [],
+            "callables": {
+              "__getitem__": {
+                "accessed_symbols": [
+                  {
+                    "col_offset": 15,
+                    "is_builtin": false,
+                    "kind": "class",
+                    "lineno": 3,
+                    "name": "Model",
+                    "qualified_name": "main.Model",
+                    "scope": "local",
+                    "type": "Model"
+                  }
+                ],
+                "body": {
+                  "3:15": {
+                    "kind": "call",
+                    "span": {
+                      "bytes": [
+                        67,
+                        74
+                      ],
+                      "end": [
+                        3,
+                        22
+                      ],
+                      "start": [
+                        3,
+                        15
+                      ]
+                    }
+                  }
+                },
+                "call_sites": [
+                  {
+                    "argument_types": [],
+                    "arguments": [],
+                    "callee_signature": "main.Model.__init__",
+                    "end_column": 22,
+                    "end_line": 3,
+                    "is_constructor_call": true,
+                    "method_name": "Model",
+                    "return_type": "Model",
+                    "start_column": 15,
+                    "start_line": 3
+                  }
+                ],
+                "callables": {},
+                "cdg": [],
+                "cfg": [],
+                "code_start_line": 3,
+                "comments": [],
+                "cyclomatic_complexity": 2,
+                "ddg": [],
+                "decorators": [],
+                "end_line": 3,
+                "id": "can://python/method_call_resolution/main.py/Environment/__getitem__(self,name)",
+                "kind": "function",
+                "local_variables": [],
+                "name": "__getitem__",
+                "parameters": [
+                  {
+                    "end_column": 24,
+                    "end_line": 2,
+                    "name": "self",
+                    "start_column": 20,
+                    "start_line": 2,
+                    "type": "Environment"
+                  },
+                  {
+                    "end_column": 30,
+                    "end_line": 2,
+                    "name": "name",
+                    "start_column": 26,
+                    "start_line": 2
+                  }
+                ],
+                "signature": "main.Environment.__getitem__",
+                "span": {
+                  "bytes": [
+                    23,
+                    74
+                  ],
+                  "end": [
+                    3,
+                    22
+                  ],
+                  "start": [
+                    2,
+                    4
+                  ]
+                },
+                "start_line": 2,
+                "summary": [],
+                "types": {}
+              }
+            },
+            "comments": [],
+            "end_line": 3,
+            "id": "can://python/method_call_resolution/main.py/Environment",
+            "kind": "class",
+            "name": "Environment",
+            "signature": "main.Environment",
+            "span": {
+              "bytes": [
+                0,
+                74
+              ],
+              "end": [
+                3,
+                22
+              ],
+              "start": [
+                1,
+                0
+              ]
+            },
+            "start_line": 1,
+            "types": {}
+          },
+          "main.Model": {
+            "attributes": {
+              "env": {
+                "comments": [],
+                "end_line": 7,
+                "initializer": "Environment()",
+                "name": "env",
+                "start_line": 7,
+                "type": "Environment"
+              }
+            },
+            "base_classes": [],
+            "callables": {
+              "helper": {
+                "accessed_symbols": [],
+                "body": {},
+                "call_sites": [],
+                "callables": {},
+                "cdg": [],
+                "cfg": [],
+                "code_start_line": 13,
+                "comments": [],
+                "cyclomatic_complexity": 2,
+                "ddg": [],
+                "decorators": [],
+                "end_line": 13,
+                "id": "can://python/method_call_resolution/main.py/Model/helper(self)",
+                "kind": "function",
+                "local_variables": [],
+                "name": "helper",
+                "parameters": [
+                  {
+                    "end_column": 19,
+                    "end_line": 12,
+                    "name": "self",
+                    "start_column": 15,
+                    "start_line": 12,
+                    "type": "Model"
+                  }
+                ],
+                "signature": "main.Model.helper",
+                "span": {
+                  "bytes": [
+                    168,
+                    203
+                  ],
+                  "end": [
+                    13,
+                    17
+                  ],
+                  "start": [
+                    12,
+                    4
+                  ]
+                },
+                "start_line": 12,
+                "summary": [],
+                "types": {}
+              },
+              "search": {
+                "accessed_symbols": [],
+                "body": {},
+                "call_sites": [],
+                "callables": {},
+                "cdg": [],
+                "cfg": [],
+                "code_start_line": 10,
+                "comments": [],
+                "cyclomatic_complexity": 2,
+                "ddg": [],
+                "decorators": [],
+                "end_line": 10,
+                "id": "can://python/method_call_resolution/main.py/Model/search(self,domain)",
+                "kind": "function",
+                "local_variables": [],
+                "name": "search",
+                "parameters": [
+                  {
+                    "end_column": 19,
+                    "end_line": 9,
+                    "name": "self",
+                    "start_column": 15,
+                    "start_line": 9,
+                    "type": "Model"
+                  },
+                  {
+                    "end_column": 27,
+                    "end_line": 9,
+                    "name": "domain",
+                    "start_column": 21,
+                    "start_line": 9,
+                    "type": "list"
+                  }
+                ],
+                "signature": "main.Model.search",
+                "span": {
+                  "bytes": [
+                    119,
+                    162
+                  ],
+                  "end": [
+                    10,
+                    17
+                  ],
+                  "start": [
+                    9,
+                    4
+                  ]
+                },
+                "start_line": 9,
+                "summary": [],
+                "types": {}
+              }
+            },
+            "comments": [],
+            "end_line": 13,
+            "id": "can://python/method_call_resolution/main.py/Model",
+            "kind": "class",
+            "name": "Model",
+            "signature": "main.Model",
+            "span": {
+              "bytes": [
+                77,
+                203
+              ],
+              "end": [
+                13,
+                17
+              ],
+              "start": [
+                6,
+                0
+              ]
+            },
+            "start_line": 6,
+            "types": {}
+          }
+        },
+        "variables": []
+      }
+    }
+  },
+  "language": "python",
+  "max_level": 1,
+  "schema_version": "2.0.0"
+}

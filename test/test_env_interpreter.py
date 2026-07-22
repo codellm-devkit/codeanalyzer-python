@@ -148,7 +148,11 @@ def test_all_files_failing_emits_an_error(tmp_path, monkeypatch, caplog):
     analyzer = Codeanalyzer(opts)
     monkeypatch.setattr(logging.getLogger("codeanalyzer"), "propagate", True)
     with caplog.at_level(logging.ERROR, logger="codeanalyzer"):
-        table = analyzer._build_symbol_table(cached_symbol_table={})
+        from codeanalyzer.pipeline.symbol_table import build_symbol_table
+        table = build_symbol_table(
+            analyzer.project_dir, analyzer.virtualenv, analyzer.options,
+            cached_symbol_table={},
+        )
     assert table == {}
     assert any(
         "every" in r.getMessage().lower() or "all " in r.getMessage().lower()
