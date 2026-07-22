@@ -122,10 +122,13 @@ declared callables by their `can://` tree id, imported/builtin targets by a
   (`codeanalyzer/dataflow/scalpel_oracle.py`) consumes `python-scalpel`'s **solved
   SSA + copy/const** state (it never forks the solver) as a copy-closure union-find
   over access paths, behind the frozen `may_alias(path_a, path_b) -> bool`
-  interface. `python-scalpel` is an **optional** dependency: if it is absent or a
-  build/query fails, the analyzer falls back to the total `TypeBasedAliasOracle`
-  (`alias.py`) and degrades, never raising. The type-based oracle is the sanctioned
-  fallback, not the shipping default.
+  interface. Scalpel is **vendored** (`codeanalyzer/dataflow/scalpel/`, a
+  `typed_ast`-free 9-module slice of `python-scalpel 1.0b0`, Apache-2.0) so it is
+  the **shipping default** L4 oracle on every supported Python — there is no
+  external `python-scalpel`/`typed_ast` dependency. `TypeBasedAliasOracle`
+  (`alias.py`) is retained only as the runtime safety net: on a per-callable
+  Scalpel build failure or a per-query unresolved access path, `may_alias`
+  degrades to it, never raising.
 - **CLI gating** (`codeanalyzer/__main__.py`): `-a` max is 4; `--graphs sdg`
   requires `-a 4` (a flag error below that); `cfg,dfg,pdg` require `-a 3`;
   `--graph-field-depth` (the `k_limit`) is valid at L3+.
