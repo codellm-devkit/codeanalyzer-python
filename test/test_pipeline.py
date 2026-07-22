@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from codeanalyzer.options import AnalysisOptions
 from codeanalyzer.config import OutputFormat
 from codeanalyzer.pipeline import AnalysisContext
@@ -50,3 +52,60 @@ def test_home_external_symbols_homes_undeclared_endpoints():
     externals = home_external_symbols(app, app.id, sig_to_id)
     assert "can://python/proj/@external/os/getcwd" in externals
     assert sig_to_id["os.getcwd"] == "can://python/proj/@external/os/getcwd"
+
+
+from codeanalyzer.pipeline.passes import (
+    _pass_symbol_table, _pass_call_graph,
+    _pass_intraproc_dataflow, _pass_interproc_dataflow,
+)
+
+
+def _ctx(tmp_path, level, src="def g():\n    return 1\ndef f():\n    return g()\n"):
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "m.py").write_text(src, encoding="utf-8")
+    opts = AnalysisOptions(
+        input=proj, output=None, format=OutputFormat.JSON,
+        analysis_level=level, skip_tests=True, no_venv=True,
+    )
+    return AnalysisContext(
+        options=opts, project_dir=proj, virtualenv=None,
+        analysis_level=level, app_name="proj",
+    )
+
+
+def test_pass_symbol_table_populates_symbol_table(tmp_path):
+    ctx = _ctx(tmp_path, 1)
+    _pass_symbol_table(ctx)
+    assert ctx.symbol_table is not None and "m.py" in ctx.symbol_table
+
+
+def test_pass_call_graph_populates_app_and_ids(tmp_path):
+    ctx = _ctx(tmp_path, 1)
+    _pass_symbol_table(ctx)
+    _pass_call_graph(ctx)
+    assert ctx.app is not None and ctx.sig_to_id is not None
+    assert ctx.app.id.startswith("can://python/proj")
+
+
+def test_pass_call_graph_requires_symbol_table(tmp_path):
+    ctx = _ctx(tmp_path, 1)
+    with pytest.raises(AssertionError):
+        _pass_call_graph(ctx)
+
+
+def test_pass_interproc_requires_infos(tmp_path):
+    ctx = _ctx(tmp_path, 4)
+    _pass_symbol_table(ctx)
+    _pass_call_graph(ctx)
+    # intraproc pass deliberately skipped -> infos is still None
+    with pytest.raises(AssertionError):
+        _pass_interproc_dataflow(ctx)
+
+
+def test_pass_intraproc_populates_infos(tmp_path):
+    ctx = _ctx(tmp_path, 3, src="def g(x):\n    return x\ndef f(a):\n    b = a\n    g(b)\n    return b\n")
+    _pass_symbol_table(ctx)
+    _pass_call_graph(ctx)
+    _pass_intraproc_dataflow(ctx)
+    assert ctx.infos is not None
