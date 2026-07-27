@@ -202,3 +202,31 @@ MERGE collapses legitimately-distinct edges (per-variable dependences; a
 conditional's true/false pair) and a live Bolt push then materializes fewer
 relationships than the projection produced (caught by the opt-in
 `test_neo4j_bolt.py` count gates).
+
+## L4 graph completeness — port wiring + call anchoring (#115, 1.1.1)
+
+Two connectivity gaps closed in the L4 emission (no vocabulary invented; both
+decisions use surface the keystone already ships):
+
+1. **Statement ↔ port ddg wiring, `prov:["reaching-defs"]`.** The SDG's
+   binding edges — `def stmt → actual_in`, `actual_out → callsite`,
+   `formal_in → first use`, `def/return → formal_out` — existed in the IR
+   (`fg.extra_edges`, wired by `assemble_sdg`) and were emitted by the old v1
+   `program_graphs` projection, but the v2 emission dropped them, leaving the
+   port lattice an island (no end-to-end `flows_to` witness could cross a
+   call). `emit_l4` now emits them onto each callable's `ddg` tagged
+   `prov:["reaching-defs"]` — the label codeanalyzer-typescript already ships
+   for its port-routing edges, so the prov vocabulary stays keystone-shared:
+   `ssa` (L3 syntactic) ⊂ + `points-to` (L4 alias delta) + `reaching-defs`
+   (L4 port bindings). Monotonicity: both L4 families are additive over the
+   untouched ssa set, and every port endpoint exists only at L4.
+2. **Call vertices anchor via `parent`, not the CFG spine.** A call nested in
+   a larger statement (`y = f(x)`) keeps its own `"line:col"` body key and
+   deliberately stays OFF the cfg spine — calls are dataflow satellites of
+   their statement, not control-flow steps. From L3 (when statements exist)
+   such a call carries `parent` = its enclosing statement's local id — the
+   same anchoring `actual_in`/`actual_out` vertices already use. A bare-call
+   statement shares its key with the CFG node (no self-parent). This is a
+   sanctioned `null → value` refinement of `BodyNode.parent` at the L2→L3
+   boundary, mirroring the `callee: null → id` refinement at L1→L2; the
+   superset gates compare body keys, so no gate exception was needed.
