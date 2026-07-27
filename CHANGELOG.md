@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-07-27
+
 ### Fixed
 - **L4 SDG port layer is connected to the statement ddg** (#115): the binding
   edges `def stmt → actual_in`, `actual_out → callsite`, `formal_in → first use`
