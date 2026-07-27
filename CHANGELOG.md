@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **L4 SDG port layer is connected to the statement ddg** (#115): the binding
+  edges `def stmt → actual_in`, `actual_out → callsite`, `formal_in → first use`
+  and `return → formal_out` were built by the SDG assembler but dropped by the
+  v2 emission, leaving the interprocedural port lattice an island — no
+  end-to-end `flows_to(def, callee_formal)` path could cross a call. They are
+  now emitted on each callable's `ddg` with `prov:["reaching-defs"]` (the same
+  label codeanalyzer-typescript ships for its port-routing edges). Strictly
+  additive over the L3 `ssa` set, so `L3 ⊆ L4` monotonicity holds.
+- **Nested call vertices are anchored to their statement** (#115): a call inside
+  a larger statement (`y = f(x)`) sits off the CFG spine by design (a dataflow
+  satellite); from L3 it now carries `parent` = its enclosing statement's local
+  id — the same anchoring `actual_in`/`actual_out` vertices use. Sanctioned
+  `null → value` refinement at L2→L3, mirroring `callee: null → id` at L1→L2;
+  recorded in `.claude/SCHEMA_DECISIONS.md`.
+
 ## [1.1.0] - 2026-07-27
 
 ### Changed

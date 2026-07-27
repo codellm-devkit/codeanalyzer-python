@@ -68,14 +68,16 @@ def assert_conformant(payload: dict, max_level: int) -> None:
                     f"L3 ddg edge must have prov ['ssa'], got {e.get('prov')} in {c['id']}"
                 )
     elif max_level >= 4:
-        # L4 layers an alias-derived (points-to) def-use delta additively on top
-        # of the unchanged L3 ssa edges, so every ddg edge carries exactly one of
-        # those two provenances — and no other.
+        # L4 layers two additive deltas on the unchanged L3 ssa edges: the
+        # alias-derived points-to def-use delta, and the statement ↔ port
+        # binding edges (#115) tagged reaching-defs — the keystone-shared label
+        # codeanalyzer-typescript also emits for its port-routing edges. Every
+        # ddg edge carries exactly one of those three provenances — no other.
         for mod, c in _iter_callables(app):
             for e in c.get("ddg", []):
-                assert e.get("prov") in (["ssa"], ["points-to"]), (
-                    f"L4 ddg edge must have prov ['ssa'] or ['points-to'], "
-                    f"got {e.get('prov')} in {c['id']}"
+                assert e.get("prov") in (["ssa"], ["points-to"], ["reaching-defs"]), (
+                    f"L4 ddg edge must have prov ['ssa'], ['points-to'] or "
+                    f"['reaching-defs'], got {e.get('prov')} in {c['id']}"
                 )
 
     if max_level >= 4:

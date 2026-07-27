@@ -283,6 +283,23 @@ def emit_l3_body(
                     continue
                 pycallable.body[local] = BodyNode(kind=node.kind, span=span)
 
+            # #115: anchor nested call vertices to their statement. A bare-call
+            # statement shares its key with its CFG node (handled above); a call
+            # nested inside a larger statement (`y = f(x)`) has its own key and
+            # no cfg contact, so it carries `parent` = the enclosing statement's
+            # local id — the same anchoring actual_in/actual_out vertices use.
+            for node in pdg.cfg.nodes:
+                if node.ast_node is None:
+                    continue
+                stmt_local = im.local(node.id)
+                for call in _calls_in(node.ast_node):
+                    call_key = f"{call.lineno}:{call.col_offset}"
+                    child = pycallable.body.get(call_key)
+                    if child is None or call_key == stmt_local:
+                        continue
+                    if child.kind == "call":
+                        child.parent = stmt_local
+
             if want_cfg:
                 pycallable.cfg = [
                     CfgEdge(
@@ -437,7 +454,12 @@ def emit_l4(
     points-to provenance and taint are *not* emitted here (later tasks).
     """
     from codeanalyzer.dataflow.identity import IdentityMap
-    from codeanalyzer.schema.py_schema import BodyNode, ParamEdge, SummaryEdge
+    from codeanalyzer.schema.py_schema import (
+        BodyNode,
+        DdgEdge,
+        ParamEdge,
+        SummaryEdge,
+    )
 
     # L4 emission is additive (it *appends* summary/param edges), so it must
     # first clear any L4 state a reused cache left on these live objects —
@@ -516,6 +538,41 @@ def emit_l4(
                 dst=dst_im.global_id(e.target_node),
             )
             (app.param_in if e.type == "PARAM_IN" else app.param_out).append(edge)
+
+    # (e) statement ↔ port ddg wiring (#115). The IR's ``extra_edges`` — the
+    # def→actual_in, actual_out→callsite, formal_in→use and def→formal_out
+    # bindings ``assemble_sdg`` wires — are what connect the port lattice to
+    # the statement-level ddg; without them the SDG is two disconnected
+    # graphs and no end-to-end flows_to walk can cross a call. Emitted with
+    # ``prov=["reaching-defs"]`` (the label codeanalyzer-typescript ships for
+    # its port-routing ddg edges, so the vocabulary stays keystone-shared).
+    # CDG-typed extras (callsite → actual_in containment) are skipped — the
+    # actual vertices already carry that anchoring in ``parent``.
+    for sig, fg in ir.functions.items():
+        pycallable = sig_to_callable.get(sig)
+        im = ims.get(sig)
+        if pycallable is None or im is None:
+            continue
+        # Idempotency under cache reuse, mirroring the points-to delta: strip
+        # any reaching-defs edges a prior run appended before re-emitting.
+        pycallable.ddg = [e for e in pycallable.ddg if e.prov != ["reaching-defs"]]
+        seen: set = set()
+        rows = []
+        for e in fg.extra_edges:
+            if e.type != "DDG":
+                continue
+            src, dst = im.local(e.source), im.local(e.target)
+            if src not in pycallable.body or dst not in pycallable.body:
+                continue
+            key = (src, dst, e.var)
+            if key in seen:
+                continue
+            seen.add(key)
+            rows.append(
+                DdgEdge(src=src, dst=dst, var=e.var, prov=["reaching-defs"])
+            )
+        rows.sort(key=lambda r: (r.src, r.dst, r.var or ""))
+        pycallable.ddg.extend(rows)
 
 
 def _ddg_local_set(im, pdg) -> Set[Tuple[str, str, Optional[str]]]:
