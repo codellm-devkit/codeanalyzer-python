@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-27
+
 ### Changed
 - The Scalpel-backed L4 points-to oracle is now **vendored** (`typed_ast`-free)
   and the default on all supported Python (3.9–3.14); `python-scalpel` is no
