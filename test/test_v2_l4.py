@@ -5,8 +5,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 from codeanalyzer.dataflow.alias import TypeBasedAliasOracle
 from codeanalyzer.dataflow.identity import IdentityMap
 from codeanalyzer.dataflow.sdg import ParamNode
@@ -104,18 +102,19 @@ class _ListHandler(logging.Handler):
         self.records.append(record)
 
 
-def test_make_alias_oracle_falls_back_when_scalpel_absent(monkeypatch):
+def test_make_alias_oracle_falls_back_on_build_failure(monkeypatch):
     """`make_alias_oracle` degrades to TypeBasedAliasOracle behavior and logs
-    once when Scalpel cannot be imported — regardless of whether the optional
-    dependency is actually installed in the runner."""
+    once when the (now-vendored, always-present) Scalpel oracle fails to build
+    for a given callable — the only surviving fallback path now that Scalpel
+    can no longer be "absent" (it is vendored, not an optional import)."""
     import codeanalyzer.dataflow.scalpel_oracle as so
 
-    # Force `import scalpel...` to raise ImportError even if it is installed:
-    # a None entry in sys.modules makes the import machinery halt. Cover the
-    # top-level package and every submodule the oracle imports so a previously
-    # cached submodule cannot satisfy the import.
-    for mod in ("scalpel", "scalpel.cfg", "scalpel.SSA", "scalpel.SSA.const"):
-        monkeypatch.setitem(sys.modules, mod, None)
+    # Force the per-callable Scalpel build to fail, regardless of input.
+    monkeypatch.setattr(
+        so.ScalpelAliasOracle,
+        "from_function",
+        classmethod(lambda cls, *a, **k: (_ for _ in ()).throw(RuntimeError("boom"))),
+    )
 
     # Reset the process-wide "logged once" guard and capture on the actual
     # (propagate=False) codeanalyzer logger.
@@ -144,9 +143,9 @@ def test_make_alias_oracle_falls_back_when_scalpel_absent(monkeypatch):
 
 
 def test_scalpel_oracle_copy_chain():
-    """When Scalpel is importable, the copy chain `b = a; c = b` places a, b, c
-    in one copy-closure class: a/b may-alias, an unrelated name does not."""
-    pytest.importorskip("scalpel")
+    """Scalpel is vendored and always importable now, so the copy chain
+    `b = a; c = b` always places a, b, c in one copy-closure class: a/b
+    may-alias, an unrelated name does not."""
     from codeanalyzer.dataflow.scalpel_oracle import ScalpelAliasOracle
 
     func_ast = ast.parse(COPY_CHAIN).body[0]

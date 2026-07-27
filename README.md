@@ -104,12 +104,9 @@ For the optional **live Neo4j push** (`--emit neo4j --neo4j-uri …`), install t
 pip install 'codeanalyzer-python[neo4j]'
 ```
 
-For the **Scalpel-backed points-to oracle** at level 4, install the `scalpel` extra. It is optional:
-when it is absent, level 4 automatically falls back to the built-in type-based oracle.
-
-```sh
-pip install 'codeanalyzer-python[scalpel]'
-```
+The **Scalpel-backed points-to oracle** at level 4 is vendored and built in — no extra install
+required. If Scalpel cannot resolve a construct, level 4 automatically falls back to the built-in
+type-based oracle.
 
 ### Install via shell script
 
@@ -529,11 +526,12 @@ symbol-table signature by construction
 - **Points-to oracle (level 4):** the **Scalpel** may-alias oracle — `ScalpelAliasOracle`
   (`codeanalyzer/dataflow/scalpel_oracle.py`) — consumes Scalpel's SSA copy/const facts to answer
   `may_alias(path_a, path_b)`, adding the alias-aware DDG edges (`prov: ["points-to"]`) and the
-  interprocedural summaries. `python-scalpel` is an **optional dependency**
-  (`pip install 'codeanalyzer-python[scalpel]'`); when it is absent or cannot resolve a construct,
-  the analyzer automatically falls back to the built-in `TypeBasedAliasOracle` (Jedi-inferred types;
-  unknown types conservatively alias), keeping the `may_alias` interface total. Call dispatch comes
-  from the merged Jedi(+PyCG) call graph, treated as a frozen oracle.
+  interprocedural summaries. Scalpel is **vendored** — a `typed_ast`-free slice built into the
+  package under `codeanalyzer/dataflow/scalpel/` — so it is the **default** level-4 oracle with no
+  external dependency to install; the analyzer falls back to the built-in `TypeBasedAliasOracle`
+  (Jedi-inferred types; unknown types conservatively alias) only when Scalpel can't resolve a
+  construct or a per-callable build fails, keeping the `may_alias` interface total. Call dispatch
+  comes from the merged Jedi(+PyCG) call graph, treated as a frozen oracle.
 - **Summaries:** relational formal-in → formal-out flows composed bottom-up over the Tarjan SCC
   condensation of the call graph, a monotone fixpoint within SCCs; globals ride as extra formals,
   closure captures bind at definition sites.

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The Scalpel-backed L4 points-to oracle is now **vendored** (`typed_ast`-free)
+  and the default on all supported Python (3.9–3.14); `python-scalpel` is no
+  longer an optional dependency and the `[scalpel]` extra is removed. On Python
+  3.12+ (and anywhere the `[scalpel]` extra was not installed), L4
+  `prov:["points-to"]` data-dependence edges are now Scalpel-precise rather than
+  the coarser type-based over-approximation; the `prov:["ssa"]` set and the
+  `L3 ⊆ L4` monotonicity invariant are unchanged. Adds `astor` as a runtime
+  dependency.
+
 ## [1.0.3] - 2026-07-21
 
 ### Fixed

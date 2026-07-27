@@ -22,7 +22,7 @@ producer. :class:`ScalpelAliasOracle` consumes its *solved* state — it never
 forks or re-runs Scalpel's solver — and turns the copy/const records into
 per-function copy-closure equivalence classes:
 
-    ``from scalpel.SSA.const import SSA``
+    ``from codeanalyzer.dataflow.scalpel.SSA.const import SSA``
     ``ssa_results, const_dict = SSA().compute_SSA(func_cfg)``
 
 ``const_dict`` maps ``(name, version)`` to the ``ast`` value node that defined
@@ -138,14 +138,14 @@ class ScalpelAliasOracle:
     ) -> "ScalpelAliasOracle":
         """Build from a function AST by consuming Scalpel's solved SSA state.
 
-        Imports Scalpel lazily (``ImportError`` if the optional dependency is
-        absent) and reuses the *same source* both graphs are built from — the
+        Imports the vendored Scalpel slice (``codeanalyzer.dataflow.scalpel``)
+        and reuses the *same source* both graphs are built from — the
         function's unparsed text — so the join is identity, not a fuzzy match.
         Raises on any build failure; :func:`make_alias_oracle` is the total,
         never-raising entry point callers should prefer.
         """
-        from scalpel.SSA.const import SSA
-        from scalpel.cfg import CFGBuilder
+        from codeanalyzer.dataflow.scalpel.SSA.const import SSA
+        from codeanalyzer.dataflow.scalpel.cfg import CFGBuilder
 
         src = ast.unparse(func_ast)
         fname = name or getattr(func_ast, "name", None)
@@ -250,19 +250,16 @@ class ScalpelAliasOracle:
 def make_alias_oracle(pycallable, func_ast, base_types) -> object:
     """Total selector for the L4 may-alias oracle.
 
-    Returns a :class:`ScalpelAliasOracle` when ``python-scalpel`` is importable
-    *and* builds successfully on ``func_ast``; otherwise logs once (INFO) and
-    returns a :class:`TypeBasedAliasOracle` over ``base_types``.  Never raises —
-    mirrors how ``core._get_pycg_call_graph`` degrades on a missing/failed PyCG.
+    Returns a :class:`ScalpelAliasOracle` built on the vendored, typed_ast-free
+    Scalpel slice (``codeanalyzer.dataflow.scalpel``) — the default L4 oracle.
+    Falls back to :class:`TypeBasedAliasOracle` only when the per-callable
+    Scalpel build fails on this AST. Never raises.
     """
     fallback = TypeBasedAliasOracle(base_types)
     try:
         return ScalpelAliasOracle.from_function(
             func_ast, base_types=base_types, fallback=fallback
         )
-    except ImportError:
-        _note_fallback("python-scalpel not installed")
-        return fallback
     except Exception:
         _note_fallback("scalpel alias build failed")
         logger.debug("scalpel alias oracle build error", exc_info=True)

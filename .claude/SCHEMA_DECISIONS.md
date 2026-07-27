@@ -152,6 +152,17 @@ supported 3.9–3.13+ range; `compute_SSA`'s return contract is discovered from
 source (not a documented public API) — wrap it behind `ScalpelAliasOracle` to
 contain upstream drift.
 
+**Follow-up (2026-07-22): Scalpel vendored, now the default.** The Stage-0
+"dependency hygiene" concern proved fatal for a hard dependency: `python-scalpel`
+drags `typed_ast`, which has no wheel for Python 3.12+ and does not build from
+source there, so `pip install python-scalpel` fails on 3.12/3.13/3.14. Since
+`typed_ast` is imported only by `scalpel/typeinfer` (unused here), the 9-module
+`SSA`/`cfg`/`core` slice the oracle loads was **vendored** into
+`codeanalyzer/dataflow/scalpel/` (Apache-2.0, verbatim but for a `graphviz`-lazy
+patch). `ScalpelAliasOracle` is now the shipping default on all supported Python;
+`TypeBasedAliasOracle` is the runtime safety net only. See
+`docs/superpowers/specs/2026-07-22-vendored-scalpel-default-oracle-design.md`.
+
 ## Stage 5 — keystone conformance sweep (issue #98, schema_version 2.0.0)
 
 The stage-5 pre-release conformance check against the canonical schema-v2
