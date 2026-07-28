@@ -135,8 +135,8 @@ declared callables by their `can://` tree id, imported/builtin targets by a
 
 ### Two projections
 
-1. **`analysis.json`** — the tree itself (the `Analysis` envelope above), also
-   available as gzip'd msgpack.
+1. **`analysis.json`** — the tree itself (the `Analysis` envelope above); the
+   single wire format (the msgpack variant was removed in 1.2.0, #118).
 2. **Neo4j** (`codeanalyzer/neo4j/`) — a near-identity projection, keyed on the
    same `can://` / global ordinal ids: containment → typed `PY_HAS_*` /
    `PY_DECLARES` edges (`PY_HAS_MODULE`, `PY_DECLARES`, `PY_HAS_METHOD`,

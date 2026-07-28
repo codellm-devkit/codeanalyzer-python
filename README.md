@@ -70,7 +70,7 @@ needs.
   checked in as `schema.neo4j.json` (`2.0.0`) and shipped with every release.
 - **Incremental cache** — per-file results are cached under `.codeanalyzer`; `--lazy` (default)
   reuses them, `--eager` forces a clean rebuild. `--ray` distributes the work across cores.
-- **Compact output** — canonical `analysis.json`, or binary `analysis.msgpack` for smaller artifacts.
+- **Compact output** — one canonical `analysis.json` per run.
 
 ## Installation
 
@@ -143,8 +143,7 @@ canpy --input /path/to/python/project
 ```
 
 With no `--output`, the analysis is printed to stdout as compact JSON; with `--output <dir>` it is
-written to `analysis.json` (or `graph.cypher` for `--emit neo4j`, or `analysis.msgpack` with
-`--format msgpack`) in that directory.
+written to `analysis.json` (or `graph.cypher` for `--emit neo4j`) in that directory.
 
 ### Options
 

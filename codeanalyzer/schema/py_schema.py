@@ -22,85 +22,8 @@ for static analysis purposes.
 from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-import gzip
-
 from pydantic import BaseModel
 from typing_extensions import Literal
-import msgpack
-
-
-def msgpk(cls):
-    """
-    Decorator that adds MessagePack serialization methods to Pydantic models.
-
-    Adds methods:
-        - to_msgpack_bytes() -> bytes: Serialize to compact binary format
-        - from_msgpack_bytes(data: bytes) -> cls: Deserialize from binary format
-        - to_msgpack_dict() -> dict: Convert to msgpack-compatible dict
-        - from_msgpack_dict(data: dict) -> cls: Create instance from msgpack dict
-    """
-
-    def _prepare_for_serialization(obj: Any) -> Any:
-        """Convert objects to serialization-friendly format."""
-        if isinstance(obj, Path):
-            return str(obj)
-        elif isinstance(obj, dict):
-            return {
-                _prepare_for_serialization(k): _prepare_for_serialization(v)
-                for k, v in obj.items()
-            }
-        elif isinstance(obj, list):
-            return [_prepare_for_serialization(item) for item in obj]
-        elif isinstance(obj, tuple):
-            return tuple(_prepare_for_serialization(item) for item in obj)
-        elif isinstance(obj, set):
-            return [_prepare_for_serialization(item) for item in obj]
-        elif hasattr(obj, "model_dump"):  # Pydantic model
-            return _prepare_for_serialization(obj.model_dump())
-        else:
-            return obj
-
-    def to_msgpack_bytes(self) -> bytes:
-        """Serialize the model to compact binary format using MessagePack + gzip."""
-        data = _prepare_for_serialization(self.model_dump())
-        msgpack_data = msgpack.packb(data, use_bin_type=True)
-        return gzip.compress(msgpack_data)
-
-    @classmethod
-    def from_msgpack_bytes(cls_obj, data: bytes):
-        """Deserialize from MessagePack + gzip binary format."""
-        decompressed_data = gzip.decompress(data)
-        obj_dict = msgpack.unpackb(decompressed_data, raw=False)
-        return cls_obj.model_validate(obj_dict)
-
-    def to_msgpack_dict(self) -> dict:
-        """Convert to msgpack-compatible dictionary format."""
-        return _prepare_for_serialization(self.model_dump())
-
-    @classmethod
-    def from_msgpack_dict(cls_obj, data: dict):
-        """Create instance from msgpack-compatible dictionary."""
-        return cls_obj.model_validate(data)
-
-    def get_msgpack_size(self) -> int:
-        """Get the size of the msgpack serialization in bytes."""
-        return len(self.to_msgpack_bytes())
-
-    def get_compression_ratio(self) -> float:
-        """Get compression ratio compared to JSON."""
-        json_size = len(self.model_dump_json().encode("utf-8"))
-        msgpack_gzip_size = self.get_msgpack_size()
-        return msgpack_gzip_size / json_size if json_size > 0 else 1.0
-
-    # Add methods to the class
-    cls.to_msgpack_bytes = to_msgpack_bytes
-    cls.from_msgpack_bytes = from_msgpack_bytes
-    cls.to_msgpack_dict = to_msgpack_dict
-    cls.from_msgpack_dict = from_msgpack_dict
-    cls.get_msgpack_size = get_msgpack_size
-    cls.get_compression_ratio = get_compression_ratio
-
-    return cls
 
 
 def builder(cls):
@@ -192,7 +115,6 @@ def byte_offsets(source: str, start_line: int, start_col: int,
 
 
 @builder
-@msgpk
 class Span(BaseModel):
     """Where a node lives in source. `start`/`end` are [line, col] (1-based line,
     0-based col, ast semantics); `bytes` are utf-8 offsets into module.source."""
@@ -202,7 +124,6 @@ class Span(BaseModel):
 
 
 @builder
-@msgpk
 class BodyNode(BaseModel):
     """A node in a callable's `body`: an AST region (statement/call/branch/…) or
     a synthetic analysis vertex (entry/exit/formal_in/out/actual_in/out)."""
@@ -214,37 +135,31 @@ class BodyNode(BaseModel):
 
 
 @builder
-@msgpk
 class CfgEdge(BaseModel):
     src: str; dst: str; kind: str = "fallthrough"
 
 
 @builder
-@msgpk
 class CdgEdge(BaseModel):
     src: str; dst: str
 
 
 @builder
-@msgpk
 class DdgEdge(BaseModel):
     src: str; dst: str; var: Optional[str] = None; prov: List[str] = []
 
 
 @builder
-@msgpk
 class SummaryEdge(BaseModel):
     src: str; dst: str
 
 
 @builder
-@msgpk
 class ParamEdge(BaseModel):
     src: str; dst: str
 
 
 @builder
-@msgpk
 class PyImport(BaseModel):
     """Represents a Python import statement."""
 
@@ -259,7 +174,6 @@ class PyImport(BaseModel):
 
 
 @builder
-@msgpk
 class PyComment(BaseModel):
     """Represents a Python comment."""
 
@@ -272,7 +186,6 @@ class PyComment(BaseModel):
 
 
 @builder
-@msgpk
 class PySymbol(BaseModel):
     """Represents a symbol used or declared in Python code."""
 
@@ -287,7 +200,6 @@ class PySymbol(BaseModel):
 
 
 @builder
-@msgpk
 class PyVariableDeclaration(BaseModel):
     """Represents a Python variable declaration."""
 
@@ -306,7 +218,6 @@ class PyVariableDeclaration(BaseModel):
 
 
 @builder
-@msgpk
 class PyCallableParameter(BaseModel):
     """Represents a parameter of a Python callable (function/method)."""
 
@@ -320,7 +231,6 @@ class PyCallableParameter(BaseModel):
 
 
 @builder
-@msgpk
 class PyCallArgument(BaseModel):
     """One call-site argument: AST category + inferred type, kept separate.
 
@@ -333,7 +243,6 @@ class PyCallArgument(BaseModel):
 
 
 @builder
-@msgpk
 class PyCallsite(BaseModel):
     """Represents a Python call site (function or method invocation) with contextual metadata."""
 
@@ -352,7 +261,6 @@ class PyCallsite(BaseModel):
 
 
 @builder
-@msgpk
 class PyCallable(BaseModel):
     """Represents a Python callable (function/method)."""
 
@@ -389,7 +297,6 @@ class PyCallable(BaseModel):
 
 
 @builder
-@msgpk
 class PyClassAttribute(BaseModel):
     """Represents a Python class attribute."""
 
@@ -402,7 +309,6 @@ class PyClassAttribute(BaseModel):
 
 
 @builder
-@msgpk
 class PyClass(BaseModel):
     """Represents a Python class."""
 
@@ -425,7 +331,6 @@ class PyClass(BaseModel):
 
 
 @builder
-@msgpk
 class PyModule(BaseModel):
     """Represents a Python module."""
 
@@ -446,7 +351,6 @@ class PyModule(BaseModel):
 
 
 @builder
-@msgpk
 class PyCallEdge(BaseModel):
     """Identity-only call-graph edge with weight (keystone shape: the list name
     IS the edge type, so there is no ``type`` field).
@@ -464,7 +368,6 @@ class PyCallEdge(BaseModel):
 
 
 @builder
-@msgpk
 class PyExternalSymbol(BaseModel):
     """A call-graph target outside the analyzed project -- an imported library or
     builtin member. An edge-endpoint id home, not a tree node: keyed in
@@ -477,7 +380,6 @@ class PyExternalSymbol(BaseModel):
 
 
 @builder
-@msgpk
 class PyRepositoryInfo(BaseModel):
     """Where the analyzed source came from: git provenance captured at analysis time."""
 
@@ -487,7 +389,6 @@ class PyRepositoryInfo(BaseModel):
 
 
 @builder
-@msgpk
 class PyAnalyzerInfo(BaseModel):
     """Which analyzer produced this snapshot, and how it was configured.
     Lives on the ``Analysis`` envelope (keystone ``analyzer{name,version}``;
@@ -499,7 +400,6 @@ class PyAnalyzerInfo(BaseModel):
 
 
 @builder
-@msgpk
 class PyApplication(BaseModel):
     """Represents a Python application."""
 
@@ -519,7 +419,6 @@ class PyApplication(BaseModel):
 
 
 @builder
-@msgpk
 class Analysis(BaseModel):
     """v2 payload root: envelope + the application tree node. ``k_limit`` is an
     L3+ envelope key (None below the dataflow levels; exclude_none drops it)."""

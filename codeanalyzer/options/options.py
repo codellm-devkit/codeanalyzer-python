@@ -6,7 +6,6 @@ from enum import Enum
 
 class OutputFormat(str, Enum):
     JSON = "json"
-    MSGPACK = "msgpack"
 
 
 class EmitTarget(str, Enum):

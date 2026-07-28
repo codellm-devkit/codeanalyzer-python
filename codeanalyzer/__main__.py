@@ -85,7 +85,7 @@ def main(
         typer.Option(
             "-f",
             "--format",
-            help="Output format for --emit json: json or msgpack.",
+            help="Output format for --emit json: json.",
             case_sensitive=False,
         ),
     ] = OutputFormat.JSON,
@@ -141,26 +141,31 @@ def main(
         ),
     ] = None,
     analysis_level: Annotated[
-        int,
+        Optional[int],
         typer.Option(
             "-a",
             "--analysis-level",
             help="Analysis depth: 1=symbol table+Jedi call graph, 2=+PyCG call "
             "graph, 3=+native intraprocedural dataflow (CFG/PDG), "
-            "4=+interprocedural SDG (param/summary edges, alias-aware DDG).",
+            "4=+interprocedural SDG (param/summary edges, alias-aware DDG). "
+            "[default: 1; incompatible with --emit neo4j, which is always "
+            "full-depth]",
             min=1,
             max=4,
+            show_default="1",
         ),
-    ] = 1,
+    ] = None,
     graphs: Annotated[
-        str,
+        Optional[str],
         typer.Option(
             "--graphs",
             help="Level 3+ only: comma-separated program-graph sections to emit "
             "(cfg, dfg, pdg, sdg). Default: cfg,dfg,pdg. `dfg` emits the PDG's data "
-            "edges only; `sdg` requires -a 4.",
+            "edges only; `sdg` requires -a 4. Incompatible with --emit neo4j "
+            "(always full-depth).",
+            show_default="cfg,dfg,pdg",
         ),
-    ] = "cfg,dfg,pdg",
+    ] = None,
     graph_field_depth: Annotated[
         int,
         typer.Option(
@@ -300,8 +305,39 @@ def main(
     _pin_hash_seed()
 
     # Flag validation (strict: unrecognized values error out, never fall back).
-    selected_graphs = [g.strip() for g in graphs.split(",") if g.strip()]
+    # -a and --graphs use None sentinels so an explicitly-passed flag is
+    # distinguishable from the default (#119).
+    explicit_level = analysis_level is not None
+    explicit_graphs = graphs is not None
+
+    # Neo4j is always full-depth (#119): the graph carries every level's
+    # facts, so depth/section selectors cannot be combined with it — reject
+    # explicitly-passed flags and force level 4 with every graph section.
     from codeanalyzer.dataflow.builder import VALID_GRAPHS
+
+    if emit == EmitTarget.NEO4J:
+        explicit = [
+            flag
+            for flag, was_explicit in (
+                ("-a/--analysis-level", explicit_level),
+                ("--graphs", explicit_graphs),
+            )
+            if was_explicit
+        ]
+        if explicit:
+            logger.error(
+                "--emit neo4j is always full-depth (level 4, all graph "
+                f"sections); {' and '.join(explicit)} cannot be combined with it."
+            )
+            raise typer.Exit(code=2)
+        analysis_level = 4
+        graphs = ",".join(VALID_GRAPHS)
+
+    if analysis_level is None:
+        analysis_level = 1
+    if graphs is None:
+        graphs = "cfg,dfg,pdg"
+    selected_graphs = [g.strip() for g in graphs.split(",") if g.strip()]
 
     unknown_graphs = [g for g in selected_graphs if g not in VALID_GRAPHS]
     if unknown_graphs:
@@ -316,7 +352,7 @@ def main(
     if "sdg" in selected_graphs and analysis_level < 4:
         logger.error("--graphs sdg requires -a 4 (interprocedural SDG).")
         raise typer.Exit(code=2)
-    if analysis_level < 3 and graphs != "cfg,dfg,pdg":
+    if analysis_level < 3 and explicit_graphs:
         logger.error("--graphs is a level-3 option; pass -a 3 to emit program graphs.")
         raise typer.Exit(code=2)
     if analysis_level < 3 and graph_field_depth != 3:
@@ -407,16 +443,6 @@ def _write_output(artifacts, output_dir: Path, format: OutputFormat):
         with output_file.open("w") as f:
             f.write(json_str)
         logger.info(f"Analysis saved to {output_file}")
-
-    elif format == OutputFormat.MSGPACK:
-        output_file = output_dir / "analysis.msgpack"
-        msgpack_data = artifacts.to_msgpack_bytes()
-        with output_file.open("wb") as f:
-            f.write(msgpack_data)
-        logger.info(f"Analysis saved to {output_file}")
-        logger.info(
-            f"Compression ratio: {artifacts.get_compression_ratio():.1%} of JSON size"
-        )
 
 
 app = typer.Typer(

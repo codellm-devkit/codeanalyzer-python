@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING: the msgpack output format is removed** (#118, TS parity): the
+  `--format msgpack` CLI choice, the `analysis.msgpack` artifact, the msgpack
+  serialization mixin on schema models, and the `msgpack` dependency are gone.
+  `analysis.json` is the single wire format; anyone passing `--format msgpack`
+  must drop the flag. `--format json` still works unchanged.
+- **`--emit neo4j` now enforces its always-full-depth contract** (#119): it
+  runs at level 4 with every graph section regardless of defaults, and
+  explicitly passing `-a`/`--graphs` alongside it is now the documented
+  explicit error (previously accepted silently — and worse, the emission
+  actually ran at the default level 1, producing a partial graph). Passing
+  `--graphs` below `-a 3` is also now consistently rejected even when the
+  value equals the default.
+
 ## [1.1.1] - 2026-07-27
 
 ### Fixed
