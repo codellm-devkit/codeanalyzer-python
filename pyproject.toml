@@ -15,9 +15,6 @@ dependencies = [
     # parso 0.8.5 is the first release shipping the Python 3.14 grammar; older
     # resolutions make jedi reject every file in a 3.14 analysis env (#107)
     "parso>=0.8.5",
-    # msgpack
-    "msgpack>=1.0.0,<1.0.7; python_version < '3.11'",
-    "msgpack>=1.0.7,<2.0.0; python_version >= '3.11'",
     # networkx
     "networkx>=2.6.0,<3.2.0; python_version < '3.11'",
     "networkx>=3.0.0,<4.0.0; python_version >= '3.11'",
