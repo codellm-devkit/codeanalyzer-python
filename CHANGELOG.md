@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-08-18
+
+### Changed
+- **`numpy` and `pandas` are no longer dependencies** ([#124](https://github.com/codellm-devkit/codeanalyzer-python/issues/124)):
+  neither was ever imported by the analyzer, but both were declared in
+  `[project].dependencies` with tight upper caps (`numpy<1.24` below Python 3.11,
+  `numpy<2.0` above it). The caps forced resolution onto numpy releases with no
+  prebuilt wheel for some targets — Red Hat UBI images in particular — so
+  installation fell back to building numpy from source and failed. On Python
+  3.11+ numpy is now absent from the resolved dependency tree entirely (`ray`
+  2.55 does not require it). On Python 3.9/3.10 `ray==2.0.0` still requires
+  numpy transitively — that pin is untouched — but with the cap gone it resolves
+  to numpy 2.0.2, which ships cp39 manylinux wheels for x86_64 and aarch64, so
+  the source build stops happening there too.
+
+  Dependency-only change: no analyzer behaviour, schema, or CLI surface is
+  affected.
+
 ## [0.3.1] - 2026-07-14
 
 ### Added
