@@ -20,6 +20,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   actually ran at the default level 1, producing a partial graph). Passing
   `--graphs` below `-a 3` is also now consistently rejected even when the
   value equals the default.
+- **`numpy` and `pandas` are no longer dependencies** (#124): neither was ever
+  imported by the analyzer, but both were declared in `[project].dependencies`
+  with tight upper caps (`numpy<1.24` below Python 3.11, `numpy<2.0` above it).
+  The caps forced resolution onto numpy releases with no prebuilt wheel for some
+  targets — Red Hat UBI images in particular — so installation fell back to
+  building numpy from source and failed. On Python 3.11+ numpy is now absent
+  from the resolved tree entirely (`ray` 2.55 does not require it). On Python
+  3.9/3.10 `ray==2.0.0` still requires numpy transitively — that pin is
+  untouched — but with the cap gone it resolves to numpy 2.0.2, which ships
+  cp39 manylinux wheels for x86_64 and aarch64, so the source build stops
+  happening there too.
 
 ## [1.1.1] - 2026-07-27
 
