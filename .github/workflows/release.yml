@@ -132,6 +132,9 @@ jobs:
             release-assets/*
           body_path: ${{ runner.temp }}/RELEASE_BODY.md
           generate_release_notes: true   # appends categorized "What's Changed" (see .github/release.yml)
+          # This branch cuts maintenance releases for the 0.3 line, which are
+          # always older than main's. Never let one claim the "Latest" badge.
+          make_latest: false
           # Auto-open a repo-level Discussion linked to this release, seeded with
           # the same notes. Requires Discussions enabled and this category to exist.
           discussion_category_name: Announcements
@@ -178,7 +181,9 @@ jobs:
   # The non-Rust equivalent of what cargo-dist does for you.
   homebrew:
     needs: release
-    if: startsWith(github.ref, 'refs/tags/')
+    # Disabled on the 0.3 maintenance line: the tap holds a single formula for
+    # the repo, so publishing from here would downgrade every brew user to 0.3.x.
+    if: false
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
@@ -225,7 +230,9 @@ jobs:
   # repository-scoped (not branch-scoped), so this opens one on python-sdk.
   notify-python-sdk:
     needs: release
-    if: startsWith(github.ref, 'refs/tags/')
+    # Disabled on the 0.3 maintenance line: uptake issues track main's schema,
+    # and a backport carries no schema change for the SDK to incorporate.
+    if: false
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
