@@ -4,7 +4,7 @@
 #
 # Unlike the codeanalyzer-typescript sibling -- which ships a single self-contained
 # binary that the formula just downloads -- codeanalyzer-python is a pure-Python
-# package published to PyPI with heavy native dependencies (ray, pandas, numpy).
+# package published to PyPI with a heavy native dependency (ray).
 # Vendoring every transitive dependency as a Homebrew `resource` is impractical
 # (ray is not buildable from an sdist), and pip-installing at build time is blocked
 # by Homebrew's network sandbox.
@@ -41,8 +41,8 @@ class CodeanalyzerPython < Formula
   version "${VERSION}"
   license "Apache-2.0"
 
-  # codeanalyzer-python is a pure-Python PyPI package with heavy native deps
-  # (ray, pandas, numpy). Rather than vendor every transitive dependency as a
+  # codeanalyzer-python is a pure-Python PyPI package with a heavy native dep
+  # (ray). Rather than vendor every transitive dependency as a
   # Homebrew resource, install the pinned PyPI release as an isolated uv tool;
   # uv resolves and caches the environment on first run.
   depends_on "uv"
