@@ -88,6 +88,44 @@ from codeanalyzer.semantic_analysis.pycg.shard_planner import plan_shards
 from codeanalyzer.utils import ProgressBar, logger
 
 
+# PyCG spells the builtins module ``<builtin>``; Jedi spells it ``builtins``. Left
+# unnormalized, one builtin gets two ``@external`` ``can://`` homes and the two
+# backends' edges can never coalesce, so a call both resolvers agree on can never
+# reach ``prov: ["jedi", "pycg"]`` (#132). PyCG only ever emits the bare module, so
+# an exact-match alias is enough -- the dotted forms (``builtins.str`` etc.) are
+# Jedi's and are already canonical.
+_PYCG_MODULE_ALIASES = {"<builtin>": "builtins"}
+
+
+def _canonical_endpoint(sig: str) -> str:
+    """Rewrite a PyCG endpoint's module segment to the canonical spelling."""
+    module, dot, name = sig.rpartition(".")
+    if dot and module in _PYCG_MODULE_ALIASES:
+        return f"{_PYCG_MODULE_ALIASES[module]}.{name}"
+    return sig
+
+
+def _canonicalize_edges(edges: List[PyCallEdge]) -> List[PyCallEdge]:
+    """Canonicalize endpoint spellings, coalescing pairs that collide as a result.
+
+    Two spellings of one target are one edge: weights sum and provenance unions,
+    matching ``call_graph.merge_edges``. Deliberately does not route through
+    ``_coalesce_edges``, which raises on its duplicate branch (#133).
+    """
+    merged: Dict[Tuple[str, str], PyCallEdge] = {}
+    for edge in edges:
+        src = _canonical_endpoint(edge.src)
+        dst = _canonical_endpoint(edge.dst)
+        key = (src, dst)
+        current = merged.get(key)
+        if current is None:
+            merged[key] = edge.model_copy(update={"src": src, "dst": dst})
+        else:
+            current.weight += edge.weight
+            current.prov = sorted(set(current.prov) | set(edge.prov))
+    return list(merged.values())
+
+
 def _shard_root_path(files: List[str], project_dir: Path) -> Path:
     """Content-derived mini-project root for a shard: same project + same file
     set → same path on every run (determinism, issue #99)."""
@@ -1110,6 +1148,7 @@ class PyCG:
             with _shard_symlink_root(entry_points, self.project_dir) as (root, eps):
                 edges = self._run_pycg_batch(eps, root, resolver, prefix="")
 
+        edges = _canonicalize_edges(edges)
         elapsed = time.perf_counter() - t0
         logger.info("✅ PyCG: %d edges in %.1fs", len(edges), elapsed)
         return edges
