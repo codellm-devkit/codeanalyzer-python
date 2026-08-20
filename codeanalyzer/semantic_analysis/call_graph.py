@@ -254,9 +254,19 @@ def filter_external_edges(
     walking every callable in the symbol table recursively (including nested
     functions and closures via ``callables``) plus every class, so
     PyCG-discovered closure nodes are correctly recognised as app symbols.
+
+    Module names count as app symbols too (#131). PyCG attributes a call made in
+    module scope to the MODULE -- ``app -> functools.reduce`` for a module-level
+    ``functools.reduce(...)``, or for a decorator applied to a top-level
+    definition, since a decorator executes in its enclosing scope. Without the
+    module names here, both endpoints looked third-party and every module-scope
+    call to a library target was discarded as lib→lib.
     """
     app_symbols: set = {c.signature for c in iter_callables_in_symbol_table(symbol_table)}
     app_symbols.update(cls.signature for cls in iter_classes_in_symbol_table(symbol_table))
+    app_symbols.update(
+        mod.module_name for mod in symbol_table.values() if mod.module_name
+    )
 
     return [
         e for e in edges
