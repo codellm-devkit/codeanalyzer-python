@@ -245,15 +245,37 @@ def _names_loaded(node: ast.AST) -> Set[str]:
     return out
 
 
-def build_scope(func: ast.AST, enclosing_locals: Set[str]) -> FunctionScope:
+#: Jedi resolves every spelling of the builtin -- ``@staticmethod``,
+#: ``@builtins.staticmethod``, ``from builtins import staticmethod as sm`` --
+#: to this one name (#135).
+_STATICMETHOD_QUALIFIED = "builtins.staticmethod"
+
+
+def build_scope(
+    func: ast.AST,
+    enclosing_locals: Set[str],
+    decorator_names: Optional[Set[str]] = None,
+) -> FunctionScope:
     """Classify every base name the callable touches. ``enclosing_locals`` is
     the union of locals/params of all enclosing callables (for capture vs
-    global disambiguation)."""
+    global disambiguation).
+
+    ``decorator_names`` are the callable's Jedi-resolved decorator
+    ``qualified_name``s. When supplied, staticmethod detection is by identity,
+    so a dotted or aliased spelling is recognised (#135). When omitted -- a
+    caller with no resolved records -- it falls back to matching the written
+    source, which only recognises the bare ``@staticmethod``.
+    """
     params = _param_names(func)
     scope = FunctionScope(params=params)
     if params and isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
-        decorators = {ast.unparse(d) for d in func.decorator_list}
-        if params[0] in ("self", "cls") and "staticmethod" not in decorators:
+        if decorator_names is None:
+            is_static = "staticmethod" in {
+                ast.unparse(d) for d in func.decorator_list
+            }
+        else:
+            is_static = _STATICMETHOD_QUALIFIED in decorator_names
+        if params[0] in ("self", "cls") and not is_static:
             scope.self_name = params[0]
     scope.globals_ = _declared(func, ast.Global)
     nonlocals = _declared(func, ast.Nonlocal)
