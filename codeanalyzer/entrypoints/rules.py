@@ -14,6 +14,8 @@ from typing import Any, Dict, Iterable, List, Optional
 
 import yaml
 
+from codeanalyzer.entrypoints.matching import PatternError, validate_pattern
+
 _SHIPPED = Path(__file__).with_name("rules.yml")
 _CONFIDENCE = {"declared", "certain", "heuristic"}
 
@@ -116,10 +118,19 @@ def _confidence(raw: Dict[str, Any], origin: str) -> str:
     return c
 
 
+def _match(raw: Dict[str, Any], origin: str) -> str:
+    match = _require(raw, "match", origin)
+    try:
+        validate_pattern(match)
+    except PatternError as exc:
+        raise RulesError(f"{origin}: rule {raw.get('id', raw)!r}: {exc}") from exc
+    return match
+
+
 def _decorator_rule(raw: Dict[str, Any], origin: str) -> DecoratorRule:
     return DecoratorRule(
         id=_require(raw, "id", origin),
-        match=_require(raw, "match", origin),
+        match=_match(raw, origin),
         confidence=_confidence(raw, origin),
         route=raw.get("route"),
         methods=raw.get("methods"),
@@ -129,7 +140,7 @@ def _decorator_rule(raw: Dict[str, Any], origin: str) -> DecoratorRule:
 def _base_rule(raw: Dict[str, Any], origin: str) -> BaseRule:
     return BaseRule(
         id=_require(raw, "id", origin),
-        match=_require(raw, "match", origin),
+        match=_match(raw, origin),
         confidence=_confidence(raw, origin),
         transitive=bool(raw.get("transitive", False)),
         dispatch=list(raw.get("dispatch") or []),

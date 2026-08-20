@@ -4,19 +4,49 @@ Matching is on ``PyDecorator.qualified_name`` -- never the written spelling --
 so ``@route`` under ``from flask import route`` hits the same rule as
 ``@app.route``. An unresolved decorator (``qualified_name is None``) never
 matches: under-approximate rather than guess.
+
+Pattern grammar: ``{a,b}`` alternation (not nested) and a trailing/embedded
+``*`` that matches module MEMBERS only -- it does not cross a ``.``, so
+``rest_framework.viewsets.*`` matches ``ModelViewSet`` but not
+``viewsets.mixins.ListModelMixin``. Everything else is literal.
+``validate_pattern`` rejects anything outside this grammar (unbalanced or
+nested ``{``) so a typo in a rules file is a load-time ``RulesError``
+(enforced by ``rules.py``), never a crash mid-analysis.
 """
 from __future__ import annotations
 
 import ast
 import re
-from typing import Any, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 
-from codeanalyzer.entrypoints.rules import DecoratorRule
 from codeanalyzer.schema.py_schema import PyEntrypoint
+
+if TYPE_CHECKING:
+    from codeanalyzer.entrypoints.rules import DecoratorRule
 
 # Dispatch names that are HTTP verbs. DRF's ViewSet dispatch names
 # (list, retrieve, create, ...) are NOT verbs and must not be emitted as such.
 _HTTP_VERBS = {"get", "post", "put", "patch", "delete", "head", "options"}
+
+
+class PatternError(ValueError):
+    """A ``match`` pattern outside the ``{a,b}`` / ``*`` grammar `_compile` handles."""
+
+
+def validate_pattern(pattern: str) -> None:
+    """Raise ``PatternError`` for unbalanced or nested ``{``."""
+    depth = 0
+    for ch in pattern:
+        if ch == "{":
+            depth += 1
+            if depth > 1:
+                raise PatternError(f"nested '{{' is not supported: {pattern!r}")
+        elif ch == "}":
+            depth -= 1
+            if depth < 0:
+                raise PatternError(f"unmatched '}}': {pattern!r}")
+    if depth != 0:
+        raise PatternError(f"unbalanced '{{': {pattern!r}")
 
 
 def match_pattern(pattern: str, qualified_name: Optional[str]) -> bool:
@@ -27,6 +57,7 @@ def match_pattern(pattern: str, qualified_name: Optional[str]) -> bool:
 
 
 def _compile(pattern: str) -> str:
+    validate_pattern(pattern)
     out, i = [], 0
     while i < len(pattern):
         ch = pattern[i]
@@ -36,7 +67,7 @@ def _compile(pattern: str) -> str:
             out.append("(?:" + "|".join(re.escape(a.strip()) for a in alts) + ")")
             i = j + 1
         elif ch == "*":
-            out.append(r"[^\s]*")
+            out.append(r"[^.\s]*")
             i += 1
         else:
             out.append(re.escape(ch))
@@ -65,7 +96,7 @@ def _route_of(dec, spec: Optional[Dict[str, Any]]) -> Optional[str]:
     return value if isinstance(value, str) else None
 
 
-def _methods_of(dec, rule: DecoratorRule, spec: Optional[Dict[str, Any]]) -> List[str]:
+def _methods_of(dec, spec: Optional[Dict[str, Any]]) -> List[str]:
     if not spec:
         return []
     source = spec.get("from")
@@ -82,7 +113,7 @@ def _methods_of(dec, rule: DecoratorRule, spec: Optional[Dict[str, Any]]) -> Lis
 
 
 def entrypoints_from_decorators(
-    node, framework: str, rules: Iterable[DecoratorRule], ruleset: str
+    node, framework: str, rules: Iterable["DecoratorRule"], ruleset: str
 ) -> List[PyEntrypoint]:
     out: List[PyEntrypoint] = []
     for dec in getattr(node, "decorators", []) or []:
@@ -97,7 +128,7 @@ def entrypoints_from_decorators(
                     ruleset=ruleset,
                     evidence=dec.qualified_name,
                     route=_route_of(dec, rule.route),
-                    http_methods=_methods_of(dec, rule, rule.methods),
+                    http_methods=_methods_of(dec, rule.methods),
                 )
             )
     return out

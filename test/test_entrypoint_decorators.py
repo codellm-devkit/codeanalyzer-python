@@ -10,6 +10,13 @@ def test_brace_alternation_and_wildcard():
     assert not match_pattern("flask.Flask.route", "flask.Flask.routes")
 
 
+def test_wildcard_does_not_cross_a_dot():
+    assert match_pattern("rest_framework.viewsets.*", "rest_framework.viewsets.ModelViewSet")
+    assert not match_pattern(
+        "rest_framework.viewsets.*", "rest_framework.viewsets.mixins.ListModelMixin"
+    )
+
+
 def test_route_and_methods_are_extracted():
     fn = PyCallable(name="h", path="a.py", signature="a.h")
     fn.decorators.append(

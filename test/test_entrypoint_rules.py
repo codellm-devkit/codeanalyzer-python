@@ -74,3 +74,23 @@ def test_bad_confidence_value_is_rejected(tmp_path):
     )
     with pytest.raises(RulesError):
         load_rules([bad])
+
+
+def test_unbalanced_brace_in_match_pattern_is_rejected(tmp_path):
+    bad = tmp_path / "unbalanced.yml"
+    bad.write_text(
+        "version: 1\nframeworks:\n  x:\n    decorators:\n"
+        "      - id: x.y\n        match: 'flask.Flask.{get,post'\n"
+    )
+    with pytest.raises(RulesError):
+        load_rules([bad])
+
+
+def test_nested_brace_in_match_pattern_is_rejected(tmp_path):
+    bad = tmp_path / "nested.yml"
+    bad.write_text(
+        "version: 1\nframeworks:\n  x:\n    decorators:\n"
+        "      - id: x.y\n        match: 'flask.{a,{b,c}}'\n"
+    )
+    with pytest.raises(RulesError):
+        load_rules([bad])
