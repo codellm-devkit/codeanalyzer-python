@@ -57,3 +57,21 @@ def test_commented_out_dependency_is_not_detected(tmp_path: Path):
     got = detected_frameworks(_app("os"), tmp_path, load_rules())
     assert "celery" not in got
     assert "flask" in got
+
+
+def test_unterminated_dependencies_array_detects_nothing(tmp_path: Path):
+    """A truncated/corrupt pyproject.toml must not leak quoted strings from
+    a later table (e.g. an author email or homepage URL) into the detected
+    package set -- matching pre-fix behaviour of "malformed file, nothing
+    detected"."""
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\n"
+        'name = "x"\n'
+        "dependencies = [\n"
+        '    "celery>=5"\n'
+        "\n"
+        "[project.urls]\n"
+        'Homepage = "https://flask.example.com"\n'
+    )
+    got = detected_frameworks(_app("os"), tmp_path, load_rules())
+    assert got == set()

@@ -16,6 +16,7 @@ from codeanalyzer.schema.py_schema import PyApplication
 
 _REQ = re.compile(r"^\s*['\"]?([A-Za-z0-9_.\-]+)")
 _DEPS_START = re.compile(r"dependencies\s*=\s*\[")
+_TABLE_HEADER = re.compile(r"(?m)^[ \t]*\[")
 _PKG = re.compile(r"['\"]([A-Za-z0-9][A-Za-z0-9_.\-]*)")
 
 
@@ -87,14 +88,22 @@ def _strip_comments(text: str) -> str:
 def _deps_array_span(text: str) -> Optional[str]:
     """Return the contents between the `dependencies = [` and its matching
     `]`, counting bracket depth so a nested `[...]` (extras, e.g.
-    `celery[redis]`) doesn't close the span early."""
+    `celery[redis]`) doesn't close the span early.
+
+    Bounded by the next TOML table header (a `[` starting a line): if the
+    array never closes before then, it's unterminated (truncated/corrupt
+    file) and this returns None rather than harvesting quoted strings out
+    of whatever table follows.
+    """
     m = _DEPS_START.search(text)
     if not m:
         return None
+    boundary = _TABLE_HEADER.search(text, m.end())
+    limit = boundary.start() if boundary else len(text)
     depth = 1
     in_str = None
     i = m.end()
-    while i < len(text) and depth > 0:
+    while i < limit and depth > 0:
         ch = text[i]
         if in_str:
             if ch == in_str:
@@ -106,4 +115,6 @@ def _deps_array_span(text: str) -> Optional[str]:
         elif ch == "]":
             depth -= 1
         i += 1
+    if depth != 0:
+        return None
     return text[m.end() : i - 1]
