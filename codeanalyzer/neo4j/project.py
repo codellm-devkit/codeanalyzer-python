@@ -190,9 +190,15 @@ def _project_program_graphs(
                 )
                 b.edge("PY_HAS_CFG_NODE", owner, ref)
                 if node.kind == "call" and node.callee:
-                    b.edge_to_symbol(
-                        "PY_RESOLVES_TO", ref,
-                        _symbol_ref(node.callee, externals, sig_to_id),
+                    # `callee` is ALREADY a resolved can:// id (a declared callable
+                    # or an @external home), so it must not go through
+                    # `_symbol_ref`, which expects a dotted signature and would
+                    # fall back to matching a `signature` property against an id --
+                    # emitting an edge that matches nothing at load time.
+                    b.edge(
+                        "PY_RESOLVES_TO",
+                        ref,
+                        _call_endpoint(b, node.callee, externals, sig_to_id),
                     )
             for e in c.cfg or []:
                 # kind-discriminated: a conditional's true/false pair between one

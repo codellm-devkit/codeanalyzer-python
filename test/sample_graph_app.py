@@ -38,6 +38,7 @@ from codeanalyzer.dataflow.syntactic import SyntacticOracle
 from codeanalyzer.schema import PyApplication, PyExternalSymbol
 from codeanalyzer.schema.assign_ids import assign_ids
 from codeanalyzer.schema.l1_body import populate_l1_body
+from codeanalyzer.schema.l2_callees import backfill_callees
 from codeanalyzer.schema.py_schema import PyCallEdge
 from codeanalyzer.semantic_analysis.call_graph import (
     iter_callables_in_symbol_table,
@@ -150,6 +151,10 @@ def make_sample_app() -> Tuple[PyApplication, Dict[str, str]]:
     }
     sig_to_id["os.getcwd"] = ext_id
     populate_l1_body(app)
+    # Mirror the real pipeline (core.py runs this at -a 2+): body `call` nodes get
+    # their resolved `callee`. Without it PY_RESOLVES_TO never fires, since #120
+    # sources that edge from the body node rather than from `call_sites[]`.
+    backfill_callees(app, sig_to_id)
     syntactic_infos, _func_asts = build_function_pdgs(
         app, k=3, oracle_factory=lambda c, fast: SyntacticOracle()
     )

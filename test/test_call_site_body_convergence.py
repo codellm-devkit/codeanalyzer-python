@@ -7,6 +7,7 @@ the detail it carried moves onto the call node.
 """
 import json
 
+from codeanalyzer.schema import strip_internal_only
 from codeanalyzer.schema.l1_body import populate_l1_body
 from codeanalyzer.schema.py_schema import (
     PyApplication, PyCallable, PyCallArgument, PyCallsite, PyModule,
@@ -51,10 +52,25 @@ def test_call_sites_stays_in_memory_for_the_internal_passes():
     assert fn.call_sites[0].method_name == "g"
 
 
-def test_call_sites_does_not_reach_the_wire():
+def test_call_sites_is_stripped_at_emit_but_kept_when_serialized():
+    """Both halves of the mechanism.
+
+    Stripping happens at emit time, NOT via a field-level Pydantic `exclude`,
+    because the analysis cache round-trips through the same serializer. Excluding
+    at the field would drop `call_sites` from the cache too, and the next
+    warm-cache run would rebuild from a payload with no call sites at all —
+    silently losing the producer that `l1_body`, `l2_callees`, the call graph and
+    the dataflow builder all read.
+    """
     app, fn = _app()
     populate_l1_body(app)
-    emitted = json.loads(app.model_dump_json())
+    dumped = app.model_dump(mode="json")
+
+    # Serialized form keeps it — this is what the cache persists.
+    assert "call_sites" in dumped["symbol_table"]["a.py"]["functions"]["f"]
+
+    # Emitted form drops it — this is what analysis.json carries.
+    emitted = strip_internal_only(dumped)
     callable_json = emitted["symbol_table"]["a.py"]["functions"]["f"]
     assert "call_sites" not in callable_json
     (node,) = [n for n in callable_json["body"].values() if n["kind"] == "call"]
@@ -65,6 +81,6 @@ def test_accessed_symbols_and_local_variables_are_untouched():
     """Only call_sites is redundant; these have no body{} representation to converge into."""
     app, fn = _app()
     populate_l1_body(app)
-    callable_json = json.loads(app.model_dump_json())["symbol_table"]["a.py"]["functions"]["f"]
+    callable_json = strip_internal_only(app.model_dump(mode="json"))["symbol_table"]["a.py"]["functions"]["f"]
     assert "accessed_symbols" in callable_json
     assert "local_variables" in callable_json

@@ -77,8 +77,11 @@ def test_l2_audit_gate_callee_name_equality(tmp_path):
         for t in (mod.get("types") or {}).values():
             walk_type(t)
         def walk_callable(c):
-            for cs in c.get("call_sites") or []:
-                sites.append(cs)
+            # #120: call sites are `body{}` entries with kind == "call"; the
+            # parallel `call_sites[]` list no longer reaches the wire.
+            for node in (c.get("body") or {}).values():
+                if node.get("kind") == "call":
+                    sites.append(node)
             for ic in (c.get("callables") or {}).values():
                 walk_callable(ic)
         for fn in (mod.get("functions") or {}).values():
@@ -87,26 +90,34 @@ def test_l2_audit_gate_callee_name_equality(tmp_path):
             for m in (t.get("callables") or {}).values():
                 walk_callable(m)
 
+    def _callee_name(callee: str) -> str:
+        """The invoked name from a resolved callee id.
+
+        `can://…/Type/name(args)` -> `name`; an `@external` home ends in a bare
+        name with no parameter list, which this handles too.
+        """
+        return callee.rsplit("/", 1)[-1].split("(", 1)[0]
+
     resolved = [
         cs for cs in sites
-        if cs.get("callee_signature") and not cs.get("is_constructor_call")
+        if cs.get("callee") and not cs.get("is_constructor_call")
     ]
     assert resolved, "fixture must produce resolved non-constructor callsites"
     agree = sum(
         1 for cs in resolved
-        if cs["callee_signature"].rsplit(".", 1)[-1] == cs["method_name"]
+        if _callee_name(cs["callee"]) == cs["method_name"]
     )
     ratio = agree / len(resolved)
     assert ratio >= 0.95, (
         f"only {agree}/{len(resolved)} resolved callsites bind to the invoked "
-        f"name: {[(cs['method_name'], cs['callee_signature']) for cs in resolved if cs['callee_signature'].rsplit('.', 1)[-1] != cs['method_name']]}"
+        f"name: {[(cs['method_name'], cs['callee']) for cs in resolved if _callee_name(cs['callee']) != cs['method_name']]}"
     )
     # no class fallback when the exact method exists: a callee binding that
     # names a class which declares the invoked method is the defect's signature
     for cs in resolved:
         for cls_id, methods in class_methods.items():
             cls_sig_name = cls_id.rsplit("/", 1)[-1]
-            if cs["callee_signature"].rsplit(".", 1)[-1] == cls_sig_name and cs["method_name"] in methods:
+            if _callee_name(cs["callee"]) == cls_sig_name.split("(", 1)[0] and cs["method_name"] in methods:
                 raise AssertionError(
                     f"callsite {cs['method_name']!r} fell back to class {cls_sig_name!r} "
                     f"which declares the exact method"

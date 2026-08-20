@@ -22,7 +22,7 @@ for static analysis purposes.
 from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing_extensions import Literal
 
 
@@ -346,11 +346,13 @@ class PyCallable(BaseModel):
     end_line: int = -1
     code_start_line: int = -1
     accessed_symbols: List[PySymbol] = []
-    # Internal only (#120): the Jedi-produced record that `l1_body` derives `body{}`
+    # Internal (#120): the Jedi-produced record that `l1_body` derives `body{}`
     # call nodes from, and that `call_graph.py`, `l2_callees.py` and the dataflow
-    # builder all read. Kept in memory, excluded from the wire -- `body{}` is the
-    # single emitted representation of a call site.
-    call_sites: List[PyCallsite] = Field(default_factory=list, exclude=True)
+    # builder all read. It is stripped at EMIT time (see `wire_json`), not with a
+    # field-level `exclude`: the analysis cache round-trips through the same
+    # serializer, so excluding it would drop it from the cache too and a warm-cache
+    # run would rebuild with no call sites at all.
+    call_sites: List[PyCallsite] = []
     callables: Dict[str, "PyCallable"] = {}  # nested callables (closures)
     types: Dict[str, "PyClass"] = {}  # nested (local) classes
     local_variables: List[PyVariableDeclaration] = []
