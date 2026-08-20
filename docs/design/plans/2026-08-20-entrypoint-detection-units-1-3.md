@@ -299,10 +299,17 @@ then add to `AnalysisOptions`:
     entrypoint_rules: Tuple[Path, ...] = ()
 ```
 
-- [ ] **Step 6: Run the broader suite to confirm nothing regressed**
+- [ ] **Step 6: Confirm nothing regressed**
 
-Run: `uv run pytest test/test_cli.py -q --no-cov`
-Expected: all pass
+Do NOT run `test/test_cli.py` — it drives full CLI analyses and exceeds 10 minutes. Run a
+direct analysis over a small fixture instead:
+
+```bash
+uv run canpy -i test/fixtures/single_functionalities/decorators_and_hof -a 1 -o /tmp/t2check
+python3 -c "import json; a=json.load(open('/tmp/t2check/analysis.json'))['application']; \
+print('report:', a['entrypoint_report'])"
+```
+Expected: analysis completes; `entrypoint_report` is present with empty lists and no errors.
 
 - [ ] **Step 7: Commit**
 
