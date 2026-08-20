@@ -125,6 +125,7 @@ NODE_LABELS: List[NodeLabel] = [
             **_SPAN,
             "docstring": "string",
             "decorators": "string[]",
+            "modifiers": "string[]",
             "parameters_json": "string",
             "accessed_symbols_json": "string",
             "_module": "string",

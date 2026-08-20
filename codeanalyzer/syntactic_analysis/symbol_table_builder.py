@@ -334,6 +334,10 @@ class SymbolTableBuilder:
                                        getattr(child, "end_col_offset", child.col_offset)),
                 )
                 decorators = self._decorators(child, script, source)
+                # `async def` is a declaration modifier, not a distinct kind (#130).
+                modifiers = (
+                    ["async"] if isinstance(child, ast.AsyncFunctionDef) else []
+                )
                 
                 if prefix:
                     # We're in a nested context - build signature with prefix
@@ -359,6 +363,7 @@ class SymbolTableBuilder:
                     .signature(signature)  # Use the full signature here
                     .span(span)
                     .decorators(decorators)
+                    .modifiers(modifiers)
                     .start_line(start_line)
                     .end_line(end_line)
                     .code_start_line(child.body[0].lineno if child.body else start_line)

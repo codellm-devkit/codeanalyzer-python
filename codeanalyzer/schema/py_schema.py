@@ -338,6 +338,12 @@ class PyCallable(BaseModel):
     span: Optional[Span] = None
     comments: List[PyComment] = []
     decorators: List[PyDecorator] = []
+    # Language-level modifiers on the declaration itself (#130). `async` is the
+    # only one Python has today. It lives here rather than in `kind` because it
+    # is orthogonal to every kind -- an async method is both -- so encoding it
+    # in the discriminant would need async_function, async_method,
+    # async_generator and so on, combinatorially.
+    modifiers: List[str] = []
     entrypoints: List[PyEntrypoint] = []
     is_entrypoint: bool = False
     parameters: List[PyCallableParameter] = []
