@@ -504,20 +504,21 @@ class PyCG:
 
     @staticmethod
     def _coalesce_edges(edges: List[PyCallEdge]) -> List[PyCallEdge]:
-        """Sum weights of duplicate ``(source, target)`` pairs across shards."""
+        """Sum weights of duplicate ``(src, dst)`` pairs across shards.
+
+        Provenance is the sorted union, matching ``call_graph.merge_edges`` --
+        the two must not coalesce differently. Inputs are left untouched; the
+        merged edge is a copy.
+        """
         merged: Dict[tuple, PyCallEdge] = {}
         for edge in edges:
             key = (edge.src, edge.dst)
-            if key in merged:
-                existing = merged[key]
-                merged[key] = PyCallEdge(
-                    source=existing.source,
-                    target=existing.target,
-                    weight=existing.weight + edge.weight,
-                    prov=existing.prov,
-                )
+            current = merged.get(key)
+            if current is None:
+                merged[key] = edge.model_copy()
             else:
-                merged[key] = edge
+                current.weight += edge.weight
+                current.prov = sorted(set(current.prov) | set(edge.prov))
         return list(merged.values())
 
     # ------------------------------------------------------------------
