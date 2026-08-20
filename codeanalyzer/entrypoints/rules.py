@@ -76,7 +76,7 @@ def _read(path: Path) -> Dict[str, Any]:
 
 def _merge(out: RuleSet, data: Dict[str, Any], origin: str) -> None:
     out.rulesets.append(origin)
-    disabled = set(data.get("disable") or [])
+    disabled = set(_disable_list(data, origin))
     frameworks = data.get("frameworks") or {}
     if not isinstance(frameworks, dict):
         raise RulesError(f"{origin}: `frameworks` must be a mapping")
@@ -94,6 +94,13 @@ def _merge(out: RuleSet, data: Dict[str, Any], origin: str) -> None:
     for fw in out.frameworks.values():
         fw.decorators = [r for r in fw.decorators if r.id not in disabled]
         fw.bases = [r for r in fw.bases if r.id not in disabled]
+
+
+def _disable_list(data: Dict[str, Any], origin: str) -> List[str]:
+    raw = data.get("disable") or []
+    if not isinstance(raw, list) or not all(isinstance(x, str) for x in raw):
+        raise RulesError(f"{origin}: `disable` must be a list of rule id strings")
+    return raw
 
 
 def _require(raw: Dict[str, Any], key: str, origin: str) -> Any:

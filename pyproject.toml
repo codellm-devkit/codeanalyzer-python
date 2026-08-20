@@ -59,9 +59,6 @@ neo4j = [
   "neo4j>=5.0.0,<6.0.0",
 ]
 
-[tool.setuptools.package-data]
-codeanalyzer = ["entrypoints/*.yml"]
-
 [dependency-groups]
 test = [
   "pytest>=7.0.0,<8.0.0",

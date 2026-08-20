@@ -24,3 +24,18 @@ def test_malformed_user_file_raises_before_analysis(tmp_path):
     bad.write_text("frameworks: [this is a list not a mapping]\n")
     with pytest.raises(RulesError):
         load_rules([bad])
+
+
+def test_bare_string_disable_raises_instead_of_silently_matching_chars(tmp_path):
+    bad = tmp_path / "bad.yml"
+    bad.write_text("disable: flask.route\n")
+    with pytest.raises(RulesError):
+        load_rules([bad])
+
+
+def test_well_formed_disable_list_removes_the_shipped_rule(tmp_path):
+    user = tmp_path / "user.yml"
+    user.write_text("disable: [flask.route]\n")
+    rs = load_rules([user])
+    flask = rs.frameworks["flask"]
+    assert all(r.id != "flask.route" for r in flask.decorators)
