@@ -105,6 +105,8 @@ NODE_LABELS: List[NodeLabel] = [
             "docstring": "string",
             **_SPAN,
             "_module": "string",
+            "is_entrypoint": "boolean",
+            "entrypoint_frameworks": "string[]",
         },
     ),
     NodeLabel(
@@ -126,6 +128,8 @@ NODE_LABELS: List[NodeLabel] = [
             "parameters_json": "string",
             "accessed_symbols_json": "string",
             "_module": "string",
+            "is_entrypoint": "boolean",
+            "entrypoint_frameworks": "string[]",
         },
     ),
     NodeLabel(

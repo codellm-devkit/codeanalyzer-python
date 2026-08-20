@@ -45,7 +45,9 @@
         "docstring": "string",
         "start_line": "integer",
         "end_line": "integer",
-        "_module": "string"
+        "_module": "string",
+        "is_entrypoint": "boolean",
+        "entrypoint_frameworks": "string[]"
       }
     },
     {
@@ -67,7 +69,9 @@
         "decorators": "string[]",
         "parameters_json": "string",
         "accessed_symbols_json": "string",
-        "_module": "string"
+        "_module": "string",
+        "is_entrypoint": "boolean",
+        "entrypoint_frameworks": "string[]"
       }
     },
     {
