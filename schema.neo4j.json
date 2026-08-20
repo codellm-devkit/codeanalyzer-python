@@ -102,27 +102,6 @@
       }
     },
     {
-      "label": "PyCallSite",
-      "merge_label": "PyCallSite",
-      "key": "id",
-      "properties": {
-        "id": "string",
-        "method_name": "string",
-        "receiver_expr": "string",
-        "receiver_type": "string",
-        "argument_types": "string[]",
-        "arguments_json": "string",
-        "return_type": "string",
-        "callee_signature": "string",
-        "is_constructor_call": "boolean",
-        "start_line": "integer",
-        "start_column": "integer",
-        "end_line": "integer",
-        "end_column": "integer",
-        "_module": "string"
-      }
-    },
-    {
       "label": "PyAttribute",
       "merge_label": "PyAttribute",
       "key": "id",
@@ -161,6 +140,12 @@
         "kind": "string",
         "var": "string",
         "call_node": "string",
+        "method_name": "string",
+        "receiver_expr": "string",
+        "receiver_type": "string",
+        "return_type": "string",
+        "is_constructor_call": "boolean",
+        "arguments_json": "string",
         "start_line": "integer",
         "end_line": "integer",
         "_module": "string"
@@ -223,19 +208,9 @@
       "properties": {}
     },
     {
-      "type": "PY_HAS_CALLSITE",
-      "from": [
-        "PyCallable"
-      ],
-      "to": [
-        "PyCallSite"
-      ],
-      "properties": {}
-    },
-    {
       "type": "PY_RESOLVES_TO",
       "from": [
-        "PyCallSite"
+        "PyCFGNode"
       ],
       "to": [
         "PyCallable",
@@ -386,7 +361,6 @@
     "CREATE CONSTRAINT pysymbol_id IF NOT EXISTS FOR (x:PySymbol) REQUIRE x.id IS UNIQUE",
     "CREATE CONSTRAINT pypackage_name IF NOT EXISTS FOR (x:PyPackage) REQUIRE x.name IS UNIQUE",
     "CREATE CONSTRAINT pydecorator_name IF NOT EXISTS FOR (x:PyDecorator) REQUIRE x.name IS UNIQUE",
-    "CREATE CONSTRAINT pycallsite_id IF NOT EXISTS FOR (x:PyCallSite) REQUIRE x.id IS UNIQUE",
     "CREATE CONSTRAINT pyattribute_id IF NOT EXISTS FOR (x:PyAttribute) REQUIRE x.id IS UNIQUE",
     "CREATE CONSTRAINT pyvariable_id IF NOT EXISTS FOR (x:PyVariable) REQUIRE x.id IS UNIQUE",
     "CREATE CONSTRAINT pycfgnode_id IF NOT EXISTS FOR (x:PyCFGNode) REQUIRE x.id IS UNIQUE"

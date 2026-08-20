@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 from importlib.metadata import version as _pkg_version, PackageNotFoundError
@@ -38,7 +39,7 @@ def _pin_hash_seed() -> None:
 from codeanalyzer.core import Codeanalyzer
 from codeanalyzer.utils import _set_log_level, logger
 from codeanalyzer.config import OutputFormat
-from codeanalyzer.schema import model_dump_json
+from codeanalyzer.schema import model_dump_json, strip_internal_only
 from codeanalyzer.options import AnalysisOptions, EmitTarget, ShardStrategy
 
 
@@ -451,7 +452,13 @@ def main(
 
             emit_neo4j(artifacts, options)
         elif options.output is None:
-            print(model_dump_json(artifacts, exclude_none=True))
+            print(
+                json.dumps(
+                    strip_internal_only(
+                        artifacts.model_dump(mode="json", exclude_none=True)
+                    )
+                )
+            )
         else:
             options.output.mkdir(parents=True, exist_ok=True)
             _write_output(artifacts, options.output, options.format)
@@ -462,7 +469,11 @@ def _write_output(artifacts, output_dir: Path, format: OutputFormat):
     if format == OutputFormat.JSON:
         output_file = output_dir / "analysis.json"
         # Use Pydantic's model_dump_json() for compact output
-        json_str = model_dump_json(artifacts, indent=None, exclude_none=True)
+        # Strip internal-only fields here rather than with a field-level Pydantic
+        # `exclude`: the analysis cache shares the serializer and must keep them.
+        json_str = json.dumps(
+            strip_internal_only(artifacts.model_dump(mode="json", exclude_none=True))
+        )
         with output_file.open("w") as f:
             f.write(json_str)
         logger.info(f"Analysis saved to {output_file}")

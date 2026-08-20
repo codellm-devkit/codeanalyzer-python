@@ -6,6 +6,7 @@ from codeanalyzer.schema.py_schema import (
 from codeanalyzer.dataflow.builder import build_function_pdgs, emit_l3_body
 from codeanalyzer.dataflow.syntactic import SyntacticOracle
 from codeanalyzer.schema.l1_body import populate_l1_body
+from codeanalyzer.schema.l2_callees import backfill_callees
 from codeanalyzer.syntactic_analysis.symbol_table_builder import SymbolTableBuilder
 
 
@@ -31,6 +32,11 @@ def test_py_resolves_to_edge_targets_declared_callee_by_can_id():
                    functions={"f": caller, "g": callee})
     app = PyApplication(symbol_table={"m.py": mod})
     sig_to_id = assign_ids(app, "myapp")
+    # #120: PY_RESOLVES_TO now sources from the `body{}` call node's resolved
+    # `callee`, not from `call_sites[].callee_signature`. Drive the same pipeline
+    # the analyzer runs so the fixture has a body node to project from.
+    populate_l1_body(app)
+    backfill_callees(app, sig_to_id)
     rows = project(app, "myapp", sig_to_id)
     resolves = [e for e in rows.edges if e.type == "PY_RESOLVES_TO"]
     # the callsite must resolve to g's can:// id — edge kept, not dropped

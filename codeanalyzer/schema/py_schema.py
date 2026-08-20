@@ -132,6 +132,18 @@ class BodyNode(BaseModel):
     callee: Optional[str] = None   # only on `call` nodes; the sanctioned null→id slot
     of: Optional[str] = None       # param vertices: the variable/return they carry
     parent: Optional[str] = None   # actuals: owning callsite ordinal id
+    # Call-site detail (#120). Previously reachable only through the parallel
+    # `PyCallable.call_sites` list, which emitted the same fact a second time under
+    # an unrelated id scheme. `method_name` and `is_constructor_call` are carried
+    # rather than derived from `callee`: measured across `requests` and `flask`,
+    # 20-28% of call sites never resolve a callee, so deriving them would lose them
+    # on one call in four.
+    method_name: Optional[str] = None
+    receiver_expr: Optional[str] = None
+    receiver_type: Optional[str] = None
+    return_type: Optional[str] = None
+    is_constructor_call: Optional[bool] = None
+    arguments: List["PyCallArgument"] = []
 
 
 @builder
@@ -334,6 +346,12 @@ class PyCallable(BaseModel):
     end_line: int = -1
     code_start_line: int = -1
     accessed_symbols: List[PySymbol] = []
+    # Internal (#120): the Jedi-produced record that `l1_body` derives `body{}`
+    # call nodes from, and that `call_graph.py`, `l2_callees.py` and the dataflow
+    # builder all read. It is stripped at EMIT time (see `wire_json`), not with a
+    # field-level `exclude`: the analysis cache round-trips through the same
+    # serializer, so excluding it would drop it from the cache too and a warm-cache
+    # run would rebuild with no call sites at all.
     call_sites: List[PyCallsite] = []
     callables: Dict[str, "PyCallable"] = {}  # nested callables (closures)
     types: Dict[str, "PyClass"] = {}  # nested (local) classes

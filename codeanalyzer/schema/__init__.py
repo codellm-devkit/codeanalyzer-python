@@ -62,6 +62,31 @@ if not PYDANTIC_V2:
     )
     Analysis.update_forward_refs(PyApplication=PyApplication)
     
+# Fields the analyzer keeps in memory (and in the cache) but never emits.
+# `call_sites` is the internal record `body{}` call nodes are derived from (#120);
+# emitting both shipped the same fact twice under two identity schemes.
+INTERNAL_ONLY_FIELDS = frozenset({"call_sites"})
+
+
+def strip_internal_only(data):
+    """Recursively drop `INTERNAL_ONLY_FIELDS` from a dumped payload.
+
+    Applied at emit time rather than as a field-level Pydantic `exclude`, because
+    the analysis cache uses the same serializer -- excluding at the field would
+    drop these from the cache as well, and the next warm-cache run would rebuild
+    from a payload with no call sites.
+    """
+    if isinstance(data, dict):
+        return {
+            k: strip_internal_only(v)
+            for k, v in data.items()
+            if k not in INTERNAL_ONLY_FIELDS
+        }
+    if isinstance(data, list):
+        return [strip_internal_only(v) for v in data]
+    return data
+
+
 # Compatibility helpers for Pydantic v1/v2
 def model_dump_json(model, **kwargs):
     """Compatibility helper for JSON serialization."""
@@ -89,5 +114,7 @@ def model_validate_json(model_class, json_data):
 __all__.extend([
     "PYDANTIC_V2",
     "model_dump_json",
+    "strip_internal_only",
+    "INTERNAL_ONLY_FIELDS",
     "model_validate_json"
 ])
