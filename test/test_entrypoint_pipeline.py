@@ -34,7 +34,7 @@ def test_derives_is_entrypoint_from_the_list(tmp_path: Path):
     from codeanalyzer.schema.py_schema import PyCallable, PyDecorator, PyImport, PyModule
 
     fn = PyCallable(name="f", path="a.py", signature="a.f")
-    fn.decorators.append(PyDecorator(name="route", qualified_name="flask.Flask.route"))
+    fn.decorators.append(PyDecorator(name="route", qualified_name="flask.sansio.scaffold.Scaffold.route"))
     app = PyApplication(
         symbol_table={
             "a.py": PyModule(
@@ -80,7 +80,7 @@ def test_ruleset_provenance_distinguishes_shipped_from_user_rules(tmp_path: Path
     )
 
     shipped_fn = PyCallable(name="f", path="a.py", signature="a.f")
-    shipped_fn.decorators.append(PyDecorator(name="app.route", qualified_name="flask.Flask.route"))
+    shipped_fn.decorators.append(PyDecorator(name="app.route", qualified_name="flask.sansio.scaffold.Scaffold.route"))
     user_fn = PyCallable(name="g", path="a.py", signature="a.g")
     user_fn.decorators.append(PyDecorator(name="handler", qualified_name="inhouse.app.handler"))
 
@@ -173,7 +173,7 @@ def test_running_the_pass_twice_does_not_duplicate_entrypoints(tmp_path: Path):
     from codeanalyzer.schema.py_schema import PyCallable, PyDecorator, PyImport, PyModule
 
     fn = PyCallable(name="f", path="a.py", signature="a.f")
-    fn.decorators.append(PyDecorator(name="route", qualified_name="flask.Flask.route"))
+    fn.decorators.append(PyDecorator(name="route", qualified_name="flask.sansio.scaffold.Scaffold.route"))
     app = PyApplication(
         symbol_table={
             "a.py": PyModule(

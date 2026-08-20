@@ -21,11 +21,15 @@ _PKG = re.compile(r"['\"]([A-Za-z0-9][A-Za-z0-9_.\-]*)")
 
 
 def detected_frameworks(app: PyApplication, project_dir: Path, rules: RuleSet) -> Set[str]:
+    # `present` (imports, manifest names) and `detect:` values are both
+    # lowercased before comparison -- manifest names were already lowercased
+    # (PyPI/pip is case-insensitive) but imports and `detect:` were not, so
+    # a `detect: [Flask]` user rule silently never matched a `flask` import.
     present = _imported_packages(app) | _manifest_packages(project_dir)
     return {
         name
         for name, fw in rules.frameworks.items()
-        if any(pkg in present for pkg in (fw.detect or [name]))
+        if any(pkg.lower() in present for pkg in (fw.detect or [name]))
     }
 
 
@@ -38,7 +42,7 @@ def _imported_packages(app: PyApplication) -> Set[str]:
             spelling = (getattr(imp, "module", "") or getattr(imp, "name", "") or "")
             spelling = spelling.lstrip(".")
             if spelling:
-                out.add(spelling.split(".", 1)[0])
+                out.add(spelling.split(".", 1)[0].lower())
     return out
 
 

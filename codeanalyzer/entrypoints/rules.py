@@ -18,6 +18,11 @@ from codeanalyzer.entrypoints.matching import PatternError, validate_pattern
 
 _SHIPPED = Path(__file__).with_name("rules.yml")
 _CONFIDENCE = {"declared", "certain", "heuristic"}
+# `declared:` (readers) and per-framework routing engines are real spec
+# blocks (Units 4-5) not implemented yet; they are deliberately absent here
+# rather than accepted-and-ignored, so a user file using them fails loudly
+# instead of loading clean and doing nothing.
+_TOP_LEVEL_KEYS = {"version", "frameworks", "disable"}
 
 
 class RulesError(Exception):
@@ -79,6 +84,9 @@ def _read(path: Path) -> Dict[str, Any]:
 
 
 def _merge(out: RuleSet, data: Dict[str, Any], origin: str) -> None:
+    unknown = sorted(set(data) - _TOP_LEVEL_KEYS)
+    if unknown:
+        raise RulesError(f"{origin}: unknown top-level key(s): {', '.join(unknown)}")
     out.rulesets.append(origin)
     disabled = set(_disable_list(data, origin))
     frameworks = data.get("frameworks") or {}

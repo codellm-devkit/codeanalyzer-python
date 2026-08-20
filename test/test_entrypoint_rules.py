@@ -11,6 +11,27 @@ def test_shipped_rules_load_and_include_flask():
     assert any(r.id == "flask.route" for r in flask.decorators)
 
 
+def test_shipped_rules_include_django_cbv_dispatch():
+    """A Django project must report ``frameworks_detected: ["django"]``
+    distinct from an unsupported project, even with the routing engine
+    (Unit 5) still absent -- the `bases:` rule works today via the
+    import-table resolver (#122 review, IMPORTANT 2)."""
+    rs = load_rules()
+    assert "django" in rs.frameworks
+    django = rs.frameworks["django"]
+    assert "django" in django.detect
+    cbv = next(r for r in django.bases if r.id == "django.cbv")
+    assert cbv.match == "django.views.generic.*"
+    assert set(cbv.dispatch) == {"get", "post", "put", "patch", "delete", "head", "options"}
+
+
+def test_unknown_top_level_key_is_rejected(tmp_path):
+    bad = tmp_path / "bad.yml"
+    bad.write_text("declared:\n  - id: pyproject.scripts\n")
+    with pytest.raises(RulesError, match="declared"):
+        load_rules([bad])
+
+
 def test_every_shipped_rule_has_a_stable_id_and_valid_confidence():
     rs = load_rules()
     for fw in rs.frameworks.values():

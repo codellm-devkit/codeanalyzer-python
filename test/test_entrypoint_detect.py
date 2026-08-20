@@ -27,6 +27,16 @@ def test_absent_framework_is_not_detected(tmp_path: Path):
     assert "celery" not in got
 
 
+def test_detect_value_case_is_normalized_against_a_lowercase_import(tmp_path: Path):
+    """A ``detect: [Flask]`` user rule must fire against a real ``import
+    flask`` -- imports are recorded lowercase, so `detect:` values need the
+    same normalization or they silently never match (#122 review, MINOR)."""
+    user = tmp_path / "user.yml"
+    user.write_text("version: 1\nframeworks:\n  myflask:\n    detect: [Flask]\n")
+    got = detected_frameworks(_app("flask"), tmp_path, load_rules([user]))
+    assert "myflask" in got
+
+
 def test_manifest_entry_alone_is_sufficient(tmp_path: Path):
     (tmp_path / "pyproject.toml").write_text(
         '[project]\nname = "x"\ndependencies = ["celery>=5"]\n'
