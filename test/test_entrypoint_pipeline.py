@@ -54,3 +54,105 @@ def test_malformed_user_rules_file_raises_instead_of_being_swallowed(tmp_path: P
         detect_entrypoints(app, tmp_path, rule_paths=(bad_rules,))
 
     assert app.entrypoint_report.errors == []
+
+
+def test_ruleset_provenance_distinguishes_shipped_from_user_rules(tmp_path: Path):
+    """A shipped rule's record must say "shipped" even when a user rules
+    file is also loaded -- the ruleset field exists so someone debugging a
+    surprising flag can find which file produced it."""
+    from codeanalyzer.schema.py_schema import PyCallable, PyDecorator, PyImport, PyModule
+
+    user_rules = tmp_path / "user.yml"
+    user_rules.write_text(
+        "frameworks:\n"
+        "  inhouse:\n"
+        "    detect: [inhouse]\n"
+        "    decorators:\n"
+        "      - id: inhouse.handler\n"
+        "        match: 'inhouse.app.handler'\n"
+    )
+
+    shipped_fn = PyCallable(name="f", path="a.py", signature="a.f")
+    shipped_fn.decorators.append(PyDecorator(name="app.route", qualified_name="flask.Flask.route"))
+    user_fn = PyCallable(name="g", path="a.py", signature="a.g")
+    user_fn.decorators.append(PyDecorator(name="handler", qualified_name="inhouse.app.handler"))
+
+    app = PyApplication(
+        symbol_table={
+            "a.py": PyModule(
+                file_path="a.py",
+                module_name="a",
+                functions={"f": shipped_fn, "g": user_fn},
+                imports=[
+                    PyImport(module="flask", name="Flask"),
+                    PyImport(module="inhouse", name="app"),
+                ],
+            )
+        }
+    )
+    detect_entrypoints(app, tmp_path, rule_paths=(user_rules,))
+
+    assert shipped_fn.entrypoints[0].ruleset == "shipped"
+    assert user_fn.entrypoints[0].ruleset == f"user:{user_rules}"
+
+
+def test_direct_base_class_is_flagged_when_the_import_resolves_it(tmp_path: Path):
+    """``class V(APIView)`` under ``from rest_framework.views import APIView``
+    is the idiomatic spelling -- base_classes stores the written name
+    ``"APIView"``, and it must resolve via the module's own import table."""
+    from codeanalyzer.schema.py_schema import PyClass, PyImport, PyModule
+
+    cls = PyClass(name="V", signature="a.V", base_classes=["APIView"])
+    app = PyApplication(
+        symbol_table={
+            "a.py": PyModule(
+                file_path="a.py",
+                module_name="a",
+                types={"a.V": cls},
+                imports=[PyImport(module="rest_framework.views", name="APIView")],
+            )
+        }
+    )
+    detect_entrypoints(app, tmp_path)
+    assert cls.is_entrypoint is True
+
+
+def test_direct_base_class_is_not_flagged_without_the_import(tmp_path: Path):
+    """``rest_framework`` is imported (so the drf framework gate passes) but
+    ``APIView`` itself is never imported into this module -- the written
+    "APIView" base has nothing to resolve against and must not be flagged."""
+    from codeanalyzer.schema.py_schema import PyClass, PyImport, PyModule
+
+    cls = PyClass(name="V", signature="a.V", base_classes=["APIView"])
+    app = PyApplication(
+        symbol_table={
+            "a.py": PyModule(
+                file_path="a.py",
+                module_name="a",
+                types={"a.V": cls},
+                imports=[PyImport(module="rest_framework", name="serializers")],
+            )
+        }
+    )
+    detect_entrypoints(app, tmp_path)
+    assert cls.is_entrypoint is False
+
+
+def test_dotted_base_class_resolves_through_a_module_import(tmp_path: Path):
+    """``class V(views.APIView)`` under ``from rest_framework import views``
+    -- the dotted base's head ("views") is the imported name."""
+    from codeanalyzer.schema.py_schema import PyClass, PyImport, PyModule
+
+    cls = PyClass(name="V", signature="a.V", base_classes=["views.APIView"])
+    app = PyApplication(
+        symbol_table={
+            "a.py": PyModule(
+                file_path="a.py",
+                module_name="a",
+                types={"a.V": cls},
+                imports=[PyImport(module="rest_framework", name="views")],
+            )
+        }
+    )
+    detect_entrypoints(app, tmp_path)
+    assert cls.is_entrypoint is True

@@ -31,6 +31,7 @@ class DecoratorRule:
     confidence: str = "certain"
     route: Optional[Dict[str, Any]] = None
     methods: Optional[Dict[str, Any]] = None
+    origin: str = "shipped"
 
 
 @dataclass
@@ -40,6 +41,7 @@ class BaseRule:
     confidence: str = "certain"
     transitive: bool = False
     dispatch: List[str] = field(default_factory=list)
+    origin: str = "shipped"
 
 
 @dataclass
@@ -134,6 +136,7 @@ def _decorator_rule(raw: Dict[str, Any], origin: str) -> DecoratorRule:
         confidence=_confidence(raw, origin),
         route=raw.get("route"),
         methods=raw.get("methods"),
+        origin=origin,
     )
 
 
@@ -144,4 +147,5 @@ def _base_rule(raw: Dict[str, Any], origin: str) -> BaseRule:
         confidence=_confidence(raw, origin),
         transitive=bool(raw.get("transitive", False)),
         dispatch=list(raw.get("dispatch") or []),
+        origin=origin,
     )

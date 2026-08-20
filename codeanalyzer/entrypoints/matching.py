@@ -113,7 +113,7 @@ def _methods_of(dec, spec: Optional[Dict[str, Any]]) -> List[str]:
 
 
 def entrypoints_from_decorators(
-    node, framework: str, rules: Iterable["DecoratorRule"], ruleset: str
+    node, framework: str, rules: Iterable["DecoratorRule"]
 ) -> List[PyEntrypoint]:
     out: List[PyEntrypoint] = []
     for dec in getattr(node, "decorators", []) or []:
@@ -125,7 +125,7 @@ def entrypoints_from_decorators(
                     framework=framework,
                     confidence=rule.confidence,
                     rule=rule.id,
-                    ruleset=ruleset,
+                    ruleset=rule.origin,
                     evidence=dec.qualified_name,
                     route=_route_of(dec, rule.route),
                     http_methods=_methods_of(dec, rule.methods),
@@ -138,7 +138,6 @@ def entrypoints_from_bases(
     cls,
     framework: str,
     rules: Iterable["BaseRule"],
-    ruleset: str,
     resolve: Callable[[str], Optional[str]],
 ) -> Tuple[List[PyEntrypoint], Dict[str, List[PyEntrypoint]]]:
     """Records for a routed class and for the methods the framework dispatches.
@@ -161,7 +160,7 @@ def entrypoints_from_bases(
                 framework=framework,
                 confidence=rule.confidence,
                 rule=rule.id,
-                ruleset=ruleset,
+                ruleset=rule.origin,
                 evidence=cls.signature,
             )
         )
@@ -174,7 +173,7 @@ def entrypoints_from_bases(
                     framework=framework,
                     confidence=rule.confidence,
                     rule=f"{rule.id}.dispatch",
-                    ruleset=ruleset,
+                    ruleset=rule.origin,
                     evidence=cls.signature,
                     http_methods=[name.upper()] if name in _HTTP_VERBS else [],
                     via=cls.id or None,
