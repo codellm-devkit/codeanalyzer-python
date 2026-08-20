@@ -16,6 +16,7 @@ from codeanalyzer.schema.py_schema import (
     PyCallableParameter,
     PyCallArgument,
     PyCallsite,
+    PyDecorator,
     PyClass,
     PyClassAttribute,
     PyComment,
@@ -295,6 +296,7 @@ class SymbolTableBuilder:
                 .name(class_name)
                 .signature(signature)
                 .span(span)
+                .decorators(self._decorators(child, script, source))
                 .start_line(start_line)
                 .end_line(end_line)
                 .comments(self._pycomments(child, code))
@@ -331,7 +333,7 @@ class SymbolTableBuilder:
                                        getattr(child, "end_lineno", child.lineno),
                                        getattr(child, "end_col_offset", child.col_offset)),
                 )
-                decorators = [ast.unparse(d) for d in child.decorator_list]
+                decorators = self._decorators(child, script, source)
                 
                 if prefix:
                     # We're in a nested context - build signature with prefix
@@ -589,6 +591,68 @@ class SymbolTableBuilder:
             params.append(build_param(args.kwarg, None))
 
         return params
+
+    def _decorators(
+        self, node: ast.AST, script: Optional[Script], source: str = ""
+    ) -> List[PyDecorator]:
+        """Structure each entry of ``node.decorator_list`` (#128).
+
+        ``name`` is the spelling as written and ``qualified_name`` is Jedi's
+        resolution of it, inferred at the last identifier of the callee so that
+        ``@a.b.c`` resolves ``c`` rather than ``a``. Resolution is best-effort:
+        dynamic, conditional and re-exported decorators stay unresolved, and a
+        failure here must never abort the symbol table.
+        """
+        out: List[PyDecorator] = []
+        for dec in getattr(node, "decorator_list", []) or []:
+            callee = dec.func if isinstance(dec, ast.Call) else dec
+            positional: List[str] = []
+            keyword: Dict[str, str] = {}
+            if isinstance(dec, ast.Call):
+                positional = [ast.unparse(a) for a in dec.args]
+                for kw in dec.keywords:
+                    # ``**kwargs`` has no arg name; keep it addressable rather
+                    # than dropping it.
+                    key = kw.arg if kw.arg is not None else f"**{ast.unparse(kw.value)}"
+                    keyword[key] = ast.unparse(kw.value)
+            span = Span(
+                start=(dec.lineno, dec.col_offset),
+                end=(getattr(dec, "end_lineno", dec.lineno),
+                     getattr(dec, "end_col_offset", dec.col_offset)),
+                bytes=byte_offsets(source, dec.lineno, dec.col_offset,
+                                   getattr(dec, "end_lineno", dec.lineno),
+                                   getattr(dec, "end_col_offset", dec.col_offset)),
+            ) if source else None
+            out.append(
+                PyDecorator.builder()
+                .name(ast.unparse(callee))
+                .qualified_name(self._decorator_qualified_name(callee, script))
+                .positional_arguments(positional)
+                .keyword_arguments(keyword)
+                .expression(ast.unparse(dec))
+                .span(span)
+                .build()
+            )
+        return out
+
+    @staticmethod
+    def _decorator_qualified_name(
+        callee: ast.AST, script: Optional[Script]
+    ) -> Optional[str]:
+        """Jedi's full name for a decorator's callee, or ``None``."""
+        if script is None:
+            return None
+        line = getattr(callee, "end_lineno", getattr(callee, "lineno", None))
+        col = getattr(callee, "end_col_offset", None)
+        if line is None or col is None:
+            return None
+        try:
+            d = SymbolTableBuilder._first_definition(
+                script.infer(line=line, column=max(col - 1, 0))
+            )
+        except Exception:
+            return None
+        return getattr(d, "full_name", None) if d is not None else None
 
     def _accessed_symbols(
         self, fn_node: ast.FunctionDef, script: Script

@@ -47,7 +47,7 @@ from codeanalyzer.schema import (
     PyModule,
     PyVariableDeclaration,
 )
-from codeanalyzer.schema.py_schema import PyCallsite
+from codeanalyzer.schema.py_schema import PyCallsite, PyDecorator
 
 
 def project(app: PyApplication, app_name: str, sig_to_id: dict,
@@ -369,6 +369,9 @@ def _project_class(
     )
     b.edge(parent_rel, parent, ref)
 
+    for d in cl.decorators or []:
+        _project_decorator(b, ref, d)
+
     for base in cl.base_classes or []:
         if base:
             b.edge_to_symbol("PY_EXTENDS", ref, _symbol_ref(base, externals, sig_to_id))
@@ -439,9 +442,36 @@ def _project_variable(
     b.edge("PY_DECLARES_VAR", owner, ref)
 
 
-def _project_decorator(b: RowBuilder, on: NodeRef, decorator: str) -> None:
-    dec = b.node(["PyDecorator"], "name", decorator, {"name": decorator})
-    b.edge("PY_DECORATED_BY", on, dec)
+def _project_decorator(b: RowBuilder, on: NodeRef, decorator: PyDecorator) -> None:
+    """Project one decorator application (#128).
+
+    The merge key is the resolved ``qualified_name`` when Jedi supplies one, so
+    ``@lru_cache`` and ``@lru_cache(maxsize=128)`` land on one node instead of two,
+    and two spellings of one decorator stop being separate nodes. Unresolved
+    decorators fall back to the written spelling. Per-application facts (the
+    arguments) ride on the relationship, not the shared node -- ``:PyDecorator``
+    has no ``_module`` and is never pruned, so anything application-specific on it
+    would accumulate across every project in the database.
+    """
+    key = decorator.qualified_name or decorator.name
+    dec = b.node(
+        ["PyDecorator"],
+        "name",
+        key,
+        {"name": key, "qualified_name": decorator.qualified_name or ""},
+    )
+    b.edge(
+        "PY_DECORATED_BY",
+        on,
+        dec,
+        {
+            "expression": decorator.expression or "",
+            "positional_arguments": list(decorator.positional_arguments or []),
+            "keyword_arguments_json": json.dumps(
+                dict(decorator.keyword_arguments or {}), sort_keys=True
+            ),
+        },
+    )
 
 
 # ----------------------------------------------------------------------------------------------
@@ -482,6 +512,7 @@ def _class_props(cl: PyClass, file_key: str, source: str) -> Props:
             "name": cl.name,
             "code": _span_code(source, cl.span),
             "base_classes": list(cl.base_classes or []),
+            "decorators": [d.qualified_name or d.name for d in (cl.decorators or [])],
             "docstring": _docstring_of(cl.comments),
             "start_line": cl.start_line,
             "end_line": cl.end_line,
@@ -504,7 +535,7 @@ def _callable_props(c: PyCallable, file_key: str, source: str) -> Props:
             "start_line": c.start_line,
             "end_line": c.end_line,
             "docstring": _docstring_of(c.comments),
-            "decorators": list(c.decorators or []),
+            "decorators": [d.qualified_name or d.name for d in (c.decorators or [])],
             "parameters_json": _stringify_if(c.parameters),
             "accessed_symbols_json": _stringify_if(c.accessed_symbols),
             "_module": file_key,

@@ -101,6 +101,7 @@ NODE_LABELS: List[NodeLabel] = [
             "name": "string",
             "code": "string",
             "base_classes": "string[]",
+            "decorators": "string[]",
             "docstring": "string",
             **_SPAN,
             "_module": "string",
@@ -138,7 +139,7 @@ NODE_LABELS: List[NodeLabel] = [
         "PyDecorator",
         "PyDecorator",
         "name",
-        {"name": "string"},
+        {"name": "string", "qualified_name": "string"},
     ),
     NodeLabel(
         "PyCallSite",
@@ -234,7 +235,16 @@ REL_TYPES: List[RelType] = [
         ["PyModule", "PyPackage"],
         {"spellings": "string[]", "imported_names": "string[]", "aliases": "string[]"},
     ),
-    RelType("PY_DECORATED_BY", ["PyCallable"], ["PyDecorator"]),
+    RelType(
+        "PY_DECORATED_BY",
+        ["PyCallable", "PyClass"],
+        ["PyDecorator"],
+        {
+            "expression": "string",
+            "positional_arguments": "string[]",
+            "keyword_arguments_json": "string",
+        },
+    ),
     # Level-3 CPG overlay (-a 3 only): the cross-language dataflow vocabulary,
     # PY_-namespaced so per-language SDK backends can scope their queries.
     RelType("PY_HAS_CFG_NODE", ["PyCallable"], ["PyCFGNode"]),

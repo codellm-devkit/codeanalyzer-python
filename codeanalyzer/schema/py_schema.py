@@ -218,12 +218,31 @@ class PyVariableDeclaration(BaseModel):
 
 
 @builder
+class PyDecorator(BaseModel):
+    """One decorator application, structured rather than a source string (#128).
+
+    ``name`` is the spelling as written (``lru_cache``, ``builtins.staticmethod``);
+    ``qualified_name`` is Jedi's resolution of it (``functools.lru_cache``) and is
+    absent when it cannot be resolved. ``expression`` keeps the full unparsed source
+    so nothing is lost for decorators too complex to decompose.
+    """
+
+    name: str
+    qualified_name: Optional[str] = None
+    positional_arguments: List[str] = []
+    keyword_arguments: Dict[str, str] = {}
+    expression: str = ""
+    span: Optional[Span] = None
+
+
+@builder
 class PyCallableParameter(BaseModel):
     """Represents a parameter of a Python callable (function/method)."""
 
     name: str
     type: Optional[str] = None
     default_value: Optional[str] = None
+    decorators: List[PyDecorator] = []
     start_line: int = -1
     end_line: int = -1
     start_column: int = -1
@@ -271,7 +290,7 @@ class PyCallable(BaseModel):
     kind: str = "function"
     span: Optional[Span] = None
     comments: List[PyComment] = []
-    decorators: List[str] = []
+    decorators: List[PyDecorator] = []
     parameters: List[PyCallableParameter] = []
     return_type: Optional[str] = None
     start_line: int = -1
@@ -304,6 +323,7 @@ class PyClassAttribute(BaseModel):
     type: Optional[str] = None
     initializer: Optional[str] = None
     comments: List[PyComment] = []
+    decorators: List[PyDecorator] = []
     start_line: int = -1
     end_line: int = -1
 
@@ -319,6 +339,7 @@ class PyClass(BaseModel):
     span: Optional[Span] = None
     comments: List[PyComment] = []
     base_classes: List[str] = []
+    decorators: List[PyDecorator] = []
     callables: Dict[str, PyCallable] = {}  # methods, keystone containment name
     attributes: Dict[str, PyClassAttribute] = {}
     types: Dict[str, "PyClass"] = {}  # inner classes, keystone containment name
