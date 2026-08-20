@@ -547,6 +547,7 @@ def _callable_props(c: PyCallable, file_key: str, source: str) -> Props:
             "end_line": c.end_line,
             "docstring": _docstring_of(c.comments),
             "decorators": [d.qualified_name or d.name for d in (c.decorators or [])],
+            "modifiers": list(c.modifiers or []),
             "parameters_json": _stringify_if(c.parameters),
             "accessed_symbols_json": _stringify_if(c.accessed_symbols),
             "_module": file_key,

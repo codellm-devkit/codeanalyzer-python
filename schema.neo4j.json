@@ -67,6 +67,7 @@
         "end_line": "integer",
         "docstring": "string",
         "decorators": "string[]",
+        "modifiers": "string[]",
         "parameters_json": "string",
         "accessed_symbols_json": "string",
         "_module": "string",
