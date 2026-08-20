@@ -1,0 +1,67 @@
+version: 1
+
+frameworks:
+  flask:
+    detect: [flask]
+    decorators:
+      - id: flask.route
+        match: "flask.Flask.route"
+        route: {from: positional, index: 0}
+        methods: {from: keyword, name: methods, default: [GET]}
+      - id: flask.bp-verb
+        match: "flask.Blueprint.{get,post,put,delete,patch}"
+        route: {from: positional, index: 0}
+        methods: {from: match_suffix}
+    bases:
+      - id: flask.methodview
+        match: "flask.views.MethodView"
+        transitive: true
+        dispatch: [get, post, put, delete, patch]
+
+  fastapi:
+    detect: [fastapi]
+    decorators:
+      - id: fastapi.verb
+        match: "fastapi.FastAPI.{get,post,put,delete,patch,head,options}"
+        route: {from: positional, index: 0}
+        methods: {from: match_suffix}
+      - id: fastapi.router-verb
+        match: "fastapi.APIRouter.{get,post,put,delete,patch}"
+        route: {from: positional, index: 0}
+        methods: {from: match_suffix}
+      - id: fastapi.websocket
+        match: "fastapi.FastAPI.websocket"
+        route: {from: positional, index: 0}
+
+  celery:
+    detect: [celery]
+    decorators:
+      - id: celery.shared-task
+        match: "celery.shared_task"
+      - id: celery.task
+        match: "celery.Celery.task"
+
+  click:
+    detect: [click, typer]
+    decorators:
+      - id: click.command
+        match: "click.{command,group}"
+      - id: typer.command
+        match: "typer.Typer.command"
+
+  drf:
+    detect: [rest_framework]
+    decorators:
+      - id: drf.api-view
+        match: "rest_framework.decorators.api_view"
+      - id: drf.action
+        match: "rest_framework.decorators.action"
+    bases:
+      - id: drf.apiview
+        match: "rest_framework.views.APIView"
+        transitive: true
+        dispatch: [get, post, put, patch, delete, head, options]
+      - id: drf.viewset
+        match: "rest_framework.viewsets.*"
+        transitive: true
+        dispatch: [list, retrieve, create, update, partial_update, destroy]

@@ -47,6 +47,9 @@ dependencies = [
     # (scalpel/SSA/const.py uses astor.to_source). Pure-Python, installs
     # everywhere; scalpel pins ~=0.8.1.
     "astor>=0.8.1,<0.9.0",
+    # pyyaml: the entrypoint rules pack (#27) is YAML. Declared explicitly --
+    # it was previously only reachable as a transitive dep of ray.
+    "pyyaml>=6.0,<7.0",
 ]
 
 [project.optional-dependencies]
@@ -55,6 +58,9 @@ dependencies = [
 neo4j = [
   "neo4j>=5.0.0,<6.0.0",
 ]
+
+[tool.setuptools.package-data]
+codeanalyzer = ["entrypoints/*.yml"]
 
 [dependency-groups]
 test = [
