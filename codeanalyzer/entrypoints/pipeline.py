@@ -44,7 +44,19 @@ def _run_stages(app: PyApplication, project_dir: Path, rules: RuleSet) -> None:
     base like ``APIView`` only resolves via that module's own
     ``from rest_framework.views import APIView``), so this walks module by
     module rather than the whole app flat, building one resolver per module.
+
+    Clears every node's ``entrypoints`` first: on a warm cache,
+    ``_build_symbol_table`` reuses the SAME cached ``PyModule``/``PyCallable``
+    objects when a file is unchanged, so without this clear a second run
+    would ``extend`` onto records already written by the first run and
+    duplicate them. A single full clear up front (rather than clearing each
+    node as it's visited) avoids wiping ``entrypoints_from_bases`` records
+    that ``_walk_module`` writes onto a method before visiting that method
+    directly.
     """
+    for node in _walk(app):
+        node.entrypoints = []
+
     app.entrypoint_report.rulesets = list(rules.rulesets)
     frameworks = detected_frameworks(app, project_dir, rules)
     app.entrypoint_report.frameworks_detected = sorted(frameworks)

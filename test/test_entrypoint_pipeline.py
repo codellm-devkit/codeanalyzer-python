@@ -27,15 +27,22 @@ def test_pass_never_raises_and_records_the_failure(tmp_path: Path, monkeypatch):
 
 
 def test_derives_is_entrypoint_from_the_list(tmp_path: Path):
-    from codeanalyzer.schema.py_schema import PyCallable, PyEntrypoint, PyModule
+    """`entrypoints` is written entirely by the pass itself (it clears and
+    rebuilds the list every run, see the duplication regression test below)
+    -- so drive this through a real decorator match rather than hand-seeding
+    the list, and check `_derive_flags` sets the boolean from the result."""
+    from codeanalyzer.schema.py_schema import PyCallable, PyDecorator, PyImport, PyModule
 
     fn = PyCallable(name="f", path="a.py", signature="a.f")
-    fn.entrypoints.append(
-        PyEntrypoint(framework="flask", confidence="certain", rule="flask.route", ruleset="shipped")
-    )
+    fn.decorators.append(PyDecorator(name="route", qualified_name="flask.Flask.route"))
     app = PyApplication(
         symbol_table={
-            "a.py": PyModule(file_path="a.py", module_name="a", functions={"f": fn})
+            "a.py": PyModule(
+                file_path="a.py",
+                module_name="a",
+                functions={"f": fn},
+                imports=[PyImport(module="flask", name="Flask")],
+            )
         }
     )
     detect_entrypoints(app, tmp_path)
@@ -156,3 +163,32 @@ def test_dotted_base_class_resolves_through_a_module_import(tmp_path: Path):
     )
     detect_entrypoints(app, tmp_path)
     assert cls.is_entrypoint is True
+
+
+def test_running_the_pass_twice_does_not_duplicate_entrypoints(tmp_path: Path):
+    """#27 regression: on a warm cache, `_build_symbol_table` reuses the SAME
+    cached PyModule/PyCallable objects across runs. `detect_entrypoints` must
+    be safe to call again on that same PyApplication without appending
+    duplicate PyEntrypoint records onto the reused nodes."""
+    from codeanalyzer.schema.py_schema import PyCallable, PyDecorator, PyImport, PyModule
+
+    fn = PyCallable(name="f", path="a.py", signature="a.f")
+    fn.decorators.append(PyDecorator(name="route", qualified_name="flask.Flask.route"))
+    app = PyApplication(
+        symbol_table={
+            "a.py": PyModule(
+                file_path="a.py",
+                module_name="a",
+                functions={"f": fn},
+                imports=[PyImport(module="flask", name="Flask")],
+            )
+        }
+    )
+
+    detect_entrypoints(app, tmp_path)
+    first = [e.model_dump() for e in fn.entrypoints]
+    assert len(first) == 1
+
+    detect_entrypoints(app, tmp_path)
+    second = [e.model_dump() for e in fn.entrypoints]
+    assert second == first
