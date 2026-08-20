@@ -53,8 +53,13 @@ file is a hard error before analysis begins; each record records which ruleset p
 ```python
 class PyEntrypoint(BaseModel):
     framework: str                   # flask | django | celery | packaging | ...
-    confidence: str                  # declared | certain | heuristic
-    rule: str                        # stable id, e.g. "flask.route"
+    confidence: str                  # closed set: "declared" | "certain" | "heuristic"
+                                     #   declared  - named in a manifest; cannot be wrong
+                                     #   certain   - an unambiguous framework signal
+                                     #   heuristic - a convention or a weak signal
+    rule: str                        # stable id. Declarative rules use their `id:` from
+                                     #   rules.yml ("flask.route"); engines use their engine
+                                     #   name ("django_urls", "pyproject.scripts")
     ruleset: str                     # "shipped" | "user:<path>"
     evidence: Optional[str] = None   # binding site, e.g. "shop/urls.py:7"
     route: Optional[str] = None      # composed path, HTTP only
@@ -109,7 +114,10 @@ against ids that already exist and leaves `symbol_table_builder.py` untouched.
 
 ```
 symbol table built (L1)
-  Stage 0  framework detection — imports present + dependency manifest; gates all later stages
+  Stage 0  framework detection — gates all later stages. A framework is detected when its
+           package is imported by first-party source OR named in the dependency manifest
+           (either is sufficient; a manifest entry with no import still gates in, since the
+           import may be dynamic)
   Stage 1  declared readers      (no AST)
   Stage 2  routing pre-pass      (per project)
   Stage 3  per-node matching     (rules.yml: decorators, bases, dispatch)
@@ -262,7 +270,28 @@ rule (a first-party callable passed to a call resolving outside the project — 
 identity, so it needs the same id-space work #128 did for decorators. It is the rule that
 generalizes furthest and should be the first follow-up.
 
-## 10. Risks
+## 10. Decomposition
+
+This is not one pull request. The units below land independently and in this order; each is
+closed by its own PR and its own work item, filed when picked up:
+
+1. **Schema + pipeline skeleton** — `PyEntrypoint`, `PyEntrypointReport`, the carriers, the
+   derived boolean, and the wrapped post-pass that currently finds nothing. Establishes the
+   contract and the failure posture with no detection logic to argue about.
+2. **`rules.yml` loader** — parsing, schema validation, shipped/user merge, `disable:`, the CLI
+   flag. Testable with no framework involved.
+3. **Declarative matching (Stage 3)** — decorator and inheritance rules, the `dispatch:` split.
+   Delivers Flask, FastAPI, Celery, Click and DRF decorators; the first user-visible result.
+4. **Declared readers (Stage 1)** — packaging metadata and manifests. Independent of 3; could
+   swap order.
+5. **Django routing engine (Stage 2)** — the largest and riskiest unit, and the one needing a
+   fixture built from scratch.
+6. **Structural passes (Stage 4)** — `__main__` walk. The argument-position rule stays deferred.
+
+Unit 1 gates everything. Units 3 and 4 are parallel. Unit 5 should not start before 1-3 are
+merged, since it depends on both the record shape and the `dispatch:` mechanism.
+
+## 11. Risks
 
 - **Option B's coverage against real projects is unmeasured.** The fixtures test the rules we
   wrote; they cannot say what fraction of real `urls.py` files resolve. Before anyone depends on
