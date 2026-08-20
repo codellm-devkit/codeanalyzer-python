@@ -66,10 +66,15 @@ def build_pdg(
     oracle: TypeBasedAliasOracle,
     k: int = 3,
     global_qualifier: Optional[str] = None,
+    decorator_names: Optional[Set[str]] = None,
 ) -> FunctionPDG:
-    """CFG → dominance → def-use → PDG for one callable."""
+    """CFG → dominance → def-use → PDG for one callable.
+
+    ``decorator_names`` are the callable's resolved decorator qualified names,
+    used for staticmethod detection by identity rather than spelling (#135).
+    """
     cfg = build_cfg(func)
-    scope = build_scope(func, enclosing_locals)
+    scope = build_scope(func, enclosing_locals, decorator_names=decorator_names)
     facts = statement_facts(cfg, func, scope, k, global_qualifier)
 
     edges: List[PDGEdge] = [

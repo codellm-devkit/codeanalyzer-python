@@ -186,6 +186,13 @@ def build_function_pdgs(
                 oracle=oracle,
                 k=k,
                 global_qualifier=module.module_name,
+                # Resolved decorator names, so staticmethod detection works for a
+                # dotted or aliased spelling and not just bare `@staticmethod` (#135).
+                decorator_names={
+                    d.qualified_name
+                    for d in (pycallable.decorators or [])
+                    if d.qualified_name
+                },
             )
             infos[pycallable.signature] = FunctionInfo(
                 signature=pycallable.signature, pdg=pdg, oracle=oracle
