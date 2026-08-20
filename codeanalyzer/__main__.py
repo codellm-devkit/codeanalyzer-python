@@ -398,6 +398,20 @@ def main(
 
     _set_log_level(options.verbosity)
 
+    # Entrypoint rules are configuration, validated before any analysis work
+    # starts (#122 review) -- a typo must fail in milliseconds, not after the
+    # symbol table, venv build, Jedi and PyCG have all run. `detect_entrypoints`
+    # loads the rules again at its own call site; that second load is cheap
+    # and keeps the entrypoints pipeline self-contained.
+    if options.entrypoint_rules:
+        from codeanalyzer.entrypoints.rules import RulesError, load_rules
+
+        try:
+            load_rules(options.entrypoint_rules)
+        except RulesError as exc:
+            logger.error(f"Invalid --entrypoint-rules: {exc}")
+            raise typer.Exit(code=1)
+
     # The schema contract is a static artifact — no project analysis required.
     if options.emit == EmitTarget.SCHEMA:
         from codeanalyzer.neo4j.emit import emit_schema

@@ -47,3 +47,30 @@ def test_decorated_function_flagged_and_helper_not(tmp_path):
     report = data["application"]["entrypoint_report"]
     assert "inhouse" in report["frameworks_detected"]
     assert report["errors"] == []
+
+
+def test_malformed_entrypoint_rules_fails_fast_before_analysis(tmp_path):
+    """A malformed ``--entrypoint-rules`` file must exit BEFORE the symbol
+    table, venv build, Jedi and PyCG run -- not deep in the pipeline
+    (#122 review, IMPORTANT 1). Proven by wall-clock: a real analysis of
+    even this tiny fixture takes noticeably longer than the sub-second
+    failure this must produce."""
+    bad_rules = tmp_path / "bad.yml"
+    bad_rules.write_text("frameworks: [not, a, mapping]\n")
+
+    result = subprocess.run(
+        [
+            "uv", "run", "canpy",
+            "-i", str(FIXTURE),
+            "-a", "1",
+            "-o", str(tmp_path / "out"),
+            "--no-venv",
+            "--cache-dir", str(tmp_path / "cache"),
+            "--entrypoint-rules", str(bad_rules),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert not (tmp_path / "out" / "analysis.json").exists()
+    assert "entrypoint-rules" in (result.stderr + result.stdout).lower()
