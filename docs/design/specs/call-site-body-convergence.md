@@ -15,7 +15,7 @@ Verified on `main` (`6f02581`), fixture `return cls()` at line 34:
 | representation | id | Neo4j |
 | --- | --- | --- |
 | `PyCallable.call_sites[]` | `app.py#34:15-34:22` | `:PyCallSite` ← `PY_HAS_CALLSITE` |
-| `PyCallable.body{"34:15"}`, `kind:"call"` | `<callable-can-id>@34:15` | `:PyCFGNode` ← `PY_HAS_CFG_NODE` |
+| `PyCallable.body{"34:15"}`, `kind:"call"` | `<callable-can-id>@34:15` | `:PyBodyNode` ← `PY_HAS_BODY_NODE` |
 
 One call in source, two graph nodes, no edge between them. `PyCallSite`'s id
 (`file#line:col-line:col`) belongs to neither identity tier the schema defines —
@@ -123,7 +123,7 @@ class BodyNode(BaseModel):
 - One body-node label, keyed on the global ordinal id, carries every `body{}` entry.
 - `PY_RESOLVES_TO` is re-sourced from `BodyNode.callee` instead of `callee_signature`.
 - Merge groups drop from 9 to 8.
-- **Rename the body label.** `PyCFGNode` names an L3 concept, but a `call` node exists from
+- **Rename the body label.** `PyBodyNode` names an L3 concept, but a `call` node exists from
   L1 and is deliberately **never** on the CFG spine — verified: at L3 the call `34:15` carries
   `parent="34:8"` and appears in no `cfg` edge, while `@entry`/`34:8`/`@exit` do. The current
   label asserts CFG membership for a node that has none. A level-neutral name (`PyBodyNode`,

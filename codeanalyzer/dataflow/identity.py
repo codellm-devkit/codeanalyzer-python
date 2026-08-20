@@ -10,7 +10,7 @@ Two forms per node:
   an L1 body node and its coinciding CFG node land on the same key and L1 ⊆ L3
   holds.
 * **global** — ``"<callable can:// id>@<local>"``, the fully addressable id for
-  cross-callable references and the Neo4j PyCFGNode keys (a later task).
+  cross-callable references and the Neo4j PyBodyNode keys (a later task).
 """
 from __future__ import annotations
 from collections import defaultdict

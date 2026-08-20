@@ -56,7 +56,7 @@ def test_emit_neo4j_rejects_explicit_graphs(cli_runner, tiny_project, tmp_path):
 
 def test_emit_neo4j_runs_full_depth_by_default(cli_runner, tiny_project, tmp_path):
     """Plain --emit neo4j must produce the FULL graph: the cypher snapshot has
-    to contain the L3/L4 families (PyCFGNode rows, PY_CFG_NEXT/PY_DDG edges,
+    to contain the L3/L4 families (PyBodyNode rows, PY_CFG_NEXT/PY_DDG edges,
     param vertices), not just the L1 symbol table."""
     out = tmp_path / "out"
     r = _invoke(
@@ -66,7 +66,7 @@ def test_emit_neo4j_runs_full_depth_by_default(cli_runner, tiny_project, tmp_pat
     )
     assert r.exit_code == 0, f"plain --emit neo4j must succeed: {r.output}"
     cypher = (out / "graph.cypher").read_text()
-    for marker in ("PyCFGNode", "PY_CFG_NEXT", "PY_DDG", "formal_in"):
+    for marker in ("PyBodyNode", "PY_CFG_NEXT", "PY_DDG", "formal_in"):
         assert marker in cypher, (
             f"full-depth neo4j emission must contain {marker}; "
             "the graph appears to be shallow"
