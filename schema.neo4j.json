@@ -41,6 +41,7 @@
         "name": "string",
         "code": "string",
         "base_classes": "string[]",
+        "decorators": "string[]",
         "docstring": "string",
         "start_line": "integer",
         "end_line": "integer",
@@ -92,7 +93,8 @@
       "merge_label": "PyDecorator",
       "key": "name",
       "properties": {
-        "name": "string"
+        "name": "string",
+        "qualified_name": "string"
       }
     },
     {
@@ -280,12 +282,17 @@
     {
       "type": "PY_DECORATED_BY",
       "from": [
-        "PyCallable"
+        "PyCallable",
+        "PyClass"
       ],
       "to": [
         "PyDecorator"
       ],
-      "properties": {}
+      "properties": {
+        "expression": "string",
+        "positional_arguments": "string[]",
+        "keyword_arguments_json": "string"
+      }
     },
     {
       "type": "PY_HAS_CFG_NODE",
