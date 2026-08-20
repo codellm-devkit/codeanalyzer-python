@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Set
+from typing import Optional, Set
 
 from codeanalyzer.entrypoints.rules import RuleSet
 from codeanalyzer.schema.py_schema import PyApplication
 
 _REQ = re.compile(r"^\s*['\"]?([A-Za-z0-9_.\-]+)")
-_DEPS_ARRAY = re.compile(r"dependencies\s*=\s*\[(.*?)\]", re.DOTALL)
+_DEPS_START = re.compile(r"dependencies\s*=\s*\[")
 _PKG = re.compile(r"['\"]([A-Za-z0-9][A-Za-z0-9_.\-]*)")
 
 
@@ -45,10 +45,11 @@ def _manifest_packages(project_dir: Path) -> Set[str]:
     out: Set[str] = set()
     pyproject = project_dir / "pyproject.toml"
     if pyproject.exists():
-        # PEP 621 `[project] dependencies = [...]` -- single- or multi-line.
-        m = _DEPS_ARRAY.search(pyproject.read_text())
-        if m:
-            for pm in _PKG.finditer(m.group(1)):
+        # PEP 621 `[project] dependencies = [...]` -- single- or multi-line,
+        # possibly containing nested `[...]` extras (`celery[redis]`).
+        span = _deps_array_span(_strip_comments(pyproject.read_text()))
+        if span is not None:
+            for pm in _PKG.finditer(span):
                 out.add(pm.group(1).split("[", 1)[0].lower())
     requirements = project_dir / "requirements.txt"
     if requirements.exists():
@@ -57,3 +58,52 @@ def _manifest_packages(project_dir: Path) -> Set[str]:
             if m:
                 out.add(m.group(1).split("[", 1)[0].lower())
     return out
+
+
+def _strip_comments(text: str) -> str:
+    """Drop everything from an unquoted ``#`` to end of line.
+
+    # ponytail: quote tracking resets each line, so a `#` inside a
+    # triple-quoted string spanning lines could be mis-stripped. TOML
+    # dependency arrays don't use those in practice; revisit if they do.
+    """
+    out_lines = []
+    for line in text.splitlines():
+        in_str = None
+        cut = len(line)
+        for i, ch in enumerate(line):
+            if in_str:
+                if ch == in_str:
+                    in_str = None
+            elif ch in ("'", '"'):
+                in_str = ch
+            elif ch == "#":
+                cut = i
+                break
+        out_lines.append(line[:cut])
+    return "\n".join(out_lines)
+
+
+def _deps_array_span(text: str) -> Optional[str]:
+    """Return the contents between the `dependencies = [` and its matching
+    `]`, counting bracket depth so a nested `[...]` (extras, e.g.
+    `celery[redis]`) doesn't close the span early."""
+    m = _DEPS_START.search(text)
+    if not m:
+        return None
+    depth = 1
+    in_str = None
+    i = m.end()
+    while i < len(text) and depth > 0:
+        ch = text[i]
+        if in_str:
+            if ch == in_str:
+                in_str = None
+        elif ch in ("'", '"'):
+            in_str = ch
+        elif ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+        i += 1
+    return text[m.end() : i - 1]

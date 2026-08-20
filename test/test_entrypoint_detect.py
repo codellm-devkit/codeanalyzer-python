@@ -33,3 +33,27 @@ def test_manifest_entry_alone_is_sufficient(tmp_path: Path):
     )
     got = detected_frameworks(_app("os"), tmp_path, load_rules())
     assert "celery" in got
+
+
+def test_extras_bracket_in_dependency_does_not_truncate_the_array(tmp_path: Path):
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "x"\n'
+        'dependencies = ["celery[redis]>=5", "flask>=2.0"]\n'
+    )
+    got = detected_frameworks(_app("os"), tmp_path, load_rules())
+    assert "celery" in got
+    assert "flask" in got
+
+
+def test_commented_out_dependency_is_not_detected(tmp_path: Path):
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\n"
+        'name = "x"\n'
+        "dependencies = [\n"
+        '    # "celery>=5",\n'
+        '    "flask>=2.0",\n'
+        "]\n"
+    )
+    got = detected_frameworks(_app("os"), tmp_path, load_rules())
+    assert "celery" not in got
+    assert "flask" in got
