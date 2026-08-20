@@ -517,6 +517,8 @@ def _class_props(cl: PyClass, file_key: str, source: str) -> Props:
             "start_line": cl.start_line,
             "end_line": cl.end_line,
             "_module": file_key,
+            "is_entrypoint": bool(cl.entrypoints),
+            "entrypoint_frameworks": sorted({e.framework for e in (cl.entrypoints or [])}),
         }
     )
 
@@ -539,6 +541,8 @@ def _callable_props(c: PyCallable, file_key: str, source: str) -> Props:
             "parameters_json": _stringify_if(c.parameters),
             "accessed_symbols_json": _stringify_if(c.accessed_symbols),
             "_module": file_key,
+            "is_entrypoint": bool(c.entrypoints),
+            "entrypoint_frameworks": sorted({e.framework for e in (c.entrypoints or [])}),
         }
     )
 

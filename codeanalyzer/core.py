@@ -636,6 +636,12 @@ class Codeanalyzer:
             backfill_callees(app, sig_to_id)
         reidentify_call_graph(app, sig_to_id)
 
+        # Entrypoints: a post-pass over the built L1 tree (#27). Runs at every
+        # level -- entrypoints are L1 data and must not vary with -a.
+        from codeanalyzer.entrypoints import detect_entrypoints
+
+        detect_entrypoints(app, self.project_dir, self.options.entrypoint_rules)
+
         # L3: intraprocedural dataflow (CFG/CDG/DDG) emitted onto the v2 tree.
         if self.analysis_level >= 3:
             from codeanalyzer.dataflow.builder import (

@@ -12,9 +12,14 @@ permissions:
   discussions: write  # attach the release-linked repo Discussion (Announcements)
 
 jobs:
-  release:
+  # Exercises the `python_version < '3.11'` half of the dependency matrix (ray==2.0.0,
+  # the older jedi/networkx/pydantic/typer pins). The release job below runs on 3.12,
+  # where the framework integration tests can install -- on 3.10 ray==2.0.0 pins
+  # click<=8.0.4 against celery>=5.3's click>=8.1.2 floor, so those test deps are
+  # gated >=3.11 and would silently `importorskip` here. Gating the release on this
+  # job keeps both halves of the matrix covered (#27).
+  compat:
     runs-on: ubuntu-latest
-
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -23,6 +28,34 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Sync dependencies
+        run: uv sync --all-groups
+
+      - name: Run tests
+        run: uv run pytest
+
+  release:
+    needs: compat
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      # 3.12, not 3.10: the framework integration tests (#27) need flask/fastapi/
+      # celery/click, which are gated `python_version >= '3.11'`. On 3.10 they
+      # `importorskip` and the decorator-rule regression they exist to catch would
+      # ship green. The `compat` job above keeps 3.10 covered.
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
 
       - name: Install uv
         run: |

@@ -1,0 +1,88 @@
+version: 1
+
+frameworks:
+  flask:
+    detect: [flask]
+    decorators:
+      # Flask 3's Flask/Blueprint decorators are all inherited from one base
+      # (flask.sansio.scaffold.Scaffold); matching is on Jedi's resolved
+      # DEFINITION path, not the public `flask.Flask`/`flask.Blueprint`
+      # spelling, so one rule now covers both call sites.
+      - id: flask.route
+        match: "flask.sansio.scaffold.Scaffold.route"
+        route: {from: positional, index: 0}
+        methods: {from: keyword, name: methods, default: [GET]}
+      - id: flask.bp-verb
+        match: "flask.sansio.scaffold.Scaffold.{get,post,put,delete,patch}"
+        route: {from: positional, index: 0}
+        methods: {from: match_suffix}
+    bases:
+      - id: flask.methodview
+        match: "flask.views.MethodView"
+        transitive: true
+        dispatch: [get, post, put, delete, patch]
+
+  fastapi:
+    detect: [fastapi]
+    decorators:
+      # FastAPI's own get/post/... are defined directly on the FastAPI class
+      # (fastapi/applications.py); APIRouter's are a distinct class
+      # (fastapi/routing.py) -- Jedi resolves each to its own module, so
+      # these stay two rules.
+      - id: fastapi.verb
+        match: "fastapi.applications.FastAPI.{get,post,put,delete,patch,head,options}"
+        route: {from: positional, index: 0}
+        methods: {from: match_suffix}
+      - id: fastapi.router-verb
+        match: "fastapi.routing.APIRouter.{get,post,put,delete,patch}"
+        route: {from: positional, index: 0}
+        methods: {from: match_suffix}
+      - id: fastapi.websocket
+        match: "fastapi.applications.FastAPI.websocket"
+        route: {from: positional, index: 0}
+
+  celery:
+    detect: [celery]
+    decorators:
+      - id: celery.shared-task
+        match: "celery.app.shared_task"
+      - id: celery.task
+        match: "celery.app.base.Celery.task"
+
+  click:
+    detect: [click, typer]
+    decorators:
+      - id: click.command
+        match: "click.decorators.{command,group}"
+      - id: typer.command
+        match: "typer.main.Typer.command"
+
+  drf:
+    detect: [rest_framework]
+    decorators:
+      - id: drf.api-view
+        match: "rest_framework.decorators.api_view"
+      - id: drf.action
+        match: "rest_framework.decorators.action"
+    bases:
+      - id: drf.apiview
+        match: "rest_framework.views.APIView"
+        transitive: true
+        dispatch: [get, post, put, patch, delete, head, options]
+      - id: drf.viewset
+        match: "rest_framework.viewsets.*"
+        transitive: true
+        dispatch: [list, retrieve, create, update, partial_update, destroy]
+
+  django:
+    detect: [django]
+    bases:
+      # Base-class matching resolves against the module's own import table
+      # (the WRITTEN spelling, e.g. `from django.views.generic import
+      # ListView`), never Jedi's definition path -- so the public
+      # `django.views.generic.*` path is correct here, unlike the decorator
+      # rules above.
+      - id: django.cbv
+        match: "django.views.generic.*"
+        transitive: true
+        dispatch: [get, post, put, patch, delete, head, options]

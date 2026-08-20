@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 from enum import Enum
 
 
@@ -65,3 +65,4 @@ class AnalysisOptions:
     pycg_shard_timeout: int = 120
     pycg_shard_strategy: ShardStrategy = ShardStrategy.JEDI
     pycg_max_iter: int = 50
+    entrypoint_rules: Tuple[Path, ...] = ()

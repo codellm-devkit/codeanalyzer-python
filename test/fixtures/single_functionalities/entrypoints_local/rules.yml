@@ -1,0 +1,9 @@
+version: 1
+frameworks:
+  inhouse:
+    detect: [app]
+    decorators:
+      - id: inhouse.route
+        match: "app.route"
+        route: {from: positional, index: 0}
+        methods: {from: keyword, name: methods, default: [GET]}

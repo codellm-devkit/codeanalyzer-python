@@ -2,7 +2,7 @@ import os
 import sys
 from importlib.metadata import version as _pkg_version, PackageNotFoundError
 from pathlib import Path
-from typing import Optional, Annotated
+from typing import List, Optional, Annotated
 
 import typer
 
@@ -299,6 +299,14 @@ def main(
             min=-1,
         ),
     ] = 50,
+    entrypoint_rules: Annotated[
+        Optional[List[Path]],
+        typer.Option(
+            "--entrypoint-rules",
+            help="Extra entrypoint rules file (YAML). Repeatable; merges with "
+            "the shipped rules. A malformed file is an error.",
+        ),
+    ] = None,
 ):
     # Determinism: pin the interpreter hash seed before any analysis (no-op
     # when PYTHONHASHSEED is already set; --version exits before this).
@@ -385,9 +393,24 @@ def main(
         pycg_shard_timeout=pycg_shard_timeout,
         pycg_shard_strategy=pycg_shard_strategy,
         pycg_max_iter=pycg_max_iter,
+        entrypoint_rules=tuple(entrypoint_rules or ()),
     )
 
     _set_log_level(options.verbosity)
+
+    # Entrypoint rules are configuration, validated before any analysis work
+    # starts (#122 review) -- a typo must fail in milliseconds, not after the
+    # symbol table, venv build, Jedi and PyCG have all run. `detect_entrypoints`
+    # loads the rules again at its own call site; that second load is cheap
+    # and keeps the entrypoints pipeline self-contained.
+    if options.entrypoint_rules:
+        from codeanalyzer.entrypoints.rules import RulesError, load_rules
+
+        try:
+            load_rules(options.entrypoint_rules)
+        except RulesError as exc:
+            logger.error(f"Invalid --entrypoint-rules: {exc}")
+            raise typer.Exit(code=1)
 
     # The schema contract is a static artifact — no project analysis required.
     if options.emit == EmitTarget.SCHEMA:
