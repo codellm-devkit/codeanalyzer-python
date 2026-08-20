@@ -9,7 +9,17 @@ def _do_callable(source: str, c: PyCallable) -> None:
         span = Span(start=(cs.start_line, cs.start_column),
                     end=(cs.end_line, cs.end_column),
                     bytes=byte_offsets(source, cs.start_line, cs.start_column, cs.end_line, cs.end_column)) if source else None
-        c.body[key] = BodyNode(kind="call", span=span, callee=None)
+        c.body[key] = BodyNode(
+            kind="call",
+            span=span,
+            callee=None,
+            method_name=cs.method_name,
+            receiver_expr=cs.receiver_expr,
+            receiver_type=cs.receiver_type,
+            return_type=cs.return_type,
+            is_constructor_call=cs.is_constructor_call,
+            arguments=list(cs.arguments or []),
+        )
     for ic in (c.callables or {}).values():
         _do_callable(source, ic)
     for icl in (c.types or {}).values():
