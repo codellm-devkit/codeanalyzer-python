@@ -183,7 +183,11 @@ def test_derives_is_entrypoint_from_the_list(tmp_path: Path):
     fn.entrypoints.append(
         PyEntrypoint(framework="flask", confidence="certain", rule="flask.route", ruleset="shipped")
     )
-    app = PyApplication(symbol_table={"a.py": PyModule(functions={"f": fn})})
+    app = PyApplication(
+        symbol_table={
+            "a.py": PyModule(file_path="a.py", module_name="a", functions={"f": fn})
+        }
+    )
     detect_entrypoints(app, tmp_path)
     assert fn.is_entrypoint is True
 ```
@@ -720,7 +724,9 @@ def _app(*modules: str) -> PyApplication:
     return PyApplication(
         symbol_table={
             "a.py": PyModule(
-                imports=[PyImport(module=m, name=m.split(".")[-1]) for m in modules]
+                file_path="a.py",
+                module_name="a",
+                imports=[PyImport(module=m, name=m.split(".")[-1]) for m in modules],
             )
         }
     )
@@ -850,8 +856,9 @@ git commit -m "feat(entrypoints): stage 0 framework detection gate (#27)"
 
 **Files:**
 - Create: `codeanalyzer/entrypoints/matching.py`
-- Modify: `codeanalyzer/entrypoints/pipeline.py`
 - Test: `test/test_entrypoint_decorators.py`
+
+(Task 7 owns the Stage 3 wiring into `pipeline.py`; do not touch it here.)
 
 **Interfaces:**
 - Consumes: `DecoratorRule` from Task 3, `PyDecorator` (already exists from #128)
@@ -1213,10 +1220,11 @@ git commit -m "feat(entrypoints): inheritance rules and the class/method dispatc
 
 ---
 
-### Task 8: End-to-end fixture and Neo4j projection
+### Task 8: End-to-end detection through a user rules file
 
 **Files:**
-- Create: `test/fixtures/single_functionalities/entrypoints_flask/app.py`
+- Create: `test/fixtures/single_functionalities/entrypoints_local/app.py`
+- Create: `test/fixtures/single_functionalities/entrypoints_local/rules.yml`
 - Create: `test/test_entrypoints_e2e.py`
 - Modify: `codeanalyzer/neo4j/schema.py`, `codeanalyzer/neo4j/project.py`
 - Modify: `schema.neo4j.json` (regenerated)
@@ -1225,16 +1233,24 @@ git commit -m "feat(entrypoints): inheritance rules and the class/method dispatc
 - Consumes: everything above
 - Produces: `is_entrypoint` and `entrypoint_frameworks` properties on `:PyCallable` and `:PyClass`
 
+**Why a local decorator rather than Flask:** matching needs `qualified_name`, which Jedi
+only resolves for an installed package. Using Flask would make this test depend on the
+analyzer building a venv and downloading Flask — slow and network-dependent. A decorator
+defined in the fixture itself resolves locally and deterministically, and this is also the
+only end-to-end coverage of the `--entrypoint-rules` path.
+
 - [ ] **Step 1: Write the fixture**
 
 ```python
-# test/fixtures/single_functionalities/entrypoints_flask/app.py
-from flask import Flask
+# test/fixtures/single_functionalities/entrypoints_local/app.py
+def route(path, methods=None):
+    """Stands in for a framework's routing decorator."""
+    def deco(fn):
+        return fn
+    return deco
 
-app = Flask(__name__)
 
-
-@app.route("/products", methods=["POST"])
+@route("/products", methods=["POST"])
 def create_product():
     return helper()
 
@@ -1242,6 +1258,19 @@ def create_product():
 def helper():
     """Called only internally - must NOT be flagged."""
     return {}
+```
+
+```yaml
+# test/fixtures/single_functionalities/entrypoints_local/rules.yml
+version: 1
+frameworks:
+  inhouse:
+    detect: [app]
+    decorators:
+      - id: inhouse.route
+        match: "app.route"
+        route: {from: positional, index: 0}
+        methods: {from: keyword, name: methods, default: [GET]}
 ```
 
 - [ ] **Step 2: Write the failing test**
@@ -1252,12 +1281,18 @@ import json
 import subprocess
 from pathlib import Path
 
-FIXTURE = Path(__file__).parent / "fixtures" / "single_functionalities" / "entrypoints_flask"
+FIXTURE = Path(__file__).parent / "fixtures" / "single_functionalities" / "entrypoints_local"
 
 
-def test_flask_route_flagged_and_helper_not(tmp_path):
+def test_decorated_function_flagged_and_helper_not(tmp_path):
     subprocess.run(
-        ["uv", "run", "canpy", "-i", str(FIXTURE), "-a", "1", "-o", str(tmp_path)],
+        [
+            "uv", "run", "canpy",
+            "-i", str(FIXTURE),
+            "-a", "1",
+            "-o", str(tmp_path),
+            "--entrypoint-rules", str(FIXTURE / "rules.yml"),
+        ],
         check=True,
     )
     data = json.loads((tmp_path / "analysis.json").read_text())
@@ -1266,26 +1301,30 @@ def test_flask_route_flagged_and_helper_not(tmp_path):
     create = fns["create_product"]
     assert create["is_entrypoint"] is True
     (ep,) = create["entrypoints"]
-    assert ep["framework"] == "flask" and ep["rule"] == "flask.route"
+    assert ep["framework"] == "inhouse" and ep["rule"] == "inhouse.route"
     assert ep["route"] == "/products" and ep["http_methods"] == ["POST"]
+    assert ep["ruleset"].startswith("user:")
 
     assert fns["helper"]["is_entrypoint"] is False
     assert fns["helper"]["entrypoints"] == []
-    assert "flask" in data["application"]["entrypoint_report"]["frameworks_detected"]
+
+    report = data["application"]["entrypoint_report"]
+    assert "inhouse" in report["frameworks_detected"]
+    assert report["errors"] == []
 ```
 
 - [ ] **Step 3: Run test to verify it fails**
 
 Run: `uv run pytest test/test_entrypoints_e2e.py -v --no-cov`
-Expected: FAIL — `is_entrypoint` is False (Flask is not installed in the fixture, so Stage 0 does not gate in)
+Expected: FAIL — `is_entrypoint` is False, or KeyError on `entrypoint_report`
 
-- [ ] **Step 4: Make Stage 0 pass for the fixture**
+- [ ] **Step 4: Make it pass**
 
-Add a manifest so detection has a source. Create `test/fixtures/single_functionalities/entrypoints_flask/requirements.txt`:
-
-```
-flask
-```
+No new production code should be needed — Tasks 1-7 cover it. If the test fails,
+diagnose against those tasks rather than adding code here. The one likely gap is
+Stage 0 detection: `detect: [app]` must match the fixture's own module name via the
+import scan, so confirm `detected_frameworks` sees it; if it does not, extend
+`_manifest_packages` to treat first-party module names as present.
 
 - [ ] **Step 5: Run test to verify it passes**
 
@@ -1294,21 +1333,26 @@ Expected: PASS
 
 - [ ] **Step 6: Project into Neo4j**
 
-In `codeanalyzer/neo4j/schema.py`, add to both the `PyCallable` and `PyClass` property maps:
+In `codeanalyzer/neo4j/schema.py`, add to BOTH the `PyCallable` and `PyClass` property maps:
 
 ```python
             "is_entrypoint": "boolean",
             "entrypoint_frameworks": "string[]",
 ```
 
-In `codeanalyzer/neo4j/project.py`, add to both `_callable_props` and `_class_props`:
+In `codeanalyzer/neo4j/project.py`, add to `_callable_props` (local name `c`):
 
 ```python
-            "is_entrypoint": bool(node.entrypoints),
-            "entrypoint_frameworks": sorted({e.framework for e in (node.entrypoints or [])}),
+            "is_entrypoint": bool(c.entrypoints),
+            "entrypoint_frameworks": sorted({e.framework for e in (c.entrypoints or [])}),
 ```
 
-(using the local parameter name in each function — `c` in `_callable_props`, `cl` in `_class_props`).
+and to `_class_props` (local name `cl`):
+
+```python
+            "is_entrypoint": bool(cl.entrypoints),
+            "entrypoint_frameworks": sorted({e.framework for e in (cl.entrypoints or [])}),
+```
 
 - [ ] **Step 7: Regenerate the schema snapshot and run the suite**
 
@@ -1321,7 +1365,7 @@ Expected: all pass
 - [ ] **Step 8: Commit**
 
 ```bash
-git add test/fixtures/single_functionalities/entrypoints_flask test/test_entrypoints_e2e.py \
+git add test/fixtures/single_functionalities/entrypoints_local test/test_entrypoints_e2e.py \
         codeanalyzer/neo4j/schema.py codeanalyzer/neo4j/project.py schema.neo4j.json
-git commit -m "feat(entrypoints): end-to-end flask detection and Neo4j projection (#27)"
+git commit -m "feat(entrypoints): end-to-end detection and Neo4j projection (#27)"
 ```
