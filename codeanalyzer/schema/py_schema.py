@@ -236,6 +236,41 @@ class PyDecorator(BaseModel):
 
 
 @builder
+class PyEntrypoint(BaseModel):
+    """One way a callable or class is invoked from outside the application (#27).
+
+    A node may hold several: two ``@app.route`` decorators, or a function that
+    is both a Celery task and a CLI command. ``confidence`` lets a consumer
+    threshold on evidence quality rather than inheriting this analyzer's
+    judgement.
+    """
+
+    framework: str
+    confidence: str = "certain"   # "declared" | "certain" | "heuristic"
+    rule: str = ""                # rules.yml `id:`, or an engine name
+    ruleset: str = "shipped"      # "shipped" | "user:<path>"
+    evidence: Optional[str] = None
+    route: Optional[str] = None
+    http_methods: List[str] = []
+    via: Optional[str] = None     # can:// id of the routed node dispatching here
+
+
+@builder
+class PyEntrypointReport(BaseModel):
+    """Coverage and failure record for the entrypoint pass (#27).
+
+    The pass under-approximates by design, so silence is its failure mode.
+    This is what makes a gap visible instead of indistinguishable from
+    "this project has no entrypoints".
+    """
+
+    frameworks_detected: List[str] = []
+    rulesets: List[str] = []
+    unresolved: Dict[str, int] = {}
+    errors: List[str] = []
+
+
+@builder
 class PyCallableParameter(BaseModel):
     """Represents a parameter of a Python callable (function/method)."""
 
@@ -291,6 +326,8 @@ class PyCallable(BaseModel):
     span: Optional[Span] = None
     comments: List[PyComment] = []
     decorators: List[PyDecorator] = []
+    entrypoints: List[PyEntrypoint] = []
+    is_entrypoint: bool = False
     parameters: List[PyCallableParameter] = []
     return_type: Optional[str] = None
     start_line: int = -1
@@ -340,6 +377,8 @@ class PyClass(BaseModel):
     comments: List[PyComment] = []
     base_classes: List[str] = []
     decorators: List[PyDecorator] = []
+    entrypoints: List[PyEntrypoint] = []
+    is_entrypoint: bool = False
     callables: Dict[str, PyCallable] = {}  # methods, keystone containment name
     attributes: Dict[str, PyClassAttribute] = {}
     types: Dict[str, "PyClass"] = {}  # inner classes, keystone containment name
@@ -432,6 +471,8 @@ class PyApplication(BaseModel):
     # builtin members), keyed by signature. Populated by the analyzer so every
     # backend (JSON and Neo4j) shares one authoritative external-symbol set.
     external_symbols: Dict[str, PyExternalSymbol] = {}
+    # Coverage/failure record for the entrypoint pass; see PyEntrypointReport (#27).
+    entrypoint_report: PyEntrypointReport = PyEntrypointReport()
     # Git provenance of the analyzed checkout, captured at analysis time.
     repository: Optional[PyRepositoryInfo] = None
     # Interprocedural parameter-passing edges (formal↔actual); populated at L4.
