@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Iterable, Iterator
 
 from codeanalyzer.entrypoints.detect import detected_frameworks
+from codeanalyzer.entrypoints.matching import entrypoints_from_bases, entrypoints_from_decorators
 from codeanalyzer.entrypoints.rules import RuleSet, load_rules
 from codeanalyzer.schema.py_schema import PyApplication, PyCallable, PyClass
 from codeanalyzer.utils import logger
@@ -36,10 +37,28 @@ def detect_entrypoints(
 
 
 def _run_stages(app: PyApplication, project_dir: Path, rules: RuleSet) -> None:
-    """Stages 0-4. Only stage 0 (framework detection) exists so far."""
+    """Stages 0-4. Stage 0 (framework detection) and Stage 3 (decorator and
+    base-class matching) exist so far."""
     app.entrypoint_report.rulesets = list(rules.rulesets)
     frameworks = detected_frameworks(app, project_dir, rules)
     app.entrypoint_report.frameworks_detected = sorted(frameworks)
+
+    ruleset_name = rules.rulesets[-1] if len(rules.rulesets) > 1 else "shipped"
+    for name in sorted(frameworks):
+        fw = rules.frameworks[name]
+        for node in _walk(app):
+            node.entrypoints.extend(
+                entrypoints_from_decorators(node, name, fw.decorators, ruleset_name)
+            )
+            if isinstance(node, PyClass) and fw.bases:
+                class_eps, method_eps = entrypoints_from_bases(
+                    node, name, fw.bases, ruleset_name, lambda b: b
+                )
+                node.entrypoints.extend(class_eps)
+                for method_name, eps in method_eps.items():
+                    target = (node.callables or {}).get(method_name)
+                    if target is not None:
+                        target.entrypoints.extend(eps)
 
 
 def _derive_flags(app: PyApplication) -> None:

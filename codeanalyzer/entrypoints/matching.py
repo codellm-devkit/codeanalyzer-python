@@ -17,12 +17,12 @@ from __future__ import annotations
 
 import ast
 import re
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from codeanalyzer.schema.py_schema import PyEntrypoint
 
 if TYPE_CHECKING:
-    from codeanalyzer.entrypoints.rules import DecoratorRule
+    from codeanalyzer.entrypoints.rules import BaseRule, DecoratorRule
 
 # Dispatch names that are HTTP verbs. DRF's ViewSet dispatch names
 # (list, retrieve, create, ...) are NOT verbs and must not be emitted as such.
@@ -132,3 +132,52 @@ def entrypoints_from_decorators(
                 )
             )
     return out
+
+
+def entrypoints_from_bases(
+    cls,
+    framework: str,
+    rules: Iterable["BaseRule"],
+    ruleset: str,
+    resolve: Callable[[str], Optional[str]],
+) -> Tuple[List[PyEntrypoint], Dict[str, List[PyEntrypoint]]]:
+    """Records for a routed class and for the methods the framework dispatches.
+
+    ``resolve`` maps a written base-class name to its resolved qualified name
+    (identity when already qualified). Dispatch names are intersected with the
+    methods the class actually defines, so a ``ListView`` with only ``get``
+    gains no phantom ``post`` entrypoint.
+    """
+    class_eps: List[PyEntrypoint] = []
+    method_eps: Dict[str, List[PyEntrypoint]] = {}
+
+    for rule in rules:
+        if not any(
+            match_pattern(rule.match, resolve(b) or b) for b in (cls.base_classes or [])
+        ):
+            continue
+        class_eps.append(
+            PyEntrypoint(
+                framework=framework,
+                confidence=rule.confidence,
+                rule=rule.id,
+                ruleset=ruleset,
+                evidence=cls.signature,
+            )
+        )
+        defined = set((cls.callables or {}).keys())
+        for name in rule.dispatch:
+            if name not in defined:
+                continue
+            method_eps.setdefault(name, []).append(
+                PyEntrypoint(
+                    framework=framework,
+                    confidence=rule.confidence,
+                    rule=f"{rule.id}.dispatch",
+                    ruleset=ruleset,
+                    evidence=cls.signature,
+                    http_methods=[name.upper()] if name in _HTTP_VERBS else [],
+                    via=cls.id or None,
+                )
+            )
+    return class_eps, method_eps
