@@ -47,7 +47,7 @@ from codeanalyzer.schema import (
     PyModule,
     PyVariableDeclaration,
 )
-from codeanalyzer.schema.py_schema import PyCallsite, PyDecorator
+from codeanalyzer.schema.py_schema import PyDecorator
 
 
 def project(app: PyApplication, app_name: str, sig_to_id: dict,
@@ -98,7 +98,7 @@ def project(app: PyApplication, app_name: str, sig_to_id: dict,
 
     # Level-3 CPG overlay: each callable's v2 body/cfg/cdg/ddg. Idempotent under
     # MERGE — a no-op when no callable carries L3 fields (levels 1/2).
-    _project_program_graphs(b, app)
+    _project_program_graphs(b, app, externals, sig_to_id)
 
     return b.finish()
 
@@ -128,7 +128,9 @@ def _cfg_ref(callable_id: str, local_key: str) -> NodeRef:
     return NodeRef("PyCFGNode", "id", _global_ordinal(callable_id, local_key))
 
 
-def _project_program_graphs(b: RowBuilder, app: PyApplication) -> None:
+def _project_program_graphs(
+    b: RowBuilder, app: PyApplication, externals: dict, sig_to_id: dict
+) -> None:
     """Level-3 CPG overlay, projected off each callable's v2 ``body``/``cfg``/
     ``cdg``/``ddg`` (populated by ``emit_l3_body`` at ``-a 3``; empty otherwise).
 
@@ -173,11 +175,25 @@ def _project_program_graphs(b: RowBuilder, app: PyApplication) -> None:
                             "end_line": span.end[0] if span else None,
                             "var": node.of,
                             "call_node": node.parent,
+                            # Call-site detail (#120). The JSON emits one node per
+                            # call site; the graph now does too, instead of a
+                            # separate :PyCallSite under a third id scheme.
+                            "method_name": node.method_name,
+                            "receiver_expr": node.receiver_expr,
+                            "receiver_type": node.receiver_type,
+                            "return_type": node.return_type,
+                            "is_constructor_call": node.is_constructor_call,
+                            "arguments_json": _stringify_if(node.arguments),
                             "_module": file_key,
                         }
                     ),
                 )
                 b.edge("PY_HAS_CFG_NODE", owner, ref)
+                if node.kind == "call" and node.callee:
+                    b.edge_to_symbol(
+                        "PY_RESOLVES_TO", ref,
+                        _symbol_ref(node.callee, externals, sig_to_id),
+                    )
             for e in c.cfg or []:
                 # kind-discriminated: a conditional's true/false pair between one
                 # endpoint pair must stay two relationships, not one MERGE.
@@ -400,19 +416,6 @@ def _project_callable(
     for d in c.decorators or []:
         _project_decorator(b, ref, d)
 
-    for s in c.call_sites or []:
-        # Key off the relative file (a call site lives in its callable's file) so ids stay portable.
-        cs_id = (
-            f"{file_key}#{s.start_line}:{s.start_column}-{s.end_line}:{s.end_column}"
-        )
-        cs = b.node(["PyCallSite"], "id", cs_id, _call_site_props(s, file_key))
-        b.edge("PY_HAS_CALLSITE", ref, cs)
-        if s.callee_signature:
-            b.edge_to_symbol(
-                "PY_RESOLVES_TO", cs,
-                _symbol_ref(s.callee_signature, externals, sig_to_id),
-            )
-
     for v in c.local_variables or []:
         _project_variable(b, file_key, ref, c.signature, v)
     for ic in (c.callables or {}).values():
@@ -577,26 +580,6 @@ def _variable_props(v: PyVariableDeclaration, var_id: str, file_key: str) -> Pro
     )
 
 
-def _call_site_props(s: PyCallsite, file_key: str) -> Props:
-    cs_id = f"{file_key}#{s.start_line}:{s.start_column}-{s.end_line}:{s.end_column}"
-    return prune(
-        {
-            "id": cs_id,
-            "method_name": s.method_name,
-            "receiver_expr": s.receiver_expr,
-            "receiver_type": s.receiver_type,
-            "argument_types": list(s.argument_types or []),
-            "arguments_json": _stringify_if(s.arguments),
-            "return_type": s.return_type,
-            "callee_signature": s.callee_signature,
-            "is_constructor_call": s.is_constructor_call,
-            "start_line": s.start_line,
-            "start_column": s.start_column,
-            "end_line": s.end_line,
-            "end_column": s.end_column,
-            "_module": file_key,
-        }
-    )
 
 
 def _call_edge_props(weight: int, prov: List[str]) -> Props:
