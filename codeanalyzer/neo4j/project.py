@@ -109,7 +109,7 @@ def project(app: PyApplication, app_name: str, sig_to_id: dict,
 
 
 def _global_ordinal(callable_id: str, local_key: str) -> str:
-    """The globally-unique PyCFGNode merge key for a callable's body node: the
+    """The globally-unique PyBodyNode merge key for a callable's body node: the
     callable's ``can://`` id joined to its LOCAL body key with a single ``@``.
     The synthetic bookends already carry the leading ``@`` (``"@entry"``/
     ``"@exit"``); real statements are bare ``"line:col"`` and gain the ``@``.
@@ -124,8 +124,8 @@ def _global_ordinal(callable_id: str, local_key: str) -> str:
     )
 
 
-def _cfg_ref(callable_id: str, local_key: str) -> NodeRef:
-    return NodeRef("PyCFGNode", "id", _global_ordinal(callable_id, local_key))
+def _body_ref(callable_id: str, local_key: str) -> NodeRef:
+    return NodeRef("PyBodyNode", "id", _global_ordinal(callable_id, local_key))
 
 
 def _project_program_graphs(
@@ -134,10 +134,10 @@ def _project_program_graphs(
     """Level-3 CPG overlay, projected off each callable's v2 ``body``/``cfg``/
     ``cdg``/``ddg`` (populated by ``emit_l3_body`` at ``-a 3``; empty otherwise).
 
-    Node label ``PyCFGNode`` (merge key ``id`` = the GLOBAL ordinal
+    Node label ``PyBodyNode`` (merge key ``id`` = the GLOBAL ordinal
     ``<callable can:// id>@<local body key>`` — identical to the JSON body key
     prefixed with the callable id, so the two projections agree). Edges:
-    ``PY_HAS_CFG_NODE`` from the owning callable, ``PY_CFG_NEXT`` (prop ``kind``)
+    ``PY_HAS_BODY_NODE`` from the owning callable, ``PY_CFG_NEXT`` (prop ``kind``)
     over the CFG, ``PY_CDG`` over control dependence, and ``PY_DDG`` (props
     ``var``/``prov``) over data dependence. The vocabulary is cross-language in
     shape but PY_-namespaced like every other row family, so a multi-language
@@ -151,7 +151,7 @@ def _project_program_graphs(
     each callable's transitive pass-throughs (LOCAL ids → global refs), and the
     app-level ``PY_PARAM_IN``/``PY_PARAM_OUT`` edges connect actual↔formal
     vertices across callables (endpoints are already GLOBAL ordinals matching the
-    emitted ``PyCFGNode`` keys). All idempotent under MERGE — no-ops below L4."""
+    emitted ``PyBodyNode`` keys). All idempotent under MERGE — no-ops below L4."""
     from codeanalyzer.semantic_analysis.call_graph import _walk_module_callables
 
     for file_key, mod in app.symbol_table.items():
@@ -165,7 +165,7 @@ def _project_program_graphs(
                 # their owning callsite (``parent``) instead of span lines; both
                 # are None on ordinary statement nodes and pruned away there.
                 ref = b.node(
-                    ["PyCFGNode"],
+                    ["PyBodyNode"],
                     "id",
                     _global_ordinal(c.id, local_key),
                     prune(
@@ -188,7 +188,7 @@ def _project_program_graphs(
                         }
                     ),
                 )
-                b.edge("PY_HAS_CFG_NODE", owner, ref)
+                b.edge("PY_HAS_BODY_NODE", owner, ref)
                 if node.kind == "call" and node.callee:
                     # `callee` is ALREADY a resolved can:// id (a declared callable
                     # or an @external home), so it must not go through
@@ -205,13 +205,13 @@ def _project_program_graphs(
                 # endpoint pair must stay two relationships, not one MERGE.
                 b.edge(
                     "PY_CFG_NEXT",
-                    _cfg_ref(c.id, e.src),
-                    _cfg_ref(c.id, e.dst),
+                    _body_ref(c.id, e.src),
+                    _body_ref(c.id, e.dst),
                     {"kind": e.kind},
                     key=e.kind,
                 )
             for e in c.cdg or []:
-                b.edge("PY_CDG", _cfg_ref(c.id, e.src), _cfg_ref(c.id, e.dst))
+                b.edge("PY_CDG", _body_ref(c.id, e.src), _body_ref(c.id, e.dst))
             for e in c.ddg or []:
                 # (var, prov)-discriminated: the DDG legitimately carries several
                 # edges between one statement pair (one per variable, and the
@@ -219,32 +219,32 @@ def _project_program_graphs(
                 # them and silently drops dependences.
                 b.edge(
                     "PY_DDG",
-                    _cfg_ref(c.id, e.src),
-                    _cfg_ref(c.id, e.dst),
+                    _body_ref(c.id, e.src),
+                    _body_ref(c.id, e.dst),
                     prune({"var": e.var, "prov": list(e.prov) if e.prov else None}),
                     key=f"{e.var or ''}|{','.join(e.prov or [])}",
                 )
             # L4 intraprocedural summaries (transitive actual_in → actual_out
-            # pass-throughs); LOCAL ids resolved to global PyCFGNode refs.
+            # pass-throughs); LOCAL ids resolved to global PyBodyNode refs.
             for e in c.summary or []:
-                b.edge("PY_SUMMARY", _cfg_ref(c.id, e.src), _cfg_ref(c.id, e.dst))
+                b.edge("PY_SUMMARY", _body_ref(c.id, e.src), _body_ref(c.id, e.dst))
 
     # L4 interprocedural parameter passing, emitted once at the app scope. The
     # endpoints are ALREADY global ordinals (emit_l4 resolved them through the
-    # endpoint functions' identity maps), so they land on the very PyCFGNode ids
+    # endpoint functions' identity maps), so they land on the very PyBodyNode ids
     # projected above — a formal_in global id equals _global_ordinal(callee.id,
     # "@formal_in:0"). No dangling references.
     for e in app.param_in or []:
         b.edge(
             "PY_PARAM_IN",
-            NodeRef("PyCFGNode", "id", e.src),
-            NodeRef("PyCFGNode", "id", e.dst),
+            NodeRef("PyBodyNode", "id", e.src),
+            NodeRef("PyBodyNode", "id", e.dst),
         )
     for e in app.param_out or []:
         b.edge(
             "PY_PARAM_OUT",
-            NodeRef("PyCFGNode", "id", e.src),
-            NodeRef("PyCFGNode", "id", e.dst),
+            NodeRef("PyBodyNode", "id", e.src),
+            NodeRef("PyBodyNode", "id", e.dst),
         )
 
 

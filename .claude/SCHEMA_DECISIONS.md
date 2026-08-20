@@ -230,3 +230,36 @@ decisions use surface the keystone already ships):
    sanctioned `null → value` refinement of `BodyNode.parent` at the L2→L3
    boundary, mirroring the `callee: null → id` refinement at L1→L2; the
    superset gates compare body keys, so no gate exception was needed.
+
+## Neo4j label rename — `PyCFGNode` → `PyBodyNode` (issue #139)
+
+The entry under "Level-3 CPG (Neo4j) — schema.neo4j.json 1.2.0" above records the
+label as it was introduced; this supersedes the name, not the design.
+
+`PyCFGNode` named a control-flow concept but held every `body{}` entry at every
+level: `call` nodes from L1, `statement`/`return`/`branch`/`entry`/`exit` from L3,
+and the `formal_in`/`formal_out`/`actual_in`/`actual_out` param vertices from L4.
+Most are not CFG vertices — a nested call is deliberately a dataflow satellite
+that never joins the spine (decision 2 in the L4 section above), and param
+vertices are not control flow at all. After #120 moved call-site detail onto the
+same node, the name was doubly wrong.
+
+It was also a projection divergence: `analysis.json` calls the container `body{}`
+while the graph called its contents CFG nodes — two words for one thing, across
+the two projections that are supposed to agree.
+
+- Label and merge label: `PyCFGNode` → **`PyBodyNode`**; constraint
+  `pycfgnode_id` → `pybodynode_id`.
+- Containment edge: `PY_HAS_CFG_NODE` → **`PY_HAS_BODY_NODE`**.
+- `PY_CFG_NEXT`, `PY_CDG`, `PY_DDG` keep their names — those *are* control-flow
+  and dependence edges. Only their endpoint label changed.
+- The merge key is unchanged: still the global ordinal id
+  `<callable can:// id>@<local body key>`, so the two projections still land on
+  one identity.
+
+`codeanalyzer-typescript` already ships `TSBodyNode` / `TS_HAS_BODY_NODE`, so this
+adopts a name a sibling analyzer had already validated rather than coining a third.
+
+**Breaking for an existing database**: nodes written under the old label are not
+rewritten by a subsequent load, and the old uniqueness constraint remains. A graph
+built before this change needs re-projecting, not migrating in place.

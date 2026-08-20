@@ -45,7 +45,7 @@ def test_py_resolves_to_edge_targets_declared_callee_by_can_id():
 
 
 # ----------------------------------------------------------------------------------------------
-# Level-3 CPG overlay: PyCFGNode merge keys are the callable can:// id + local body key,
+# Level-3 CPG overlay: PyBodyNode merge keys are the callable can:// id + local body key,
 # proving the Neo4j projection and the JSON `body`/`cfg` land on the same node identity.
 # ----------------------------------------------------------------------------------------------
 
@@ -73,15 +73,15 @@ def test_cpg_overlay_pycfgnode_keys_equal_callable_id_plus_body_key(tmp_path):
 
     rows = project(app, "app", sig_to_id)
 
-    # (a) two-projection agreement: the set of PyCFGNode merge values for this
+    # (a) two-projection agreement: the set of PyBodyNode merge values for this
     # callable == { <callable can:// id> @ <JSON local body key> }.
     expected = {_global_ordinal(c.id, k) for k in c.body}
     emitted = {
         n.value
         for n in rows.nodes
-        if n.labels[0] == "PyCFGNode" and n.value.startswith(c.id + "@")
+        if n.labels[0] == "PyBodyNode" and n.value.startswith(c.id + "@")
     }
-    assert emitted == expected, f"PyCFGNode keys {emitted} != body ordinals {expected}"
+    assert emitted == expected, f"PyBodyNode keys {emitted} != body ordinals {expected}"
 
     # (b) a PY_CFG_NEXT edge whose endpoints are two of those global ids.
     cfg_next = [e for e in rows.edges if e.type == "PY_CFG_NEXT"]
@@ -89,18 +89,18 @@ def test_cpg_overlay_pycfgnode_keys_equal_callable_id_plus_body_key(tmp_path):
         e.from_ref.value in expected and e.to_ref.value in expected for e in cfg_next
     ), "expected a PY_CFG_NEXT edge over the callable's CFG-node ids"
 
-    # (c) PY_HAS_CFG_NODE from the callable to its @entry CFG node.
+    # (c) PY_HAS_BODY_NODE from the callable to its @entry CFG node.
     entry_id = _global_ordinal(c.id, "@entry")
     assert any(
-        e.type == "PY_HAS_CFG_NODE"
+        e.type == "PY_HAS_BODY_NODE"
         and e.from_ref.value == c.id
         and e.to_ref.value == entry_id
         for e in rows.edges
-    ), "expected PY_HAS_CFG_NODE from the callable to its @entry CFG node"
+    ), "expected PY_HAS_BODY_NODE from the callable to its @entry CFG node"
 
 
 # ----------------------------------------------------------------------------------------------
-# L4 interprocedural overlay: param vertices ride the same PyCFGNode label (props
+# L4 interprocedural overlay: param vertices ride the same PyBodyNode label (props
 # var/call_node), PY_PARAM_IN/OUT connect actual↔formal across callables, PY_SUMMARY
 # rides each callable's pass-throughs, and PY_DDG carries points-to provenance.
 # ----------------------------------------------------------------------------------------------
@@ -157,22 +157,22 @@ def test_l4_param_summary_overlay_projects_onto_pycfgnode(tmp_path):
     assert app.param_in and app.param_out, "precondition: L4 must emit param edges"
 
     rows = project(app, "app", sig_to_id)
-    cfg_nodes = {n.value: n for n in rows.nodes if n.labels[0] == "PyCFGNode"}
+    cfg_nodes = {n.value: n for n in rows.nodes if n.labels[0] == "PyBodyNode"}
 
-    # (a) the param-vertex GLOBAL ids are among the emitted PyCFGNode merge values.
+    # (a) the param-vertex GLOBAL ids are among the emitted PyBodyNode merge values.
     formal_in_gid = _global_ordinal(id_fn.id, "@formal_in:0")
     formal_out_gid = _global_ordinal(id_fn.id, "@formal_out")
     assert formal_in_gid in cfg_nodes
     assert formal_out_gid in cfg_nodes
 
     # two-projection agreement over the L4 param vertices: every param-kind body
-    # key maps to its <callable id>@<local key> and lands on that PyCFGNode.
+    # key maps to its <callable id>@<local key> and lands on that PyBodyNode.
     param_kinds = {"formal_in", "formal_out", "actual_in", "actual_out"}
     for fn in (id_fn, caller_fn):
         for k, node in fn.body.items():
             if node.kind in param_kinds:
                 assert _global_ordinal(fn.id, k) in cfg_nodes, (
-                    f"param vertex {fn.id}@{k} missing from projected PyCFGNodes"
+                    f"param vertex {fn.id}@{k} missing from projected PyBodyNodes"
                 )
 
     # param-vertex props: var (from BodyNode.of) rides the formal_in node; the
@@ -182,7 +182,7 @@ def test_l4_param_summary_overlay_projects_onto_pycfgnode(tmp_path):
     actual_in_nodes = [
         n for n in cfg_nodes.values() if n.props.get("kind") == "actual_in"
     ]
-    assert actual_in_nodes, "expected an actual_in PyCFGNode in the caller"
+    assert actual_in_nodes, "expected an actual_in PyBodyNode in the caller"
     assert all("call_node" in n.props for n in actual_in_nodes)
 
     # (b) a PY_PARAM_IN edge connects a caller actual_in to id_'s formal_in.
@@ -198,11 +198,11 @@ def test_l4_param_summary_overlay_projects_onto_pycfgnode(tmp_path):
         for e in param_out
     ), f"PY_PARAM_OUT must originate at {formal_out_gid} into an actual_out"
 
-    # PY_PARAM_IN/OUT endpoints are not dangling — each is an emitted PyCFGNode.
+    # PY_PARAM_IN/OUT endpoints are not dangling — each is an emitted PyBodyNode.
     for e in param_in + param_out:
         assert e.from_ref.value in cfg_nodes and e.to_ref.value in cfg_nodes
 
-    # (c) at least one PY_SUMMARY edge, both endpoints projected PyCFGNodes.
+    # (c) at least one PY_SUMMARY edge, both endpoints projected PyBodyNodes.
     summary = [e for e in rows.edges if e.type == "PY_SUMMARY"]
     assert summary, "expected a PY_SUMMARY edge over the caller's pass-through"
     assert all(

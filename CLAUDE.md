@@ -97,7 +97,7 @@ declared callables by their `can://` tree id, imported/builtin targets by a
   `codeanalyzer/dataflow/identity.py` and feeds **both** projections, keeping them
   in lockstep.
 - **GLOBAL ordinal ids**, `"<callable-id>@<local>"` — the fully addressable form
-  used for Neo4j `PyCFGNode` merge keys and for cross-callable edge endpoints
+  used for Neo4j `PyBodyNode` merge keys and for cross-callable edge endpoints
   (e.g. `param_in.src = can://…@16:2/actual_in:0`).
 - **`source` once per module** (`PyModule.source`); every node's text is a
   `span` slice. `Span` carries `start`/`end` as `[line, col]` plus `bytes:[lo,hi]`
@@ -140,10 +140,10 @@ declared callables by their `can://` tree id, imported/builtin targets by a
 2. **Neo4j** (`codeanalyzer/neo4j/`) — a near-identity projection, keyed on the
    same `can://` / global ordinal ids: containment → typed `PY_HAS_*` /
    `PY_DECLARES` edges (`PY_HAS_MODULE`, `PY_DECLARES`, `PY_HAS_METHOD`,
-   `PY_HAS_CALLSITE`, `PY_HAS_CFG_NODE`, …); overlays → typed `PY_*` relationships
+   `PY_HAS_CALLSITE`, `PY_HAS_BODY_NODE`, …); overlays → typed `PY_*` relationships
    (`PY_CALLS` with `weight`/`prov`, `PY_CFG_NEXT`, `PY_CDG`, `PY_DDG` with a
    `prov` property, `PY_PARAM_IN`, `PY_PARAM_OUT`, `PY_SUMMARY`). CFG statements
-   and param vertices share one `PyCFGNode` label, distinguished by `kind`.
+   and param vertices share one `PyBodyNode` label, distinguished by `kind`.
    External call targets are `:PyExternal` ghosts merged on their
    `can://…/@external/…` `id` (same key as the JSON `external_symbols`).
    Relationship identity: `PY_DDG` merges per `(var, prov)` and `PY_CFG_NEXT`

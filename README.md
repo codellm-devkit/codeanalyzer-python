@@ -488,7 +488,7 @@ $ canpy --help
    canpy --input ./my-python-project -a 3 --graph-field-depth 2   # tighter access-path k-limit
    ```
    Levels 3 and 4 also enrich the Neo4j projection (`--emit neo4j`) with the CPG overlay
-   (`:PyCFGNode` nodes wired by `PY_CFG_NEXT`/`PY_CDG`/`PY_DDG`, plus the level-4
+   (`:PyBodyNode` nodes wired by `PY_CFG_NEXT`/`PY_CDG`/`PY_DDG`, plus the level-4
    `PY_PARAM_IN`/`PY_PARAM_OUT`/`PY_SUMMARY` edges — the cross-language dataflow vocabulary,
    PY_-namespaced like every other row family so multi-language databases never mingle
    analyzers' edges).
@@ -635,7 +635,7 @@ label is `Py`-prefixed and every relationship type is `PY_`-prefixed (e.g. `:PyC
 so multiple language analyzers can share one database without label or relationship-type collisions.
 Declarations are keyed by their **`can://` id** under a shared `:PySymbol` label; calls, imports,
 inheritance, decorators, and call sites are relationships. At `-a 3`/`-a 4` the projection gains the
-**CPG overlay** — `:PyCFGNode` nodes (statements, and at level 4 the parameter vertices) wired by
+**CPG overlay** — `:PyBodyNode` nodes (statements, and at level 4 the parameter vertices) wired by
 `PY_CFG_NEXT`/`PY_CDG`/`PY_DDG`, plus the level-4 `PY_PARAM_IN`/`PY_PARAM_OUT`/`PY_SUMMARY` edges:
 
 - **Without `--neo4j-uri`** — writes a self-contained `graph.cypher` (constraints + indexes, a scoped
