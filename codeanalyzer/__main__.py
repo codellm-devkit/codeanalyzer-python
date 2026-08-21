@@ -255,21 +255,6 @@ def main(
             min=1,
         ),
     ] = 100,
-    pycg_shard_timeout: Annotated[
-        int,
-        typer.Option(
-            "--pycg-shard-timeout",
-            help=(
-                "Per-shard wall-clock timeout in seconds when --pycg-shard is "
-                "active (default 120). A shard that exceeds this limit is skipped "
-                "gracefully. PyCG's fixpoint is bimodal: it either converges "
-                "quickly or diverges indefinitely, so the timeout acts as a final "
-                "safety net after the file-count ceiling. Set to 0 to disable. "
-                "POSIX only (macOS / Linux); ignored on Windows."
-            ),
-            min=0,
-        ),
-    ] = 120,
     pycg_shard_strategy: Annotated[
         ShardStrategy,
         typer.Option(
@@ -294,8 +279,12 @@ def main(
                 "changing, but its access-path domain has no convergence bound, "
                 "so heavy metaclass/mixin code (e.g. an ORM) can loop with each "
                 "pass costing seconds. The cap returns a sound-but-incomplete "
-                "call graph instead of looping until the timeout kills it. "
-                "Set to -1 for PyCG's unbounded run-to-convergence behaviour."
+                "call graph instead of looping indefinitely. It is now the "
+                "only bound on a shard, and is what makes sharded output "
+                "reproducible, so lowering it trades recall for runtime "
+                "deterministically. Set to -1 for PyCG's unbounded "
+                "run-to-convergence behaviour -- with no wall-clock safety "
+                "net, so a divergent shard can then run indefinitely."
             ),
             min=-1,
         ),
@@ -391,7 +380,6 @@ def main(
         verbosity=verbosity,
         pycg_shard=pycg_shard,
         pycg_shard_ceiling=pycg_shard_ceiling,
-        pycg_shard_timeout=pycg_shard_timeout,
         pycg_shard_strategy=pycg_shard_strategy,
         pycg_max_iter=pycg_max_iter,
         entrypoint_rules=tuple(entrypoint_rules or ()),

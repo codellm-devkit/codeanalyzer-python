@@ -47,39 +47,12 @@ import contextlib
 import os
 import json  # noqa: F401
 import shutil
-import signal
 import tempfile
 import time
 
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional, Set, Tuple, Union
-
-
-@contextlib.contextmanager
-def _shard_timeout(seconds: int) -> Generator[None, None, None]:
-    """Context manager that raises ``TimeoutError`` if the body runs longer than *seconds*.
-
-    Uses SIGALRM on POSIX (macOS / Linux).  On platforms without SIGALRM
-    (Windows) the context manager is a no-op — shards can still be bounded
-    by the file-count ceiling.
-
-    Must be called from the main thread (SIGALRM restriction).
-    """
-    if seconds <= 0 or not hasattr(signal, "SIGALRM"):
-        yield
-        return
-
-    def _handler(signum: int, frame: object) -> None:
-        raise TimeoutError(f"shard timed out after {seconds}s")
-
-    old_handler = signal.signal(signal.SIGALRM, _handler)
-    signal.alarm(seconds)
-    try:
-        yield
-    finally:
-        signal.alarm(0)
-        signal.signal(signal.SIGALRM, old_handler)
 
 from codeanalyzer.schema.py_schema import PyCallEdge, PyModule
 from codeanalyzer.semantic_analysis.call_graph import iter_callables_in_symbol_table
@@ -226,16 +199,76 @@ def _shard_symlink_root(
         os.close(lock_fd)
 
 
+def _analyze_with_convergence(cg: Any) -> bool:
+    """Run ``cg.analyze()``; return whether its fixpoint converged.
+
+    PyCG's loop is ``while (max_iter < 0 or iter_cnt < max_iter) and not
+    has_converged()``, so the convergence check runs *before* each pass and
+    never after the last one.  Reading it correctly needs care in two places:
+
+    * **Asking after ``analyze()`` returns does not work.**  ``analyze`` runs a
+      ``CallGraphProcessor`` pass past the loop, so a post-hoc call compares
+      state that pass has already moved against the snapshot taken before it,
+      and can report divergence for a shard that converged.
+    * **The last recorded value alone does not work either.**  When the cap is
+      what stops the loop, the ``and`` short-circuits and the check is skipped,
+      leaving the ``False`` that admitted the final pass — which mislabels a
+      shard that reached its fixpoint on exactly pass ``max_iter``.
+
+    So raise the cap by one and cut the loop off from inside the check: at the
+    point PyCG would have stopped, evaluate convergence once more (this is
+    "did the final pass change anything") and then return ``True`` to stop the
+    loop before the extra pass can run.  The verdict is a function of the input
+    alone, unlike the wall-clock timeout it replaces (#145).
+    """
+    max_iter = cg.max_iter
+    if max_iter == 0:
+        # Degenerate: PyCG is asked for zero fixpoint passes, so the result is
+        # an under-approximation by configuration rather than by divergence.
+        # Re-splitting cannot improve it -- sub-shards get the same cap -- so
+        # calling it a runaway would only buy pointless re-analysis.
+        cg.analyze()
+        return True
+
+    had_own_attr = "has_converged" in vars(cg)
+    original = cg.has_converged
+    last: List[bool] = []
+
+    def _recording() -> bool:
+        result = bool(original())
+        last.append(result)
+        # PyCG would stop here on the cap without asking again; we asked, so
+        # stop the loop ourselves rather than let the raised cap buy a pass.
+        if max_iter >= 0 and len(last) > max_iter:
+            return True
+        return result
+
+    cg.has_converged = _recording
+    if max_iter >= 0:
+        cg.max_iter = max_iter + 1
+    try:
+        cg.analyze()
+    finally:
+        cg.max_iter = max_iter
+        if had_own_attr:
+            cg.has_converged = original
+        else:
+            del cg.has_converged
+    return last[-1] if last else True
+
+
 def _pycg_shard_worker(
     entry_points: List[str],
     package_dir: str,
     prefix: str,
     max_iter: int = -1,
-) -> List[tuple]:
+) -> Tuple[List[tuple], bool]:
     """Run PyCG on one shard; called in a Ray worker process.
 
-    Returns a list of ``(source, target, weight)`` tuples that the caller
-    converts to :class:`PyCallEdge` objects.  This function is a plain
+    Returns ``(triples, converged)`` -- a list of ``(source, target, weight)``
+    tuples that the caller converts to :class:`PyCallEdge` objects, and whether
+    PyCG reached its fixpoint rather than stopping at ``max_iter`` (#145).
+    This function is a plain
     module-level callable so it can be pickled by Ray without capturing any
     class-level state.  *max_iter* caps PyCG's fixpoint passes (-1 = unbounded).
     """
@@ -271,7 +304,7 @@ def _pycg_shard_worker(
         max_iter=max_iter,
         operation="call-graph",
     )
-    cg.analyze()
+    converged = _analyze_with_convergence(cg)
 
     edge_counts = _WorkerCounter()
     for src, dst in cg.output_edges():
@@ -280,7 +313,7 @@ def _pycg_shard_worker(
             dst = f"{prefix}.{dst}"
         edge_counts[(src, dst)] += 1
 
-    return [(src, dst, count) for (src, dst), count in edge_counts.items()]
+    return [(src, dst, count) for (src, dst), count in edge_counts.items()], converged
 
 
 def _apply_pycg_posonly_patch() -> None:
@@ -417,9 +450,6 @@ class PyCG:
             that exceed the 500-file ceiling.
         shard_ceiling: Maximum file count per shard.  Shards exceeding this
             limit are skipped.  Defaults to ``_PYCG_SHARD_CEILING`` (100).
-        shard_timeout: Per-shard wall-clock timeout in seconds.  A shard that
-            exceeds this limit is skipped.  0 disables the timeout.  Defaults
-            to ``_PYCG_SHARD_TIMEOUT`` (120).  POSIX only; no-op on Windows.
     """
 
     # PyCG's pointer analysis is practical only up to this many files.
@@ -435,14 +465,6 @@ class PyCG:
     # conservative default; override via --pycg-shard-ceiling.
     _PYCG_SHARD_CEILING: int = 100
 
-    # Per-shard wall-clock timeout (seconds).  PyCG's fixpoint is bimodal:
-    # either it converges in seconds or it diverges and never finishes.
-    # This timeout acts as a final safety net after the file-count ceiling.
-    # 120 seconds is generous enough for any legitimately complex shard
-    # while still catching non-converging ones.  Override via
-    # --pycg-shard-timeout.  Set to 0 to disable.
-    _PYCG_SHARD_TIMEOUT: int = 120
-
     # Cap on PyCG's outer fixpoint passes.  PyCG runs PostProcessor until the
     # def/scope/MRO state stops changing; its abstract domain (field-sensitive
     # access paths, no k-limiting or widening) has no ascending-chain bound, so
@@ -455,11 +477,13 @@ class PyCG:
     # -1 restores PyCG's unbounded run-to-convergence behaviour.
     _PYCG_MAX_ITER: int = 50
 
-    # Iterative decomposition of runaway (timed-out) shards: a shard that the
-    # wall-clock timeout kills is re-partitioned at half the budget and re-run,
-    # down to this file-count floor.  Below the floor — or for an atomic import
-    # cycle that won't split — the residue falls back to Jedi-only coverage.
-    _PYCG_DECOMP_FLOOR: int = 10
+    # Iterative decomposition of runaway shards: a shard whose fixpoint stopped
+    # at --pycg-max-iter instead of converging is re-partitioned at half the
+    # budget and re-run, down to this file-count floor.  Below the floor — or
+    # for an atomic import cycle that won't split — the shard keeps the edges
+    # its capped fixpoint did derive.  The floor is 1 because a lone divergent
+    # file is exactly the case worth isolating from its neighbours (#145).
+    _PYCG_DECOMP_FLOOR: int = 1
     _PYCG_MAX_DECOMP_ROUNDS: int = 6
 
     # Directory names that should never be fed to PyCG as entry points, nor
@@ -479,7 +503,6 @@ class PyCG:
         skip_tests: bool = True,
         shard: bool = False,
         shard_ceiling: Optional[int] = None,
-        shard_timeout: Optional[int] = None,
         shard_strategy: str = "jedi",
         max_iter: Optional[int] = None,
         using_ray: bool = False,
@@ -489,9 +512,6 @@ class PyCG:
         self.shard = shard
         self.shard_ceiling = (
             shard_ceiling if shard_ceiling is not None else self._PYCG_SHARD_CEILING
-        )
-        self.shard_timeout = (
-            shard_timeout if shard_timeout is not None else self._PYCG_SHARD_TIMEOUT
         )
         self.max_iter = max_iter if max_iter is not None else self._PYCG_MAX_ITER
         # "jedi": partition the Jedi module graph (SCC + Louvain) so coupled
@@ -610,8 +630,11 @@ class PyCG:
         package_dir: Path,
         resolver: "_PyCGCallableResolver",
         prefix: str = "",
-    ) -> List[PyCallEdge]:
+    ) -> Tuple[List[PyCallEdge], bool]:
         """Run PyCG on *entry_points* with *package_dir* as the package root.
+
+        Returns ``(edges, converged)``; ``converged`` is False when PyCG stopped
+        at ``max_iter`` instead of reaching its fixpoint (#145).
 
         *prefix* is a dot-separated path prepended to every edge name emitted
         by PyCG so that shard-relative names become project-relative.  Pass
@@ -627,9 +650,7 @@ class PyCG:
                 max_iter=self.max_iter,
                 operation="call-graph",
             )
-            cg.analyze()
-        except TimeoutError:
-            raise  # propagate directly so _build_sharded logs a clean timeout message
+            converged = _analyze_with_convergence(cg)
         except Exception as exc:
             raise PyCGExceptions.PyCGAnalysisError(
                 f"PyCG analysis failed: {exc}"
@@ -645,7 +666,7 @@ class PyCG:
         return [
             PyCallEdge(src=src, dst=dst, weight=count, prov=["pycg"])
             for (src, dst), count in edge_counts.items()
-        ]
+        ], converged
 
     # ------------------------------------------------------------------
     # Sharded analysis
@@ -669,12 +690,22 @@ class PyCG:
         PyCG's fixpoint diverges on heavy metaclass/mixin clusters, and a uniform
         ceiling would force *every* shard small (severing many edges) just to tame
         the few that run away.  Instead we start coarse (low cut, high recall on
-        healthy code) and **only re-decompose the shards that time out**: each
-        runaway's files are re-partitioned at half the budget and re-run, down to
-        a floor.  A runaway shard contributes zero edges, so splitting it recovers
-        almost all of them while paying cut on its internal seams alone.  The
-        residue that still diverges at the floor (or is an atomic cycle that won't
-        split) falls back to Jedi-only coverage.
+        healthy code) and **only re-decompose the shards that did not converge**:
+        each runaway's files are re-partitioned at half the budget and re-run,
+        down to a floor.  A smaller shard has a smaller fixpoint to reach, so
+        splitting recovers the edges the capped pass missed while paying cut on
+        its internal seams alone.
+
+        A shard is a runaway when its fixpoint stopped at ``--pycg-max-iter``
+        rather than converging — a function of the input, so the same project
+        decomposes the same way every run.  This used to be a wall-clock
+        timeout, which made *which* shards were dropped depend on machine load
+        and Ray scheduling (#145).
+
+        The residue that still diverges at the floor (or is an atomic cycle that
+        won't split) keeps the edges its capped fixpoint produced: a truncated
+        fixpoint is a sound under-approximation, so those edges are real and
+        dropping them was pure recall loss.
         """
         self._resolver = resolver
         plan = plan_shards(
@@ -716,18 +747,24 @@ class PyCG:
             )
 
             next_shards: List[List[str]] = []
-            for rf in runaways:
+            for rf, partial in runaways:
                 # Re-partition this runaway's files alone, at a tighter budget.
                 # An atomic cycle (or a lone file) that won't shrink is
-                # irreducible — accept Jedi-only rather than loop forever.
+                # irreducible — keep the capped-fixpoint edges it did produce.
+                # A truncated fixpoint is a sound under-approximation, so
+                # keeping it strictly beats the previous behaviour of dropping
+                # the shard to zero edges (#145). Its sub-shards supersede it
+                # when it CAN be split, so the partial is only used here.
                 sub_st = {f: symbol_table[f] for f in rf if f in symbol_table}
                 if stop_decomposing or len(rf) <= 1:
                     irreducible_files += len(rf)
+                    all_edges.extend(partial)
                     continue
                 sub_plan = plan_shards(sub_st, jedi_edges, budget=next_budget)
                 if len(sub_plan.shards) <= 1:
-                    # did not actually split (one atomic SCC) — give up on it
+                    # did not actually split (one atomic SCC) — keep its partial
                     irreducible_files += len(rf)
+                    all_edges.extend(partial)
                     continue
                 next_shards.extend(sub_plan.shards)
 
@@ -742,8 +779,8 @@ class PyCG:
 
         if irreducible_files:
             logger.warning(
-                "PyCG: %d file(s) in irreducibly-divergent shards fall back to "
-                "Jedi-only coverage", irreducible_files,
+                "PyCG: %d file(s) in irreducibly-divergent shards kept their "
+                "capped-fixpoint edges (sound under-approximation)", irreducible_files,
             )
 
         result = self._coalesce_edges(all_edges)
@@ -757,37 +794,50 @@ class PyCG:
 
     def _run_fileset_shards_seq(
         self, shards: List[List[str]],
-    ) -> Tuple[List[PyCallEdge], List[List[str]]]:
+    ) -> Tuple[List[PyCallEdge], List[Tuple[List[str], List[PyCallEdge]]]]:
         """Run each file-set shard sequentially; return ``(edges, runaways)``.
 
-        A shard that times out or raises is returned in *runaways* (its file
-        list) for the caller to re-decompose; it contributes no edges.
+        A shard is a *runaway* when PyCG stopped at ``max_iter`` instead of
+        reaching its fixpoint, or when it raised. Both are deterministic
+        functions of the input -- unlike the wall-clock timeout this replaced,
+        which made the surviving edge set depend on machine load (#145).
+
+        Each runaway carries the edges it *did* produce. A capped fixpoint is a
+        sound under-approximation, so if decomposition cannot split the shard
+        further the caller keeps that partial rather than discarding it.
         """
         resolver = self._resolver
         edges_all: List[PyCallEdge] = []
-        runaways: List[List[str]] = []
+        runaways: List[Tuple[List[str], List[PyCallEdge]]] = []
         with ProgressBar(len(shards), "Building call graph shards", item_label="shards") as progress:
             for files in shards:
                 try:
                     with _shard_symlink_root(files, self.project_dir) as (root, eps):
-                        with _shard_timeout(self.shard_timeout):
-                            edges = self._run_pycg_batch(eps, root, resolver, prefix="")
-                    edges_all.extend(edges)
-                except (TimeoutError, PyCGExceptions.PyCGAnalysisError):
-                    runaways.append(files)
+                        edges, converged = self._run_pycg_batch(
+                            eps, root, resolver, prefix=""
+                        )
+                    if converged:
+                        edges_all.extend(edges)
+                    else:
+                        runaways.append((files, edges))
+                except PyCGExceptions.PyCGAnalysisError:
+                    runaways.append((files, []))
                 progress.advance()
         return edges_all, runaways
 
     def _run_fileset_shards_ray(
         self, shards: List[List[str]],
-    ) -> Tuple[List[PyCallEdge], List[List[str]]]:
+    ) -> Tuple[List[PyCallEdge], List[Tuple[List[str], List[PyCallEdge]]]]:
         """Ray-parallel variant of :meth:`_run_fileset_shards_seq`.
 
         Each shard is materialised as a symlink mini-project up front (the trees
-        must outlive their remote tasks), submitted as a Ray task, and collected
-        against one wall-clock deadline — Ray workers cannot use SIGALRM, so the
-        timeout is enforced orchestrator-side.  Timed-out/failed shards become
-        runaways; symlink trees are removed once the batch completes.
+        must outlive their remote tasks) and submitted as a Ray task. Every task
+        is collected -- there is no wall-clock deadline. A shard is a runaway
+        only when PyCG stopped at ``max_iter`` or the task raised, both
+        deterministic in the input (#145). The previous deadline cancelled
+        whichever tasks happened to be slowest, so the surviving edge set varied
+        with machine load: three runs over one fixture produced 48,595 / 43,431 /
+        40,224 edges.
         """
         import os
         import ray
@@ -802,7 +852,7 @@ class PyCG:
         futures: List[Any] = []
         meta: Dict[Any, List[str]] = {}  # ObjectRef -> shard file list
         edges_all: List[PyCallEdge] = []
-        runaways: List[List[str]] = []
+        runaways: List[Tuple[List[str], List[PyCallEdge]]] = []
         try:
             with ProgressBar(len(shards), "Building call graph shards (parallel)", item_label="shards") as progress:
                 for files in shards:
@@ -822,37 +872,25 @@ class PyCG:
                     futures.append(fut)
                     meta[fut] = files
 
-                deadline = (
-                    time.perf_counter() + float(self.shard_timeout)
-                    if self.shard_timeout > 0 else None
-                )
+                # No deadline: every task is collected. PyCG is bounded by
+                # `max_iter`, so a shard terminates on its own; bounding it again
+                # by the clock is what made the output load-dependent (#145).
                 pending = list(futures)
                 while pending:
-                    if deadline is not None:
-                        remaining = deadline - time.perf_counter()
-                        if remaining <= 0:
-                            break
-                    else:
-                        remaining = None
-
-                    ready, pending = ray.wait(pending, num_returns=1, timeout=remaining)
-                    if not ready:
-                        break
-
+                    ready, pending = ray.wait(pending, num_returns=1)
                     fut = ready[0]
                     try:
-                        triples = ray.get(fut)
-                        edges_all.extend(
+                        triples, converged = ray.get(fut)
+                        edges = [
                             PyCallEdge(src=s, dst=t, weight=w, prov=["pycg"])
                             for s, t, w in triples
-                        )
+                        ]
+                        if converged:
+                            edges_all.extend(edges)
+                        else:
+                            runaways.append((meta[fut], edges))
                     except Exception:
-                        runaways.append(meta[fut])
-                    progress.advance()
-
-                for fut in pending:  # exceeded the deadline
-                    ray.cancel(fut, force=True)
-                    runaways.append(meta[fut])
+                        runaways.append((meta[fut], []))
                     progress.advance()
         finally:
             for root in roots:
@@ -911,19 +949,21 @@ class PyCG:
                     continue
                 prefix = self._package_prefix(pkg_root, self.project_dir)
                 try:
-                    with _shard_timeout(self.shard_timeout):
-                        edges = self._run_pycg_batch(files, pkg_root, resolver, prefix=prefix)
+                    # No wall-clock bound: PyCG terminates on `max_iter`, and
+                    # timing out here made the edge set load-dependent (#145).
+                    # A capped fixpoint still yields sound edges, so keep them.
+                    edges, converged = self._run_pycg_batch(
+                        files, pkg_root, resolver, prefix=prefix
+                    )
                     all_edges.extend(edges)
+                    if not converged:
+                        logger.debug(
+                            "PyCG shard '%s': fixpoint capped at max_iter", pkg_label,
+                        )
                     logger.debug(
                         "PyCG shard '%s': %d edges from %d files",
                         pkg_label, len(edges), n,
                     )
-                except TimeoutError:
-                    logger.warning(
-                        "PyCG shard '%s' timed out after %ds — skipped",
-                        pkg_label, self.shard_timeout,
-                    )
-                    skipped += 1
                 except PyCGExceptions.PyCGAnalysisError as exc:
                     logger.warning("PyCG shard '%s' failed — skipped: %s", pkg_label, exc)
                     skipped += 1
@@ -931,9 +971,9 @@ class PyCG:
 
         if skipped:
             logger.warning(
-                "PyCG: %d shard(s) were skipped (exceeded %d-file ceiling, "
-                "%ds timeout, or failed)",
-                skipped, self.shard_ceiling, self.shard_timeout,
+                "PyCG: %d shard(s) were skipped (exceeded %d-file ceiling "
+                "or failed)",
+                skipped, self.shard_ceiling,
             )
 
         # Merge duplicate (source, target) pairs that appear in multiple shards.
@@ -961,10 +1001,9 @@ class PyCG:
     def _build_sharded_ray(self, shards: Dict[Path, List[str]]) -> List[PyCallEdge]:
         """Ray-parallel variant of the sequential shard loop.
 
-        All eligible shards are submitted as Ray remote tasks simultaneously.
-        ``ray.wait(timeout=shard_timeout)`` is used to collect results and
-        cancel stragglers — Ray workers cannot use SIGALRM, so the timeout is
-        enforced at the orchestrator level instead.
+        All eligible shards are submitted as Ray remote tasks simultaneously
+        and every one is collected.  PyCG is bounded by ``max_iter``, so a
+        shard terminates on its own; there is no wall-clock deadline (#145).
         """
         import os
         import ray
@@ -999,59 +1038,36 @@ class PyCG:
                 meta[fut] = (pkg_label, n)
 
             # Collect results one shard at a time so the progress bar ticks per
-            # completed shard.  A single deadline governs the whole batch: tasks
-            # submitted simultaneously all have the same wall-clock budget.
-            deadline = (
-                time.perf_counter() + float(self.shard_timeout)
-                if self.shard_timeout > 0 else None
-            )
+            # completed shard. Every task is collected -- no deadline. PyCG is
+            # bounded by `max_iter`, so bounding it again by the clock only made
+            # the surviving edge set depend on machine load (#145).
             pending = list(futures)
             while pending:
-                if deadline is not None:
-                    remaining = deadline - time.perf_counter()
-                    if remaining <= 0:
-                        break
-                else:
-                    remaining = None
-
-                ready, pending = ray.wait(pending, num_returns=1, timeout=remaining)
-                if not ready:
-                    break  # deadline reached before any new result
-
+                ready, pending = ray.wait(pending, num_returns=1)
                 fut = ready[0]
                 pkg_label, n = meta[fut]
                 try:
-                    triples = ray.get(fut)
+                    triples, converged = ray.get(fut)
                     edges = [
                         PyCallEdge(src=s, dst=t, weight=w, prov=["pycg"])
                         for s, t, w in triples
                     ]
                     all_edges.extend(edges)
                     logger.debug(
-                        "PyCG shard '%s': %d edges from %d files (Ray)",
+                        "PyCG shard '%s': %d edges from %d files (Ray)%s",
                         pkg_label, len(edges), n,
+                        "" if converged else " [fixpoint capped at max_iter]",
                     )
                 except Exception as exc:
                     logger.warning("PyCG shard '%s' failed — skipped: %s", pkg_label, exc)
                     skipped += 1
                 progress.advance()
 
-            # Cancel any shards that did not complete before the deadline.
-            for fut in pending:
-                pkg_label, _ = meta[fut]
-                logger.warning(
-                    "PyCG shard '%s' timed out after %ds — skipped",
-                    pkg_label, self.shard_timeout,
-                )
-                ray.cancel(fut, force=True)
-                skipped += 1
-                progress.advance()
-
         if skipped:
             logger.warning(
-                "PyCG: %d shard(s) were skipped (exceeded %d-file ceiling, "
-                "%ds timeout, or failed)",
-                skipped, self.shard_ceiling, self.shard_timeout,
+                "PyCG: %d shard(s) were skipped (exceeded %d-file ceiling "
+                "or failed)",
+                skipped, self.shard_ceiling,
             )
 
         merged: Dict[tuple, PyCallEdge] = {}
@@ -1147,7 +1163,12 @@ class PyCG:
             # follow imports into those dependencies and explode the analysis.
             logger.info("PyCG: starting whole-project call graph analysis (%d files)", n_files)
             with _shard_symlink_root(entry_points, self.project_dir) as (root, eps):
-                edges = self._run_pycg_batch(eps, root, resolver, prefix="")
+                edges, converged = self._run_pycg_batch(eps, root, resolver, prefix="")
+                if not converged:
+                    logger.warning(
+                        "PyCG: fixpoint capped at max_iter=%d — edges are a sound "
+                        "under-approximation", self.max_iter,
+                    )
 
         edges = _canonicalize_edges(edges)
         elapsed = time.perf_counter() - t0

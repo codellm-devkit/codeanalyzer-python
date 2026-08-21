@@ -7,7 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Sharded PyCG is deterministic again** (#145): `--pycg-shard` decided which
+  shards to keep by wall-clock timeout, so which shards survived depended on
+  machine load and Ray scheduling. A dropped shard contributed *zero* edges —
+  three byte-identical invocations over one 2,364-file fixture produced 48,595 /
+  43,431 / 40,224 call edges, an 11% spread with PyCG's own contribution swinging
+  44%. Shard outcomes are now decided by PyCG's own convergence
+  (`has_converged()`): a shard is a runaway when its fixpoint stopped at
+  `--pycg-max-iter` instead of converging, which is a function of the input
+  alone. Adaptive decomposition is unchanged — a runaway is still re-partitioned
+  at a tighter budget to recover recall — but a shard that cannot be split
+  further now keeps the edges it did produce instead of being discarded. A
+  capped fixpoint is a sound under-approximation, so those edges are real.
+
 ### Changed
+- **BREAKING: `--pycg-shard-timeout` is removed** (#145). It bounded PyCG's
+  fixpoint a second time, by the clock, after `--pycg-max-iter` had already
+  bounded it by iteration count — and that second bound is what made the output
+  load-dependent. PyCG terminates on its own at `--pycg-max-iter` (default 50),
+  so nothing is left unbounded at the default. Anyone passing
+  `--pycg-shard-timeout` must drop the flag; use `--pycg-max-iter` to trade
+  analysis depth against runtime. One caveat: `--pycg-max-iter -1` asks PyCG to
+  run to convergence with no cap, and there is no longer a wall-clock net behind
+  it, so a divergent shard can run indefinitely under that setting.
 - **BREAKING: the msgpack output format is removed** (#118, TS parity): the
   `--format msgpack` CLI choice, the `analysis.msgpack` artifact, the msgpack
   serialization mixin on schema models, and the `msgpack` dependency are gone.

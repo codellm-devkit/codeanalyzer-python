@@ -47,7 +47,7 @@ def test_adaptive_decomposition_splits_runaways(tmp_path, monkeypatch):
             jedi.append(PyCallEdge(src=f"m{i-1}.f", dst=f"m{i}.f", weight=1,
                                    prov=["jedi"]))
 
-    # threshold >= the decomposition floor (10) so pieces can shrink enough to converge.
+    # threshold > 1 (the decomposition floor) so pieces can shrink enough to converge.
     pycg = PyCG(tmp_path, shard_ceiling=40)
     threshold = 12  # shards with > 12 files "diverge"
     rounds_seen = []
@@ -57,7 +57,10 @@ def test_adaptive_decomposition_splits_runaways(tmp_path, monkeypatch):
         edges, runaways = [], []
         for files in shards:
             if len(files) > threshold:
-                runaways.append(files)
+                # A non-converged shard carries the edges its capped fixpoint
+                # did derive; the caller keeps them only if it cannot split
+                # the shard further (#145).
+                runaways.append((files, []))
             else:
                 edges += [PyCallEdge(src=f, dst="x", weight=1, prov=["pycg"])
                           for f in files]
@@ -100,7 +103,7 @@ def test_pycg_does_not_follow_into_in_tree_dependency(tmp_path):
     resolver = _PyCGCallableResolver(set())
     entry_points = [str(app / "__init__.py"), str(app / "main.py")]
     with _shard_symlink_root(entry_points, proj) as (root, eps):
-        edges = pycg._run_pycg_batch(eps, root, resolver, prefix="")
+        edges, _converged = pycg._run_pycg_batch(eps, root, resolver, prefix="")
 
     nodes = {n for e in edges for n in (e.src, e.dst)}
     # bigdep is reachable as a ghost target ...
