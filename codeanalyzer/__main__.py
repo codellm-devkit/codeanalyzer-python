@@ -279,12 +279,11 @@ def main(
                 "changing, but its access-path domain has no convergence bound, "
                 "so heavy metaclass/mixin code (e.g. an ORM) can loop with each "
                 "pass costing seconds. The cap returns a sound-but-incomplete "
-                "call graph instead of looping indefinitely. It is now the "
-                "only bound on a shard, and is what makes sharded output "
-                "reproducible, so lowering it trades recall for runtime "
-                "deterministically. Set to -1 for PyCG's unbounded "
-                "run-to-convergence behaviour -- with no wall-clock safety "
-                "net, so a divergent shard can then run indefinitely."
+                "call graph instead of looping indefinitely. Lowering it does "
+                "not reliably bound runtime — per-pass cost dominates — and a "
+                "low cap makes nearly every shard hit it. Set to -1 for "
+                "unbounded run-to-convergence, which has no wall-clock net, so "
+                "a divergent shard can then run indefinitely."
             ),
             min=-1,
         ),

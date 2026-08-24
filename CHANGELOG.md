@@ -7,21 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-- **Sharded PyCG is deterministic again** (#145): `--pycg-shard` decided which
-  shards to keep by wall-clock timeout, so which shards survived depended on
-  machine load and Ray scheduling. A dropped shard contributed *zero* edges —
-  three byte-identical invocations over one 2,364-file fixture produced 48,595 /
-  43,431 / 40,224 call edges, an 11% spread with PyCG's own contribution swinging
-  44%. Shard outcomes are now decided by PyCG's own convergence
-  (`has_converged()`): a shard is a runaway when its fixpoint stopped at
-  `--pycg-max-iter` instead of converging, which is a function of the input
-  alone. Adaptive decomposition is unchanged — a runaway is still re-partitioned
-  at a tighter budget to recover recall — but a shard that cannot be split
-  further now keeps the edges it did produce instead of being discarded. A
-  capped fixpoint is a sound under-approximation, so those edges are real.
-
 ### Changed
+
+- **Exhausting `--pycg-max-iter` is no longer treated as a runaway** (#145).
+  Hitting the cap means PyCG returned a sound under-approximation — re-splitting
+  such a shard makes the answer *worse*, because every cut severs the calls
+  crossing it. Measured on one 100-file shard: bounding the fixpoint and keeping
+  the shard whole gave **110,490 edges in 95s**, where budget-driven halving gave
+  **15,468 in 600s**. Re-splitting also pays whole extra rounds of re-analysis —
+  with a low `--pycg-max-iter` every shard hits the cap, and one such run on a
+  2,364-file project took **2h50m without finishing**. A capped shard now
+  contributes its edges directly; only a shard that *raised* is decomposed. Both
+  classifications remain pure functions of the input, so reproducibility is
+  unaffected.
+
 - **BREAKING: `--pycg-shard-timeout` is removed** (#145). It bounded PyCG's
   fixpoint a second time, by the clock, after `--pycg-max-iter` had already
   bounded it by iteration count — and that second bound is what made the output
@@ -54,6 +53,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   untouched — but with the cap gone it resolves to numpy 2.0.2, which ships
   cp39 manylinux wheels for x86_64 and aarch64, so the source build stops
   happening there too.
+
+### Fixed
+
+- **Sharded PyCG no longer drops shards by wall clock** (#145): `--pycg-shard` decided which
+  shards to keep by wall-clock timeout, so which shards survived depended on
+  machine load and Ray scheduling. A dropped shard contributed *zero* edges —
+  three byte-identical invocations over one 2,364-file fixture produced 48,595 /
+  43,431 / 40,224 call edges, an 11% spread with PyCG's own contribution swinging
+  44%. Shard outcomes are now decided by PyCG's own convergence
+  (`has_converged()`): a shard is a runaway when its fixpoint stopped at
+  `--pycg-max-iter` instead of converging, which is a function of the input
+  alone. Adaptive decomposition is unchanged — a runaway is still re-partitioned
+  at a tighter budget to recover recall — but a shard that cannot be split
+  further now keeps the edges it did produce instead of being discarded. A
+  capped fixpoint is a sound under-approximation, so those edges are real.
+
+  **Scope:** this removes the load-dependent shard-dropping mechanism, which was
+  the 11% effect. Output is not yet byte-identical across runs: a separate,
+  much smaller source remains in Jedi's overload resolution for `open()` —
+  `f.read()` resolves to `_TextIOBase.read` or `_BufferedIOBase.read` depending
+  on the run, accounting for **0.1–0.3%** of edges on the Flask fixture. That is
+  tracked as #146 and is not addressed here.
 
 ## [1.1.1] - 2026-07-27
 

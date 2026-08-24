@@ -473,8 +473,12 @@ class PyCG:
     # comes, takes many passes.  A finite cap turns "loop until killed" into a
     # sound-but-incomplete result that still returns the edges found so far.
     # 50 is generous — well-behaved code converges in well under 20 passes —
-    # while bounding the pathological case.  Override via --pycg-max-iter;
-    # -1 restores PyCG's unbounded run-to-convergence behaviour.
+    # while bounding the pathological case.  Note that lowering it does NOT
+    # reliably bound runtime: per-pass cost dominates, and a low cap makes
+    # nearly every shard hit it (measured: a 26-file shard needs 5 passes and
+    # yields the identical 93 edges at 3 and at 50).  Override via
+    # --pycg-max-iter; -1 restores PyCG's unbounded run-to-convergence
+    # behaviour, with no wall-clock net behind it.
     _PYCG_MAX_ITER: int = 50
 
     # Iterative decomposition of runaway shards: a shard whose fixpoint stopped
@@ -690,17 +694,20 @@ class PyCG:
         PyCG's fixpoint diverges on heavy metaclass/mixin clusters, and a uniform
         ceiling would force *every* shard small (severing many edges) just to tame
         the few that run away.  Instead we start coarse (low cut, high recall on
-        healthy code) and **only re-decompose the shards that did not converge**:
-        each runaway's files are re-partitioned at half the budget and re-run,
-        down to a floor.  A smaller shard has a smaller fixpoint to reach, so
-        splitting recovers the edges the capped pass missed while paying cut on
-        its internal seams alone.
+        healthy code) and **only re-decompose the shards that FAILED**: a shard
+        that raised has its files re-partitioned at half the budget and re-run,
+        down to a floor.
 
-        A shard is a runaway when its fixpoint stopped at ``--pycg-max-iter``
-        rather than converging — a function of the input, so the same project
-        decomposes the same way every run.  This used to be a wall-clock
-        timeout, which made *which* shards were dropped depend on machine load
-        and Ray scheduling (#145).
+        Exhausting ``--pycg-max-iter`` is deliberately NOT a runaway, because
+        splitting such a shard makes the result *worse*: every cut severs the
+        calls crossing it.  Measured on one 100-file shard, bounding the
+        fixpoint and keeping the shard whole gave 110,490 edges in 95s, where
+        budget-driven halving gave 15,468 in 600s.  Re-splitting also costs
+        whole extra rounds of re-analysis — with a low ``--pycg-max-iter`` every
+        shard hits the cap, and one such run took 2h50m without finishing.
+
+        Runaway classification stays a function of the input, so the
+        reproducibility the wall-clock timeout cost us is preserved (#145).
 
         The residue that still diverges at the floor (or is an atomic cycle that
         won't split) keeps the edges its capped fixpoint produced: a truncated
@@ -726,7 +733,7 @@ class PyCG:
         all_edges: List[PyCallEdge] = []
         shards = plan.shards
         budget = self.shard_ceiling
-        converged_total = 0
+        accepted_total = 0
         irreducible_files = 0
         round_no = 0
 
@@ -737,7 +744,7 @@ class PyCG:
             logger.info("PyCG: %s", label)
             edges, runaways = runner(shards)
             all_edges.extend(edges)
-            converged_total += len(shards) - len(runaways)
+            accepted_total += len(shards) - len(runaways)
             if not runaways:
                 break
 
@@ -785,9 +792,9 @@ class PyCG:
 
         result = self._coalesce_edges(all_edges)
         logger.info(
-            "PyCG: %d edges from %d converged shard(s) over %d round(s) "
+            "PyCG: %d edges from %d accepted shard(s) over %d round(s) "
             "(%d before dedup, Jedi-planned%s)",
-            len(result), converged_total, round_no + 1, len(all_edges),
+            len(result), accepted_total, round_no + 1, len(all_edges),
             ", Ray-parallel" if self.using_ray else "",
         )
         return result
@@ -797,14 +804,20 @@ class PyCG:
     ) -> Tuple[List[PyCallEdge], List[Tuple[List[str], List[PyCallEdge]]]]:
         """Run each file-set shard sequentially; return ``(edges, runaways)``.
 
-        A shard is a *runaway* when PyCG stopped at ``max_iter`` instead of
-        reaching its fixpoint, or when it raised. Both are deterministic
-        functions of the input -- unlike the wall-clock timeout this replaced,
-        which made the surviving edge set depend on machine load (#145).
+        A shard is a *runaway* only when it RAISED. Exhausting ``max_iter`` is
+        NOT a runaway: it means PyCG returned a sound under-approximation, and
+        re-splitting that shard makes the answer worse rather than better.
 
-        Each runaway carries the edges it *did* produce. A capped fixpoint is a
-        sound under-approximation, so if decomposition cannot split the shard
-        further the caller keeps that partial rather than discarding it.
+        Every cut severs the calls crossing it, so a split shard sees strictly
+        less. Measured on one 100-file shard: bounding the fixpoint and keeping
+        the shard whole gave 110,490 edges in 95s, where budget-driven halving
+        gave 15,468 edges in 600s. Re-splitting also pays whole extra rounds of
+        re-analysis -- with a low ``--pycg-max-iter`` every shard hits the cap,
+        and one such run took 2h50m without finishing.
+
+        Both classifications remain pure functions of the input, so the
+        reproducibility this replaced the wall-clock timeout for is unaffected
+        (#145).
         """
         resolver = self._resolver
         edges_all: List[PyCallEdge] = []
@@ -816,10 +829,14 @@ class PyCG:
                         edges, converged = self._run_pycg_batch(
                             eps, root, resolver, prefix=""
                         )
-                    if converged:
-                        edges_all.extend(edges)
-                    else:
-                        runaways.append((files, edges))
+                    # Converged or capped, the edges are sound -- keep them.
+                    edges_all.extend(edges)
+                    if not converged:
+                        logger.debug(
+                            "PyCG shard: fixpoint capped at max_iter=%d "
+                            "(expected; edges are a sound under-approximation)",
+                            self.max_iter,
+                        )
                 except PyCGExceptions.PyCGAnalysisError:
                     runaways.append((files, []))
                 progress.advance()
@@ -885,10 +902,14 @@ class PyCG:
                             PyCallEdge(src=s, dst=t, weight=w, prov=["pycg"])
                             for s, t, w in triples
                         ]
-                        if converged:
-                            edges_all.extend(edges)
-                        else:
-                            runaways.append((meta[fut], edges))
+                        # Converged or capped, the edges are sound -- keep them.
+                        edges_all.extend(edges)
+                        if not converged:
+                            logger.debug(
+                                "PyCG shard: fixpoint capped at max_iter=%d "
+                                "(expected; sound under-approximation)",
+                                self.max_iter,
+                            )
                     except Exception:
                         runaways.append((meta[fut], []))
                     progress.advance()
