@@ -13,8 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Hitting the cap means PyCG returned a sound under-approximation — re-splitting
   such a shard makes the answer *worse*, because every cut severs the calls
   crossing it. Measured on one 100-file shard: bounding the fixpoint and keeping
-  the shard whole gave **110,490 edges in 95s**, where budget-driven halving gave
-  **15,468 in 600s**. Re-splitting also pays whole extra rounds of re-analysis —
+  the shard whole gave **110,490 edges**, where budget-driven halving of the same
+  shard gave **15,468**. (Edge counts are deterministic; wall-clock on this
+  workload is not — the same shard has taken 8 minutes and >81 minutes on the
+  same machine — so no timings are quoted.) Re-splitting also pays extra rounds
+  of re-analysis —
   with a low `--pycg-max-iter` every shard hits the cap, and one such run on a
   2,364-file project took **2h50m without finishing**. A capped shard now
   contributes its edges directly; only a shard that *raised* is decomposed. Both
@@ -64,7 +67,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   44%. Shard outcomes are now decided by PyCG's own convergence
   (`has_converged()`): a shard is a runaway when its fixpoint stopped at
   `--pycg-max-iter` instead of converging, which is a function of the input
-  alone. Adaptive decomposition is unchanged — a runaway is still re-partitioned
+  alone.
+
+  **`--pycg-max-iter` is not a termination guarantee.** It bounds fixpoint
+  *iterations* and is only consulted at pass boundaries, so a single
+  pathological pass escapes it — one shard ran >81 minutes at `max_iter=3`
+  without completing, while the identical shard completed in ~8 minutes on
+  another run. Removing the wall-clock timeout therefore removes the only
+  wall-clock bound that existed; that bound was non-deterministic and had to go,
+  but nothing replaces it yet. Adaptive decomposition is unchanged — a runaway is still re-partitioned
   at a tighter budget to recover recall — but a shard that cannot be split
   further now keeps the edges it did produce instead of being discarded. A
   capped fixpoint is a sound under-approximation, so those edges are real.

@@ -701,8 +701,11 @@ class PyCG:
         Exhausting ``--pycg-max-iter`` is deliberately NOT a runaway, because
         splitting such a shard makes the result *worse*: every cut severs the
         calls crossing it.  Measured on one 100-file shard, bounding the
-        fixpoint and keeping the shard whole gave 110,490 edges in 95s, where
-        budget-driven halving gave 15,468 in 600s.  Re-splitting also costs
+        fixpoint and keeping the shard whole gave 110,490 edges, where
+        budget-driven halving of the same shard gave 15,468.  (Edge counts are
+        deterministic; wall-clock on this workload is not -- the same shard has
+        taken 8 minutes and >81 minutes on the same machine, so timings are
+        deliberately not quoted.)  Re-splitting also costs
         whole extra rounds of re-analysis — with a low ``--pycg-max-iter`` every
         shard hits the cap, and one such run took 2h50m without finishing.
 
@@ -810,8 +813,10 @@ class PyCG:
 
         Every cut severs the calls crossing it, so a split shard sees strictly
         less. Measured on one 100-file shard: bounding the fixpoint and keeping
-        the shard whole gave 110,490 edges in 95s, where budget-driven halving
-        gave 15,468 edges in 600s. Re-splitting also pays whole extra rounds of
+        the shard whole gave 110,490 edges, where budget-driven halving of the
+        same shard gave 15,468. (Edge counts are deterministic; wall-clock is
+        not -- the same shard has taken 8 minutes and >81 minutes on the same
+        machine.) Re-splitting also pays whole extra rounds of
         re-analysis -- with a low ``--pycg-max-iter`` every shard hits the cap,
         and one such run took 2h50m without finishing.
 
