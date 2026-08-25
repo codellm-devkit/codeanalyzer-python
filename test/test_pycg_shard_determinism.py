@@ -53,38 +53,17 @@ def test_module_has_no_wall_clock_bound_left():
 def test_sequential_runner_does_not_bound_shards_by_time():
     src = _code_only(pa.PyCG._run_fileset_shards_seq)
     assert "_shard_timeout" not in src, "shard runs must not be wall-clock bounded"
-    assert "max_iter" in src, "the cap must be documented as expected, not a runaway"
+    assert "converged" in src, "runaway classification must use PyCG convergence"
 
 
-def test_capped_shards_are_kept_not_re_split():
-    """Exhausting max_iter is the expected case, not a runaway.
+def test_runaways_carry_their_partial_edges():
+    """A capped fixpoint is a sound under-approximation — keep it, don't drop it."""
+    src = inspect.getsource(pa.PyCG._run_fileset_shards_seq)
+    assert "runaways.append((files, edges))" in src
 
-    --pycg-max-iter is a cost bound with a low default, so nearly every shard
-    hits it. Treating that as a runaway re-analysed the whole project up to
-    _PYCG_MAX_DECOMP_ROUNDS times (one measured run: 2h50m, unfinished), and
-    splitting destroys edges besides -- 110,490 edges in 95s keeping a shard
-    whole, versus 15,468 in 600s under budget-driven halving.
-    """
-    for fn in (pa.PyCG._run_fileset_shards_seq, pa.PyCG._run_fileset_shards_ray):
-        src = _code_only(fn)
-        assert "runaways.append((files, edges))" not in src, (
-            f"{fn.__name__}: a capped shard must not become a runaway"
-        )
-        assert "runaways.append((meta[fut], edges))" not in src, (
-            f"{fn.__name__}: a capped shard must not become a runaway"
-        )
-        assert "edges_all.extend(edges)" in src, (
-            f"{fn.__name__}: capped edges must still be kept"
-        )
-
-
-def test_failed_shards_are_still_re_split():
-    """A shard that RAISED is still worth decomposing."""
-    seq = _code_only(pa.PyCG._run_fileset_shards_seq)
-    assert "runaways.append((files, []))" in seq
     loop = inspect.getsource(pa.PyCG._build_sharded_planned)
     assert "all_edges.extend(partial)" in loop, (
-        "an irreducible shard must contribute whatever edges it produced, not zero"
+        "an irreducible shard must contribute its capped-fixpoint edges, not zero"
     )
 
 

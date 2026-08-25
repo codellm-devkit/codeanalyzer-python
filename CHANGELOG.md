@@ -9,30 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Exhausting `--pycg-max-iter` is no longer treated as a runaway** (#145).
-  Hitting the cap means PyCG returned a sound under-approximation — re-splitting
-  such a shard makes the answer *worse*, because every cut severs the calls
-  crossing it. Measured on one 100-file shard: bounding the fixpoint and keeping
-  the shard whole gave **110,490 edges**, where budget-driven halving of the same
-  shard gave **15,468**. (Edge counts are deterministic; wall-clock on this
-  workload is not — the same shard has taken 8 minutes and >81 minutes on the
-  same machine — so no timings are quoted.) Re-splitting also pays extra rounds
-  of re-analysis —
-  with a low `--pycg-max-iter` every shard hits the cap, and one such run on a
-  2,364-file project took **2h50m without finishing**. A capped shard now
-  contributes its edges directly; only a shard that *raised* is decomposed. Both
-  classifications remain pure functions of the input, so reproducibility is
-  unaffected.
-
 - **BREAKING: `--pycg-shard-timeout` is removed** (#145). It bounded PyCG's
   fixpoint a second time, by the clock, after `--pycg-max-iter` had already
   bounded it by iteration count — and that second bound is what made the output
-  load-dependent. PyCG terminates on its own at `--pycg-max-iter` (default 50),
-  so nothing is left unbounded at the default. Anyone passing
-  `--pycg-shard-timeout` must drop the flag; use `--pycg-max-iter` to trade
-  analysis depth against runtime. One caveat: `--pycg-max-iter -1` asks PyCG to
-  run to convergence with no cap, and there is no longer a wall-clock net behind
-  it, so a divergent shard can run indefinitely under that setting.
+  load-dependent. Anyone passing `--pycg-shard-timeout` must drop the flag;
+  `--pycg-max-iter` remains the knob that trades analysis depth against
+  runtime. Note that nothing bounds wall-clock time anymore: `--pycg-max-iter`
+  caps fixpoint *passes*, not their duration (see Fixed below), so a
+  pathological shard can still run long at any setting, and
+  `--pycg-max-iter -1` (run to convergence, no cap) can run indefinitely.
 - **BREAKING: the msgpack output format is removed** (#118, TS parity): the
   `--format msgpack` CLI choice, the `analysis.msgpack` artifact, the msgpack
   serialization mixin on schema models, and the `msgpack` dependency are gone.
@@ -70,14 +55,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   alone.
 
   **`--pycg-max-iter` is not a termination guarantee.** It bounds fixpoint
-  *iterations* and is only consulted at pass boundaries, so a single
-  pathological pass escapes it — one shard ran >81 minutes at `max_iter=3`
-  without completing, while the identical shard completed in ~8 minutes on
-  another run. Removing the wall-clock timeout therefore removes the only
-  wall-clock bound that existed; that bound was non-deterministic and had to go,
-  but nothing replaces it yet. Adaptive decomposition is unchanged — a runaway is still re-partitioned
-  at a tighter budget to recover recall — but a shard that cannot be split
-  further now keeps the edges it did produce instead of being discarded. A
+  *passes*, and PyCG consults the cap only between passes, so one expensive
+  pass escapes it — a single 100-file shard has run for over an hour inside
+  its pass budget without completing. Removing the wall-clock timeout
+  therefore removes the only wall-clock bound that existed; that bound was
+  load-dependent and had to go, but nothing replaces it yet — #148 tracks
+  a deterministic fallback that routes predicted-expensive shards to
+  Jedi-only coverage.
+
+  Adaptive decomposition is unchanged: a runaway is still re-partitioned at a
+  tighter file budget to recover recall, and a shard that cannot be split
+  further now keeps the edges it did produce instead of being discarded — a
   capped fixpoint is a sound under-approximation, so those edges are real.
 
   **Scope:** this removes the load-dependent shard-dropping mechanism, which was
