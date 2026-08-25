@@ -36,6 +36,20 @@ class ShardStrategy(str, Enum):
     PACKAGE = "package"
 
 
+class CallGraphBackend(str, Enum):
+    """Which backends contribute call edges (level 2+).
+
+    - ``jedi+pycg`` : Jedi's type-inferred edges merged with PyCG's
+                      flow-sensitive points-to edges (default).
+    - ``jedi``      : Jedi only — deterministic and fast, but calls only
+                      PyCG can resolve (callbacks, registries, functions
+                      passed as values) stay unresolved.
+    """
+
+    JEDI = "jedi"
+    JEDI_PYCG = "jedi+pycg"
+
+
 @dataclass
 class AnalysisOptions:
     input: Path
@@ -60,6 +74,7 @@ class AnalysisOptions:
     cache_dir: Optional[Path] = None
     clear_cache: bool = False
     verbosity: int = 0
+    call_graph: CallGraphBackend = CallGraphBackend.JEDI_PYCG
     pycg_shard: bool = False
     pycg_shard_ceiling: int = 100
     pycg_shard_strategy: ShardStrategy = ShardStrategy.JEDI

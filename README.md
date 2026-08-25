@@ -251,6 +251,24 @@ $ canpy --help
 │                        -v                     <int>                  Increase verbosity: -v,     │
 │                                                                      -vv, -vvv                   │
 │                                                                      [default: 0]                │
+│ --call-graph                                  <jedi|jedi+pycg>       Which backends contribute   │
+│                                                                      call edges (level 2+).      │
+│                                                                      'jedi+pycg' (default)       │
+│                                                                      merges Jedi's type-inferred │
+│                                                                      edges with PyCG's           │
+│                                                                      flow-sensitive points-to    │
+│                                                                      edges. 'jedi' skips PyCG    │
+│                                                                      entirely: deterministic and │
+│                                                                      fast, but calls only PyCG   │
+│                                                                      can resolve (callbacks,     │
+│                                                                      registries, functions       │
+│                                                                      passed as values) stay      │
+│                                                                      unresolved, so level-4      │
+│                                                                      interprocedural edges stop  │
+│                                                                      at those call sites.        │
+│                                                                      Combining 'jedi' with       │
+│                                                                      --pycg-shard is an error.   │
+│                                                                      [default: jedi+pycg]        │
 │ --pycg-shard               --no-pycg-shard                           Shard PyCG call-graph       │
 │                                                                      analysis by Python package  │
 │                                                                      (level 2 only). When the    │

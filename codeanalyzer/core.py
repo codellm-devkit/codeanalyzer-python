@@ -34,7 +34,7 @@ from codeanalyzer.syntactic_analysis.exceptions import SymbolTableBuilderRayErro
 from codeanalyzer.syntactic_analysis.import_resolver import resolve_imports
 from codeanalyzer.syntactic_analysis.symbol_table_builder import SymbolTableBuilder
 from codeanalyzer.utils import ProgressBar
-from codeanalyzer.options import AnalysisOptions
+from codeanalyzer.options import AnalysisOptions, CallGraphBackend
 from codeanalyzer.provenance import analyzer_info, repository_info
 
 def _ensure_ray() -> None:
@@ -592,10 +592,13 @@ class Codeanalyzer:
         logger.info("✅ Jedi: %d edges in %.1fs", len(call_graph), time.perf_counter() - t0_jedi)
 
         if self.analysis_level >= 2:
-            # Level 2: also add PyCG edges. The Jedi edges double as the
-            # coupling graph that drives coupling-aware PyCG sharding.
-            pycg_edges = self._get_pycg_call_graph(symbol_table, jedi_edges)
-            call_graph = merge_edges(call_graph, pycg_edges)
+            if self.options.call_graph is CallGraphBackend.JEDI:
+                logger.info("PyCG skipped (--call-graph jedi): Jedi-only call edges")
+            else:
+                # Level 2: also add PyCG edges. The Jedi edges double as the
+                # coupling graph that drives coupling-aware PyCG sharding.
+                pycg_edges = self._get_pycg_call_graph(symbol_table, jedi_edges)
+                call_graph = merge_edges(call_graph, pycg_edges)
 
         call_graph = filter_external_edges(call_graph, symbol_table)
         # Canonical edge order: backend iteration order (PyCG dicts, Counter

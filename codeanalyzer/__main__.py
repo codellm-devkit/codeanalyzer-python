@@ -40,7 +40,12 @@ from codeanalyzer.core import Codeanalyzer
 from codeanalyzer.utils import _set_log_level, logger
 from codeanalyzer.config import OutputFormat
 from codeanalyzer.schema import model_dump_json, strip_internal_only
-from codeanalyzer.options import AnalysisOptions, EmitTarget, ShardStrategy
+from codeanalyzer.options import (
+    AnalysisOptions,
+    CallGraphBackend,
+    EmitTarget,
+    ShardStrategy,
+)
 
 
 def _version_callback(value: bool) -> None:
@@ -228,6 +233,21 @@ def main(
     verbosity: Annotated[
         int, typer.Option("-v", count=True, help="Increase verbosity: -v, -vv, -vvv")
     ] = 0,
+    call_graph: Annotated[
+        CallGraphBackend,
+        typer.Option(
+            "--call-graph",
+            help=(
+                "Which backends contribute call edges (level 2+). 'jedi+pycg' "
+                "(default) merges Jedi's type-inferred edges with PyCG's "
+                "flow-sensitive points-to edges. 'jedi' skips PyCG entirely: "
+                "deterministic and fast, but calls only PyCG can resolve "
+                "(callbacks, registries, functions passed as values) stay "
+                "unresolved, so level-4 interprocedural edges stop at those "
+                "call sites. Combining 'jedi' with --pycg-shard is an error."
+            ),
+        ),
+    ] = CallGraphBackend.JEDI_PYCG,
     pycg_shard: Annotated[
         bool,
         typer.Option(
@@ -355,6 +375,12 @@ def main(
     if analysis_level < 3 and graph_field_depth != 3:
         logger.error("--graph-field-depth is a level-3 option; pass -a 3.")
         raise typer.Exit(code=2)
+    if call_graph is CallGraphBackend.JEDI and pycg_shard:
+        logger.error(
+            "--call-graph jedi disables PyCG; --pycg-shard cannot be "
+            "combined with it."
+        )
+        raise typer.Exit(code=2)
 
     options = AnalysisOptions(
         input=input,
@@ -377,6 +403,7 @@ def main(
         cache_dir=cache_dir,
         clear_cache=clear_cache,
         verbosity=verbosity,
+        call_graph=call_graph,
         pycg_shard=pycg_shard,
         pycg_shard_ceiling=pycg_shard_ceiling,
         pycg_shard_strategy=pycg_shard_strategy,

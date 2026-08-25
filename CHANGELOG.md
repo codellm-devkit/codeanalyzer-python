@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`--call-graph jedi`** (#148): skip PyCG and build the call graph from Jedi
+  alone. Deterministic and fast — on a 2,364-file Odoo subset the whole L2
+  phase collapses to the symbol-table build, where sharded PyCG ran for over
+  three hours without one shard converging. The price is recall: calls only
+  PyCG's points-to can resolve (callbacks, registries, functions passed as
+  values) stay unresolved, so level-4 `param_in`/`param_out` edges stop at
+  those call sites. L3 graphs are unaffected. The default (`jedi+pycg`) is
+  unchanged; combining `--call-graph jedi` with `--pycg-shard` is a flag
+  error. This is the manual escape hatch for the liveness gap; #148 tracks
+  routing expensive shards to Jedi automatically.
+
 ### Changed
 
 - **BREAKING: `--pycg-shard-timeout` is removed** (#145). It bounded PyCG's
