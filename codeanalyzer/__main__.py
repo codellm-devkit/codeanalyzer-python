@@ -38,7 +38,7 @@ def _pin_hash_seed() -> None:
 
 from codeanalyzer.core import Codeanalyzer
 from codeanalyzer.utils import _set_log_level, logger
-from codeanalyzer.schema import model_dump_json, strip_internal_only
+from codeanalyzer.schema import model_dump, model_dump_json, strip_internal_only
 from codeanalyzer.options import AnalysisOptions, EmitTarget
 
 
@@ -368,7 +368,7 @@ def main(
             print(
                 json.dumps(
                     strip_internal_only(
-                        artifacts.model_dump(mode="json", exclude_none=True)
+                        model_dump(artifacts, mode="json", exclude_none=True)
                     )
                 )
             )
@@ -384,7 +384,7 @@ def _write_output(artifacts, output_dir: Path):
     # Strip internal-only fields here rather than with a field-level Pydantic
     # `exclude`: the analysis cache shares the serializer and must keep them.
     json_str = json.dumps(
-        strip_internal_only(artifacts.model_dump(mode="json", exclude_none=True))
+        strip_internal_only(model_dump(artifacts, mode="json", exclude_none=True))
     )
     with output_file.open("w") as f:
         f.write(json_str)

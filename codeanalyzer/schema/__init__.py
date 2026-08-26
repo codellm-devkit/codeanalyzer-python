@@ -104,6 +104,27 @@ def model_dump_json(model, **kwargs):
             v1_kwargs['separators'] = kwargs['separators']
         return model.json(**v1_kwargs)
 
+def model_dump(model, **kwargs):
+    """Compatibility helper for dict serialization (v2 model_dump / v1 dict).
+
+    ``mode="json"`` (v2) maps to a json round-trip on v1 so both versions
+    yield JSON-safe primitives.
+    """
+    if PYDANTIC_V2:
+        return model.model_dump(**kwargs)
+    import json as _json
+    mode = kwargs.pop("mode", None)
+    v1_kwargs = {k: v for k, v in kwargs.items() if k in ("exclude_none", "exclude")}
+    if mode == "json":
+        return _json.loads(model.json(**v1_kwargs))
+    return model.dict(**v1_kwargs)
+
+
+def model_copy(model):
+    """Compatibility helper for copying a model (v2 model_copy / v1 copy)."""
+    return model.model_copy() if PYDANTIC_V2 else model.copy()
+
+
 def model_validate_json(model_class, json_data):
     """Compatibility helper for JSON deserialization."""
     if PYDANTIC_V2:

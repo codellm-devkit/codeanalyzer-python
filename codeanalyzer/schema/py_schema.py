@@ -308,6 +308,13 @@ class PyCallArgument(BaseModel):
     inferred_type: Optional[str] = None
 
 
+# BodyNode.arguments forward-references PyCallArgument (defined later);
+# pydantic v1 resolves string annotations only when told to, while v2
+# rebuilds automatically (and its update_forward_refs shim rejects localns).
+if not hasattr(BodyNode, "model_rebuild"):  # pydantic v1
+    BodyNode.update_forward_refs(PyCallArgument=PyCallArgument)
+
+
 @builder
 class PyCallsite(BaseModel):
     """Represents a Python call site (function or method invocation) with contextual metadata."""

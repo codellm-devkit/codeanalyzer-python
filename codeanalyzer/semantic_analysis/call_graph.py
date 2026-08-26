@@ -29,6 +29,7 @@ from typing import Dict, Iterator, List, Tuple
 import networkx as nx
 
 from codeanalyzer.semantic_analysis.defuse_linker import _module_qual
+from codeanalyzer.schema import model_copy
 from codeanalyzer.schema.py_schema import (
     PyApplication,
     PyCallable,
@@ -295,5 +296,5 @@ def merge_edges(*edge_lists: list) -> list:
                 cur.weight += e.weight
                 cur.prov = sorted(set(cur.prov) | set(e.prov))
             else:
-                by_key[k] = e.model_copy()
+                by_key[k] = model_copy(e)
     return list(by_key.values())
