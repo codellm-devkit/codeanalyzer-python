@@ -4,10 +4,6 @@ from typing import Optional, Tuple
 from enum import Enum
 
 
-class OutputFormat(str, Enum):
-    JSON = "json"
-
-
 class EmitTarget(str, Enum):
     """Output target selected by ``--emit``.
 
@@ -26,7 +22,6 @@ class EmitTarget(str, Enum):
 class AnalysisOptions:
     input: Path
     output: Optional[Path] = None
-    format: OutputFormat = OutputFormat.JSON
     emit: EmitTarget = EmitTarget.JSON
     app_name: Optional[str] = None
     neo4j_uri: Optional[str] = None

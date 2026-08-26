@@ -38,7 +38,6 @@ def _pin_hash_seed() -> None:
 
 from codeanalyzer.core import Codeanalyzer
 from codeanalyzer.utils import _set_log_level, logger
-from codeanalyzer.config import OutputFormat
 from codeanalyzer.schema import model_dump_json, strip_internal_only
 from codeanalyzer.options import AnalysisOptions, EmitTarget
 
@@ -81,15 +80,6 @@ def main(
         Optional[Path],
         typer.Option("-o", "--output", help="Output directory for artifacts."),
     ] = None,
-    format: Annotated[
-        OutputFormat,
-        typer.Option(
-            "-f",
-            "--format",
-            help="Output format for --emit json: json.",
-            case_sensitive=False,
-        ),
-    ] = OutputFormat.JSON,
     emit: Annotated[
         EmitTarget,
         typer.Option(
@@ -299,7 +289,7 @@ def main(
     options = AnalysisOptions(
         input=input,
         output=output,
-        format=format,
+
         emit=emit,
         app_name=app_name,
         neo4j_uri=neo4j_uri,
@@ -384,22 +374,21 @@ def main(
             )
         else:
             options.output.mkdir(parents=True, exist_ok=True)
-            _write_output(artifacts, options.output, options.format)
+            _write_output(artifacts, options.output)
 
 
-def _write_output(artifacts, output_dir: Path, format: OutputFormat):
-    """Write artifacts to file in the specified format."""
-    if format == OutputFormat.JSON:
-        output_file = output_dir / "analysis.json"
-        # Use Pydantic's model_dump_json() for compact output
-        # Strip internal-only fields here rather than with a field-level Pydantic
-        # `exclude`: the analysis cache shares the serializer and must keep them.
-        json_str = json.dumps(
-            strip_internal_only(artifacts.model_dump(mode="json", exclude_none=True))
-        )
-        with output_file.open("w") as f:
-            f.write(json_str)
-        logger.info(f"Analysis saved to {output_file}")
+def _write_output(artifacts, output_dir: Path):
+    """Write analysis.json (the single wire format since #118)."""
+    output_file = output_dir / "analysis.json"
+    # Use Pydantic's model_dump_json() for compact output
+    # Strip internal-only fields here rather than with a field-level Pydantic
+    # `exclude`: the analysis cache shares the serializer and must keep them.
+    json_str = json.dumps(
+        strip_internal_only(artifacts.model_dump(mode="json", exclude_none=True))
+    )
+    with output_file.open("w") as f:
+        f.write(json_str)
+    logger.info(f"Analysis saved to {output_file}")
 
 
 app = typer.Typer(

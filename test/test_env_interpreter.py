@@ -132,7 +132,6 @@ def test_all_files_failing_emits_an_error(tmp_path, monkeypatch, caplog):
     (proj / "b.py").write_text("def g():\n    return 2\n", encoding="utf-8")
 
     from codeanalyzer.options.options import AnalysisOptions
-    from codeanalyzer.config import OutputFormat
     from codeanalyzer.syntactic_analysis.symbol_table_builder import SymbolTableBuilder
 
     def boom(self, py_file):
@@ -141,7 +140,7 @@ def test_all_files_failing_emits_an_error(tmp_path, monkeypatch, caplog):
     monkeypatch.setattr(SymbolTableBuilder, "build_pymodule_from_file", boom)
 
     opts = AnalysisOptions(
-        input=proj, output=None, format=OutputFormat.JSON,
+        input=proj, output=None,
         skip_tests=True, no_venv=True, cache_dir=tmp_path / "cache",
         rebuild_analysis=True,
     )

@@ -34,7 +34,6 @@ def test_cli_call_symbol_table_with_json(cli_runner, whole_applications__xarray)
             "--cache-dir",
             str(whole_applications__xarray.joinpath("test", ".cache")),
             "--clear-cache",
-            "--format=json",
         ],
         env={"NO_COLOR": "1", "TERM": "dumb"},
     )
@@ -92,7 +91,6 @@ def test_single_file(cli_runner, single_functionalities__stuff_nested_in_functio
             "--output",
             str(output_dir),
             "--eager",
-            "--format=json",
         ],
         env={"NO_COLOR": "1", "TERM": "dumb"},
     )
@@ -122,7 +120,6 @@ def _run_analysis(cli_runner, fixture_dir, analysis_level=1, file_name=None, ext
         "--clear-cache",
         "--analysis-level", str(analysis_level),
         "--skip-tests",
-        "--format=json",
     ]
     if file_name:
         args += ["--file-name", str(file_name)]
