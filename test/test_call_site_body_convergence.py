@@ -7,7 +7,7 @@ the detail it carried moves onto the call node.
 """
 import json
 
-from codeanalyzer.schema import strip_internal_only
+from codeanalyzer.schema import strip_internal_only, model_dump
 from codeanalyzer.schema.l1_body import populate_l1_body
 from codeanalyzer.schema.py_schema import (
     PyApplication, PyCallable, PyCallArgument, PyCallsite, PyModule,
@@ -64,7 +64,7 @@ def test_call_sites_is_stripped_at_emit_but_kept_when_serialized():
     """
     app, fn = _app()
     populate_l1_body(app)
-    dumped = app.model_dump(mode="json")
+    dumped = model_dump(app, mode="json")
 
     # Serialized form keeps it — this is what the cache persists.
     assert "call_sites" in dumped["symbol_table"]["a.py"]["functions"]["f"]
@@ -81,6 +81,6 @@ def test_accessed_symbols_and_local_variables_are_untouched():
     """Only call_sites is redundant; these have no body{} representation to converge into."""
     app, fn = _app()
     populate_l1_body(app)
-    callable_json = strip_internal_only(app.model_dump(mode="json"))["symbol_table"]["a.py"]["functions"]["f"]
+    callable_json = strip_internal_only(model_dump(app, mode="json"))["symbol_table"]["a.py"]["functions"]["f"]
     assert "accessed_symbols" in callable_json
     assert "local_variables" in callable_json

@@ -1,3 +1,4 @@
+from codeanalyzer.schema import model_dump
 from pathlib import Path
 
 import pytest
@@ -186,9 +187,9 @@ def test_running_the_pass_twice_does_not_duplicate_entrypoints(tmp_path: Path):
     )
 
     detect_entrypoints(app, tmp_path)
-    first = [e.model_dump() for e in fn.entrypoints]
+    first = [model_dump(e) for e in fn.entrypoints]
     assert len(first) == 1
 
     detect_entrypoints(app, tmp_path)
-    second = [e.model_dump() for e in fn.entrypoints]
+    second = [model_dump(e) for e in fn.entrypoints]
     assert second == first

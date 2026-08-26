@@ -1,3 +1,4 @@
+from codeanalyzer.schema import model_validate_json
 """Stage-5 keystone conformance gates (issue #98).
 
 Asserts key-for-key parity with the canonical schema-v2 keystone
@@ -184,5 +185,5 @@ def test_emitted_json_round_trips_through_the_analysis_model(tmp_path: Path):
         [sys.executable, "-m", "codeanalyzer", "-i", str(proj), "-a", "1", "--no-venv"],
         capture_output=True, text=True, check=True,
     ).stdout
-    a = Analysis.model_validate_json(out)
+    a = model_validate_json(Analysis, out)
     assert a.schema_version == "2.0.0"

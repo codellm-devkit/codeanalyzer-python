@@ -39,6 +39,11 @@ jobs:
 
       - name: Run tests
         run: uv run pytest
+        env:
+          # The venv-building CLI tests must find a base interpreter that can
+          # create virtual environments; inside uv's own venv the discovery
+          # walk has no anchor on the runner, so hand it the setup-python one.
+          SYSTEM_PYTHON: python3.10
 
   release:
     needs: compat
