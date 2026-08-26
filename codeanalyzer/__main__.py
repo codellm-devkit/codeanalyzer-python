@@ -36,11 +36,17 @@ def _pin_hash_seed() -> None:
         env,
     )
 
+
 from codeanalyzer.core import Codeanalyzer
 from codeanalyzer.utils import _set_log_level, logger
 from codeanalyzer.config import OutputFormat
-from codeanalyzer.schema import model_dump_json, strip_internal_only
-from codeanalyzer.options import AnalysisOptions, EmitTarget, ShardStrategy
+from codeanalyzer.schema import strip_internal_only
+from codeanalyzer.options import (
+    DEFAULT_ARTIFACT_TEXT_MAX_BYTES,
+    AnalysisOptions,
+    EmitTarget,
+    ShardStrategy,
+)
 
 
 def _version_callback(value: bool) -> None:
@@ -203,6 +209,23 @@ def main(
             "imports against the ambient Python environment instead.",
         ),
     ] = False,
+    artifact_text: Annotated[
+        bool,
+        typer.Option(
+            "--artifact-text/--no-artifact-text",
+            help="Capture the raw text of non-source files into artifact nodes. "
+            "Config files (incl. .env) are captured verbatim and may contain "
+            "secrets; --no-artifact-text keeps the inventory but drops the text.",
+        ),
+    ] = True,
+    artifact_text_max_bytes: Annotated[
+        int,
+        typer.Option(
+            "--artifact-text-max-bytes",
+            help="Per-file byte cap for captured artifact text; larger files are "
+            "truncated and flagged (default 256 KiB).",
+        ),
+    ] = DEFAULT_ARTIFACT_TEXT_MAX_BYTES,
     file_name: Annotated[
         Optional[Path],
         typer.Option(
@@ -385,6 +408,8 @@ def main(
         rebuild_analysis=rebuild_analysis,
         skip_tests=skip_tests,
         no_venv=no_venv,
+        artifact_text=artifact_text,
+        artifact_text_max_bytes=artifact_text_max_bytes,
         file_name=file_name,
         cache_dir=cache_dir,
         clear_cache=clear_cache,
@@ -422,7 +447,9 @@ def main(
 
     # Every other target requires an input project.
     if options.input is None:
-        logger.error("Missing option '-i' / '--input' (required for --emit json | neo4j).")
+        logger.error(
+            "Missing option '-i' / '--input' (required for --emit json | neo4j)."
+        )
         raise typer.Exit(code=1)
     if not options.input.exists():
         logger.error(f"Input path '{options.input}' does not exist.")
@@ -489,6 +516,7 @@ app = typer.Typer(
     rich_markup_mode="rich",
     pretty_exceptions_show_locals=False,
 )
+
 
 def deprecated_main() -> None:
     """Entry point for the legacy ``codeanalyzer`` command. Prints a one-line

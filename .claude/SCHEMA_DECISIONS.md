@@ -263,3 +263,63 @@ adopts a name a sibling analyzer had already validated rather than coining a thi
 **Breaking for an existing database**: nodes written under the old label are not
 rewritten by a subsequent load, and the old uniqueness constraint remains. A graph
 built before this change needs re-projecting, not migrating in place.
+
+## Repository-artifact layer — `artifact` / `dependency` / `config_key` (schema_version 2.1.0)
+
+The first producer-side slice of the microservice-analysis initiative: an
+inventory of a project's non-source files, the dependencies its manifests
+declare, and the keys its structured config defines. Vocabulary is coined here
+against the committed cross-repo spec (the shared schema catalog is still empty),
+per that spec's parity clause.
+
+1. **First-class contained nodes, not sibling top-level maps.** Artifacts hang
+   off the application node as `PyApplication.artifacts { <rel-path> → PyArtifact }`,
+   and each artifact contains its own `dependencies { <name> → PyDependency }`
+   and `config_keys { <dotted-key> → PyConfigKey }`. This mirrors the existing
+   node tree (`symbol_table`) rather than adding parallel flat maps, so the CPG
+   stays one containment tree with one traversal shape.
+
+2. **Application-anchored and ungated — identical at every `-a` level.** The
+   inventory attaches at the same choke point as `repository` provenance
+   (`core.py`, before `assign_ids`), runs once, and does not depend on analysis
+   level. Because L1–L4 all emit a byte-identical `artifacts` branch, the
+   monotonicity gate (L1 ⊆ L2 ⊆ L3 ⊆ L4) holds with no exception — there is
+   nothing to refine across levels.
+
+3. **`@artifact/` id marker keeps these OUT of the callable id space.** Ids are
+   `can://python/<app>/@artifact/<rel-path>` for an artifact, `…/@artifact/<manifest>/<name>`
+   for a dependency, `…/@artifact/<file>/<dotted-key>` for a config key — the
+   `@artifact/` segment plays the same role as `@external/` homes: `assign_ids`
+   walks the `signatureOf` id space and never touches these, so an artifact id
+   can never collide with a source-tree id. The path segment preserves dotfiles
+   (`.env`, `.flaskenv`, `.github/workflows/…`) verbatim — only a leading `./`
+   or `/` is stripped, never the leading dot, since dotfiles are exactly what
+   this layer inventories.
+
+4. **Closed enums.** `PyArtifact.artifact_kind` (11 values incl. `other` — an
+   unrecognized file is classified, never dropped) and `PyDependency.scope`
+   (`runtime`/`development`/`test`/`build`/`optional`/`unknown`) are `Literal`
+   enums. All fields are optional-with-default so `model_dump(exclude_none=True)`
+   emits no `null` leaf (conformance `_assert_no_nulls`).
+
+5. **Raw text captured verbatim by default, incl. config that may hold secrets.**
+   `PyArtifact.text` carries the file's decoded bytes (utf-8; binary files are
+   inventoried without text; over-cap files are truncated with `text_truncated`).
+   This follows the spec's uniform raw-text policy — `.env` and other config are
+   not special-cased. `--no-artifact-text` is the off-switch (inventory, hashes,
+   deps, and config keys are unchanged; only the text payload drops), and
+   `--artifact-text-max-bytes` sets the per-file cap (default 256 KiB).
+
+6. **Neo4j — three additive labels + three containment edges, `SCHEMA_VERSION`
+   `2.0.0` → `2.1.0` (MINOR, additive).** `PyArtifact` / `PyDependency` /
+   `PyConfigKey` (each its own merge label on key `id`); `PY_HAS_ARTIFACT`
+   (`PyApplication`→`PyArtifact`), `PY_DECLARES_DEPENDENCY` (`PyArtifact`→
+   `PyDependency`), `PY_DEFINES_CONFIG` (`PyArtifact`→`PyConfigKey`). `text` is a
+   plain property with no index (dozens per repo, never a hot path).
+   `PyConfigKey.value` is `Any` in JSON but a stringified plain property in the
+   graph. Present at every level, matching Neo4j's full-depth rule.
+
+**Deferred to a follow-up PR:** the `config_use` edge (a body-node-anchored
+reference from a call site to a `config_key` definition) and the
+`PyCallArgument.value` field it needs. The `.env` config keys (namespace `env`)
+are emitted **now**, so that follow-up edge has definitions to resolve against.

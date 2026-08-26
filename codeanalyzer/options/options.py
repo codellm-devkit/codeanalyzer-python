@@ -4,6 +4,11 @@ from typing import Optional, Tuple
 from enum import Enum
 
 
+# Default per-file byte cap for captured artifact text (256 KiB). Larger files
+# are truncated and flagged; the cap is overridable via --artifact-text-max-bytes.
+DEFAULT_ARTIFACT_TEXT_MAX_BYTES = 256 * 1024
+
+
 class OutputFormat(str, Enum):
     JSON = "json"
 
@@ -56,6 +61,12 @@ class AnalysisOptions:
     rebuild_analysis: bool = False
     skip_tests: bool = True
     no_venv: bool = False
+    # Repository-artifact layer: capture non-source files' raw text into the
+    # artifact nodes (default on), and the per-file byte cap beyond which text is
+    # truncated. Disabling capture leaves the inventory unchanged, only the text
+    # payload drops.
+    artifact_text: bool = True
+    artifact_text_max_bytes: int = DEFAULT_ARTIFACT_TEXT_MAX_BYTES
     file_name: Optional[Path] = None
     cache_dir: Optional[Path] = None
     clear_cache: bool = False

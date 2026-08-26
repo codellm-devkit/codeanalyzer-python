@@ -52,7 +52,7 @@ from codeanalyzer.syntactic_analysis.symbol_table_builder import SymbolTableBuil
 # recovered callable yields a non-empty CFG / CDG / DDG. ``build(flag)`` is a
 # resolved interprocedural call with a parameter, so the L4 SDG carries
 # PARAM_IN / PARAM_OUT / SUMMARY edges over ``build``'s pass-through.
-_SOURCE = '''import os
+_SOURCE = """import os
 
 CONFIG = {}
 
@@ -89,7 +89,7 @@ def helper(flag):
 def build(x):
     y = x
     return y
-'''
+"""
 
 
 def _qualify_base_classes(module) -> None:
@@ -170,4 +170,67 @@ def make_sample_app() -> Tuple[PyApplication, Dict[str, str]]:
     emit_l4(app, ir, sig_to_id)
     emit_ddg_pointsto_delta(app, syntactic_infos, ir, sig_to_id)
 
+    # Repository-artifact layer (application-anchored, all levels): one manifest
+    # artifact carrying a declared dependency and a config artifact carrying a
+    # defined key — so the Neo4j catalog-coverage guard exercises PyArtifact /
+    # PyDependency / PyConfigKey and their containment edges.
+    _attach_sample_artifacts(app)
+
     return app, sig_to_id
+
+
+def _attach_sample_artifacts(app: PyApplication) -> None:
+    from codeanalyzer.schema.ids import (
+        artifact_id,
+        config_key_id,
+        dependency_id,
+    )
+    from codeanalyzer.schema.py_schema import (
+        PyArtifact,
+        PyConfigKey,
+        PyDependency,
+    )
+
+    manifest_id = artifact_id("sample-app", "pyproject.toml")
+    manifest = PyArtifact(
+        id=manifest_id,
+        path="pyproject.toml",
+        artifact_kind="build_manifest",
+        format="toml",
+        content_hash="0" * 64,
+        size_bytes=42,
+        text='[project]\ndependencies = ["requests>=2"]\n',
+        text_encoding="utf-8",
+    )
+    manifest.dependencies = {
+        "requests": PyDependency(
+            id=dependency_id(manifest_id, "requests"),
+            name="requests",
+            version_spec=">=2",
+            ecosystem="pypi",
+            scope="runtime",
+            direct=True,
+        )
+    }
+
+    env_id = artifact_id("sample-app", ".env")
+    env = PyArtifact(
+        id=env_id,
+        path=".env",
+        artifact_kind="configuration",
+        content_hash="1" * 64,
+        size_bytes=20,
+        text="DB_URL=${DB_HOST}\n",
+        text_encoding="utf-8",
+    )
+    env.config_keys = {
+        "DB_URL": PyConfigKey(
+            id=config_key_id(env_id, "DB_URL"),
+            key="DB_URL",
+            namespace="env",
+            value="${DB_HOST}",
+            references=["env:DB_HOST"],
+        )
+    }
+
+    app.artifacts = {"pyproject.toml": manifest, ".env": env}

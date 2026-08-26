@@ -50,8 +50,9 @@ from codeanalyzer.schema import (
 from codeanalyzer.schema.py_schema import PyDecorator
 
 
-def project(app: PyApplication, app_name: str, sig_to_id: dict,
-            analyzer: Optional[Any] = None) -> GraphRows:
+def project(
+    app: PyApplication, app_name: str, sig_to_id: dict, analyzer: Optional[Any] = None
+) -> GraphRows:
     """``analyzer`` is the envelope-level ``PyAnalyzerInfo`` (the keystone home
     for analyzer identity); the caller that holds the ``Analysis`` envelope
     passes it through so the :PyApplication node carries it as props."""
@@ -86,15 +87,28 @@ def project(app: PyApplication, app_name: str, sig_to_id: dict,
     for file_key, mod in app.symbol_table.items():
         mod_ref = b.node(["PyModule"], "id", mod.id, _module_props(mod, file_key))
         b.edge("PY_HAS_MODULE", app_ref, mod_ref)
-        _project_module_body(b, file_key, mod_ref, mod, externals, sig_to_id, module_id_by_key)
+        _project_module_body(
+            b, file_key, mod_ref, mod, externals, sig_to_id, module_id_by_key
+        )
+
+    # Repository-artifact layer: application-anchored, all -a levels (mirrors the
+    # symbol-table walk above, off the same app_ref). Each artifact's declared
+    # dependencies and defined config keys are emitted as its children.
+    for artifact in (app.artifacts or {}).values():
+        art_ref = b.node(["PyArtifact"], "id", artifact.id, _artifact_props(artifact))
+        b.edge("PY_HAS_ARTIFACT", app_ref, art_ref)
+        for dep in (artifact.dependencies or {}).values():
+            dep_ref = b.node(["PyDependency"], "id", dep.id, _dependency_props(dep))
+            b.edge("PY_DECLARES_DEPENDENCY", art_ref, dep_ref)
+        for key in (artifact.config_keys or {}).values():
+            key_ref = b.node(["PyConfigKey"], "id", key.id, _config_key_props(key))
+            b.edge("PY_DEFINES_CONFIG", art_ref, key_ref)
 
     # The aggregated :PY_CALLS twin.
     for e in app.call_graph:
         src = _call_endpoint(b, e.src, externals, sig_to_id)
         tgt = _call_endpoint(b, e.dst, externals, sig_to_id)
-        b.edge(
-            "PY_CALLS", src, tgt, _call_edge_props(e.weight, list(e.prov or []))
-        )
+        b.edge("PY_CALLS", src, tgt, _call_edge_props(e.weight, list(e.prov or [])))
 
     # Level-3 CPG overlay: each callable's v2 body/cfg/cdg/ddg. Idempotent under
     # MERGE — a no-op when no callable carries L3 fields (levels 1/2).
@@ -308,22 +322,30 @@ def _call_endpoint(
 
 
 def _project_module_body(
-    b: RowBuilder, file_key: str, mod_ref: NodeRef, mod: PyModule,
-    externals: dict, sig_to_id: dict, module_id_by_key: dict,
+    b: RowBuilder,
+    file_key: str,
+    mod_ref: NodeRef,
+    mod: PyModule,
+    externals: dict,
+    sig_to_id: dict,
+    module_id_by_key: dict,
 ) -> None:
     for fn in (mod.functions or {}).values():
-        _project_callable(b, file_key, mod_ref, "PY_DECLARES", fn, externals, sig_to_id,
-                          mod.source)
+        _project_callable(
+            b, file_key, mod_ref, "PY_DECLARES", fn, externals, sig_to_id, mod.source
+        )
     for cl in (mod.types or {}).values():
-        _project_class(b, file_key, mod_ref, "PY_DECLARES", cl, externals, sig_to_id,
-                       mod.source)
+        _project_class(
+            b, file_key, mod_ref, "PY_DECLARES", cl, externals, sig_to_id, mod.source
+        )
     for v in mod.variables or []:
         _project_variable(b, file_key, mod_ref, file_key, v)
     _project_imports(b, mod_ref, mod, module_id_by_key)
 
 
-def _project_imports(b: RowBuilder, mod_ref: NodeRef, mod: PyModule,
-                     module_id_by_key: dict) -> None:
+def _project_imports(
+    b: RowBuilder, mod_ref: NodeRef, mod: PyModule, module_id_by_key: dict
+) -> None:
     # At most one PY_IMPORTS edge per (module, target) pair -- mirrors PY_CALLS,
     # which pre-aggregates for the same reason: both writers MERGE edges on
     # (type, from, to) and SET their props, so a second row for the same pair
@@ -346,7 +368,13 @@ def _project_imports(b: RowBuilder, mod_ref: NodeRef, mod: PyModule,
             continue
         key = im.resolved_module or im.module
         a = agg.setdefault(
-            key, {"spellings": set(), "names": set(), "aliases": set(), "resolved": im.resolved_module}
+            key,
+            {
+                "spellings": set(),
+                "names": set(),
+                "aliases": set(),
+                "resolved": im.resolved_module,
+            },
         )
         a["spellings"].add(im.module)
         if im.name:
@@ -354,7 +382,9 @@ def _project_imports(b: RowBuilder, mod_ref: NodeRef, mod: PyModule,
         if im.alias:
             a["aliases"].add(im.alias)
     for key, a in agg.items():
-        resolved_id = module_id_by_key.get(a["resolved"]) if a["resolved"] is not None else None
+        resolved_id = (
+            module_id_by_key.get(a["resolved"]) if a["resolved"] is not None else None
+        )
         if resolved_id is not None:
             target = NodeRef("PyModule", "id", resolved_id)
         elif a["resolved"] is None:
@@ -383,8 +413,14 @@ def _project_imports(b: RowBuilder, mod_ref: NodeRef, mod: PyModule,
 
 
 def _project_class(
-    b: RowBuilder, file_key: str, parent: NodeRef, parent_rel: str, cl: PyClass,
-    externals: dict, sig_to_id: dict, source: str,
+    b: RowBuilder,
+    file_key: str,
+    parent: NodeRef,
+    parent_rel: str,
+    cl: PyClass,
+    externals: dict,
+    sig_to_id: dict,
+    source: str,
 ) -> None:
     ref = b.node(
         ["PySymbol", "PyClass"], "id", cl.id, _class_props(cl, file_key, source)
@@ -399,17 +435,26 @@ def _project_class(
             b.edge_to_symbol("PY_EXTENDS", ref, _symbol_ref(base, externals, sig_to_id))
 
     for m in (cl.callables or {}).values():
-        _project_callable(b, file_key, ref, "PY_HAS_METHOD", m, externals, sig_to_id,
-                          source)
+        _project_callable(
+            b, file_key, ref, "PY_HAS_METHOD", m, externals, sig_to_id, source
+        )
     for a in (cl.attributes or {}).values():
         _project_attribute(b, file_key, ref, cl.signature, a)
     for ic in (cl.types or {}).values():
-        _project_class(b, file_key, ref, "PY_DECLARES", ic, externals, sig_to_id, source)
+        _project_class(
+            b, file_key, ref, "PY_DECLARES", ic, externals, sig_to_id, source
+        )
 
 
 def _project_callable(
-    b: RowBuilder, file_key: str, owner: NodeRef, owner_rel: str, c: PyCallable,
-    externals: dict, sig_to_id: dict, source: str,
+    b: RowBuilder,
+    file_key: str,
+    owner: NodeRef,
+    owner_rel: str,
+    c: PyCallable,
+    externals: dict,
+    sig_to_id: dict,
+    source: str,
 ) -> None:
     ref = b.node(
         ["PySymbol", "PyCallable"],
@@ -425,10 +470,13 @@ def _project_callable(
     for v in c.local_variables or []:
         _project_variable(b, file_key, ref, c.signature, v)
     for ic in (c.callables or {}).values():
-        _project_callable(b, file_key, ref, "PY_DECLARES", ic, externals, sig_to_id,
-                          source)
+        _project_callable(
+            b, file_key, ref, "PY_DECLARES", ic, externals, sig_to_id, source
+        )
     for cl in (c.types or {}).values():
-        _project_class(b, file_key, ref, "PY_DECLARES", cl, externals, sig_to_id, source)
+        _project_class(
+            b, file_key, ref, "PY_DECLARES", cl, externals, sig_to_id, source
+        )
 
 
 def _project_attribute(
@@ -502,6 +550,52 @@ def _module_props(mod: PyModule, file_key: str) -> Props:
     )
 
 
+def _artifact_props(artifact) -> Props:
+    return prune(
+        {
+            "id": artifact.id,
+            "path": artifact.path,
+            "artifact_kind": artifact.artifact_kind,
+            "format": artifact.format,
+            "source": artifact.source,
+            "content_hash": artifact.content_hash,
+            "size_bytes": artifact.size_bytes,
+            "text": artifact.text,
+            "text_encoding": artifact.text_encoding,
+            "text_truncated": artifact.text_truncated,
+        }
+    )
+
+
+def _dependency_props(dep) -> Props:
+    return prune(
+        {
+            "id": dep.id,
+            "name": dep.name,
+            "version_spec": dep.version_spec,
+            "resolved_version": dep.resolved_version,
+            "ecosystem": dep.ecosystem,
+            "scope": dep.scope,
+            "direct": dep.direct,
+        }
+    )
+
+
+def _config_key_props(key) -> Props:
+    # `value` is Any in the model (scalar or None); the graph property is a plain
+    # string, so a present value is stringified and a null one dropped.
+    value = None if key.value is None else str(key.value)
+    return prune(
+        {
+            "id": key.id,
+            "key": key.key,
+            "namespace": key.namespace,
+            "value": value,
+            "references": list(key.references or []),
+        }
+    )
+
+
 def _span_code(source: str, span) -> str | None:
     """A declaration's text: the owning module's ``source`` sliced by the node's
     utf-8 byte span. Schema v2 stores source once per module, so the graph's
@@ -527,7 +621,9 @@ def _class_props(cl: PyClass, file_key: str, source: str) -> Props:
             "end_line": cl.end_line,
             "_module": file_key,
             "is_entrypoint": bool(cl.entrypoints),
-            "entrypoint_frameworks": sorted({e.framework for e in (cl.entrypoints or [])}),
+            "entrypoint_frameworks": sorted(
+                {e.framework for e in (cl.entrypoints or [])}
+            ),
         }
     )
 
@@ -552,7 +648,9 @@ def _callable_props(c: PyCallable, file_key: str, source: str) -> Props:
             "accessed_symbols_json": _stringify_if(c.accessed_symbols),
             "_module": file_key,
             "is_entrypoint": bool(c.entrypoints),
-            "entrypoint_frameworks": sorted({e.framework for e in (c.entrypoints or [])}),
+            "entrypoint_frameworks": sorted(
+                {e.framework for e in (c.entrypoints or [])}
+            ),
         }
     )
 
@@ -585,8 +683,6 @@ def _variable_props(v: PyVariableDeclaration, var_id: str, file_key: str) -> Pro
             "_module": file_key,
         }
     )
-
-
 
 
 def _call_edge_props(weight: int, prov: List[str]) -> Props:

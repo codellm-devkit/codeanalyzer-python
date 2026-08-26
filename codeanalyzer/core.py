@@ -4,7 +4,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional, Union, List
+from typing import Dict, Optional, Union, List
 
 import time
 
@@ -36,6 +36,8 @@ from codeanalyzer.syntactic_analysis.symbol_table_builder import SymbolTableBuil
 from codeanalyzer.utils import ProgressBar
 from codeanalyzer.options import AnalysisOptions
 from codeanalyzer.provenance import analyzer_info, repository_info
+from codeanalyzer.artifacts import artifact_inventory
+
 
 def _ensure_ray() -> None:
     """Initialize Ray with the driver's pinned hash seed in the workers.
@@ -46,17 +48,19 @@ def _ensure_ray() -> None:
     if not ray.is_initialized():
         ray.init(
             runtime_env={
-                "env_vars": {
-                    "PYTHONHASHSEED": os.environ.get("PYTHONHASHSEED", "0")
-                }
+                "env_vars": {"PYTHONHASHSEED": os.environ.get("PYTHONHASHSEED", "0")}
             },
         )
 
 
 @ray.remote
-def _process_file_with_ray(py_file: Union[Path, str], project_dir: Union[Path, str], virtualenv: Union[Path, str, None]) -> Dict[str, PyModule]:
+def _process_file_with_ray(
+    py_file: Union[Path, str],
+    project_dir: Union[Path, str],
+    virtualenv: Union[Path, str, None],
+) -> Dict[str, PyModule]:
     """Processes files in the project directory using Ray for distributed processing.
-    
+
     Args:
         py_file (Union[Path, str]): Path to the Python file to process.
         project_dir (Union[Path, str]): Path to the project directory.
@@ -65,12 +69,15 @@ def _process_file_with_ray(py_file: Union[Path, str], project_dir: Union[Path, s
         Dict[str, PyModule]: A dictionary mapping file paths to PyModule objects.
     """
     from rich.console import Console
+
     console = Console()
     module_map: Dict[str, PyModule] = {}
     try:
         py_file = Path(py_file)
         symbol_table_builder = SymbolTableBuilder(project_dir, virtualenv)
-        module_map[str(py_file.relative_to(Path(project_dir)))] = symbol_table_builder.build_pymodule_from_file(py_file)
+        module_map[
+            str(py_file.relative_to(Path(project_dir)))
+        ] = symbol_table_builder.build_pymodule_from_file(py_file)
     except Exception as e:
         console.log(f"❌ Failed to process {py_file}: {e}")
         raise SymbolTableBuilderRayError(f"Ray processing error for {py_file}: {e}")
@@ -92,7 +99,9 @@ class Codeanalyzer:
         self.rebuild_analysis = options.rebuild_analysis
         self.no_venv = options.no_venv
         self.cache_dir = (
-            options.cache_dir.resolve() if options.cache_dir is not None else self.project_dir
+            options.cache_dir.resolve()
+            if options.cache_dir is not None
+            else self.project_dir
         ) / ".codeanalyzer"
         self.clear_cache = options.clear_cache
         self.virtualenv: Optional[Path] = None
@@ -151,7 +160,9 @@ class Codeanalyzer:
         if check and returncode != 0:
             error_output = "\n".join(output_lines)
             if log_on_failure:
-                logger.error(f"Command failed with exit code {returncode}: {' '.join(cmd)}")
+                logger.error(
+                    f"Command failed with exit code {returncode}: {' '.join(cmd)}"
+                )
                 if error_output:
                     logger.error(f"Command output:\n{error_output}")
             raise subprocess.CalledProcessError(returncode, cmd, output=error_output)
@@ -186,7 +197,11 @@ class Codeanalyzer:
                 if system_python_path.exists() and system_python_path.is_file():
                     ceiling = cls._parso_supported_ceiling()
                     version = cls._interpreter_version(system_python_path)
-                    if ceiling is not None and version is not None and version > ceiling:
+                    if (
+                        ceiling is not None
+                        and version is not None
+                        and version > ceiling
+                    ):
                         logger.warning(
                             f"SYSTEM_PYTHON={system_python} is Python "
                             f"{version[0]}.{version[1]}, newer than the newest grammar "
@@ -225,7 +240,7 @@ class Codeanalyzer:
         """``grammar313`` → ``(3, 13)``, sorted ascending; malformed stems dropped."""
         versions = []
         for stem in stems:
-            digits = stem[len("grammar"):]
+            digits = stem[len("grammar") :]
             if len(digits) >= 2 and digits.isdigit():
                 versions.append((int(digits[0]), int(digits[1:])))
         return sorted(versions)
@@ -264,7 +279,12 @@ class Codeanalyzer:
             if result.returncode == 0:
                 major, minor = result.stdout.strip().split(".")
                 return (int(major), int(minor))
-        except (subprocess.TimeoutExpired, FileNotFoundError, PermissionError, ValueError):
+        except (
+            subprocess.TimeoutExpired,
+            FileNotFoundError,
+            PermissionError,
+            ValueError,
+        ):
             pass
         return None
 
@@ -412,6 +432,7 @@ class Codeanalyzer:
         missing (callers fall back to pip)."""
         try:
             from uv import find_uv_bin
+
             return str(find_uv_bin())
         except Exception:
             return None
@@ -432,8 +453,11 @@ class Codeanalyzer:
         else:
             cmd = [str(venv_python), "-m", "pip", "install", *args]
         self._cmd_exec_helper(
-            cmd, cwd=self.project_dir, check=True,
-            suppress_output=True, log_on_failure=False,
+            cmd,
+            cwd=self.project_dir,
+            check=True,
+            suppress_output=True,
+            log_on_failure=False,
         )
 
     def __enter__(self) -> "Codeanalyzer":
@@ -498,17 +522,21 @@ class Codeanalyzer:
             conda_files = ["conda.yml", "environment.yml"]
             for conda_file in conda_files:
                 if (self.project_dir / conda_file).exists():
-                    logger.info(f"Found {conda_file} - note that conda environments should be handled outside this tool")
+                    logger.info(
+                        f"Found {conda_file} - note that conda environments should be handled outside this tool"
+                    )
                     break
 
             # Now install the project itself in editable mode (only if package definition exists)
             package_definition_files = [
-                "pyproject.toml",    # Modern Python packaging (PEP 518/621)
-                "setup.py",          # Traditional setuptools
-                "setup.cfg",         # Setup configuration
+                "pyproject.toml",  # Modern Python packaging (PEP 518/621)
+                "setup.py",  # Traditional setuptools
+                "setup.cfg",  # Setup configuration
             ]
 
-            if any((self.project_dir / file).exists() for file in package_definition_files):
+            if any(
+                (self.project_dir / file).exists() for file in package_definition_files
+            ):
                 logger.info("Installing project in editable mode")
                 try:
                     self._install_into_venv(venv_python, ["-e", str(self.project_dir)])
@@ -518,7 +546,9 @@ class Codeanalyzer:
                         "continuing without it. Jedi type resolution may be incomplete."
                     )
             else:
-                logger.warning("No package definition files found, skipping editable installation")
+                logger.warning(
+                    "No package definition files found, skipping editable installation"
+                )
 
         # Point Jedi at the analysis venv so it resolves the project's third-party
         # imports. This runs on both a fresh build and a lazy reuse of an existing
@@ -549,8 +579,11 @@ class Codeanalyzer:
                 if sig in sig_to_id:
                     continue
                 module, name = sig.rsplit(".", 1) if "." in sig else (None, sig)
-                ext_id = f"{app_id}/@external/{module}/{name}" if module else \
-                    f"{app_id}/@external/{name}"
+                ext_id = (
+                    f"{app_id}/@external/{module}/{name}"
+                    if module
+                    else f"{app_id}/@external/{name}"
+                )
                 sig_to_id[sig] = ext_id
                 externals[ext_id] = PyExternalSymbol(
                     id=ext_id, name=name, module=module
@@ -575,13 +608,19 @@ class Codeanalyzer:
                 logger.warning(f"Failed to load cache: {e}. Rebuilding analysis.")
                 cached = None
 
-        if not self._cache_analyzer_matches(cached, analyzer_info(self.analysis_level).version):
+        if not self._cache_analyzer_matches(
+            cached, analyzer_info(self.analysis_level).version
+        ):
             if cached is not None:
-                logger.info("Analysis cache written by a different analyzer version; rebuilding.")
+                logger.info(
+                    "Analysis cache written by a different analyzer version; rebuilding."
+                )
             cached = None
 
         # Build symbol table from cached application if available (if no available, the build a new one)
-        symbol_table = self._build_symbol_table(cached.application.symbol_table if cached else {})
+        symbol_table = self._build_symbol_table(
+            cached.application.symbol_table if cached else {}
+        )
 
         resolve_unresolved_constructors(symbol_table)
 
@@ -589,7 +628,9 @@ class Codeanalyzer:
         t0_jedi = time.perf_counter()
         jedi_edges = jedi_call_graph_edges(symbol_table)
         call_graph = list(jedi_edges)
-        logger.info("✅ Jedi: %d edges in %.1fs", len(call_graph), time.perf_counter() - t0_jedi)
+        logger.info(
+            "✅ Jedi: %d edges in %.1fs", len(call_graph), time.perf_counter() - t0_jedi
+        )
 
         if self.analysis_level >= 2:
             # Level 2: also add PyCG edges. The Jedi edges double as the
@@ -625,6 +666,16 @@ class Codeanalyzer:
         app.repository = repository_info(self.project_dir)
 
         app_name = self.options.app_name or self.project_dir.name
+        # Repository-artifact layer: non-source file inventory + parsed deps and
+        # config keys. Application-anchored and level-free (like `repository`), so
+        # it is identical across -a 1..4 and carries its own `@artifact/` ids
+        # rather than joining the callable id space `assign_ids` walks below.
+        app.artifacts = artifact_inventory(
+            self.project_dir,
+            app_name,
+            capture_text=self.options.artifact_text,
+            text_cap=self.options.artifact_text_max_bytes,
+        )
         sig_to_id = assign_ids(app, app_name)
         # Home call-graph endpoints that are not declared in the symbol table
         # (imported library / builtin members) onto @external ids once, so the
@@ -688,7 +739,9 @@ class Codeanalyzer:
         # None and exclude_none drops it from the payload.
         analysis = Analysis(
             max_level=self.analysis_level,
-            k_limit=self.options.graph_field_depth if self.analysis_level >= 3 else None,
+            k_limit=self.options.graph_field_depth
+            if self.analysis_level >= 3
+            else None,
             analyzer=analyzer_info(self.analysis_level),
             application=app,
         )
@@ -697,7 +750,9 @@ class Codeanalyzer:
         return analysis
 
     @staticmethod
-    def _cache_analyzer_matches(cached: Optional[Analysis], current_version: str) -> bool:
+    def _cache_analyzer_matches(
+        cached: Optional[Analysis], current_version: str
+    ) -> bool:
         """A cache written by another analyzer version (or before versions were
         recorded) may lack fields the current models populate — pydantic fills
         silent defaults, which would masquerade as analyzed absence. The
@@ -724,7 +779,7 @@ class Codeanalyzer:
             Optional[Analysis]: The cached envelope, or ``None`` if the cache is
             stale/incompatible and should be rebuilt.
         """
-        with cache_file.open('r') as f:
+        with cache_file.open("r") as f:
             data = f.read()
         try:
             cached = model_validate_json(Analysis, data)
@@ -732,7 +787,9 @@ class Codeanalyzer:
             logger.info("stale/incompatible analysis cache — rebuilding")
             return None
         if getattr(cached, "schema_version", None) != "2.0.0":
-            logger.info("stale/incompatible analysis cache (schema_version) — rebuilding")
+            logger.info(
+                "stale/incompatible analysis cache (schema_version) — rebuilding"
+            )
             return None
         # The cache keys only on file hash/mtime/size, not on level, so a cache
         # built at a different analysis_level would leak higher-level body/edge
@@ -756,27 +813,29 @@ class Codeanalyzer:
         # Ensure cache directory exists
         cache_file.parent.mkdir(parents=True, exist_ok=True)
 
-        with cache_file.open('w') as f:
+        with cache_file.open("w") as f:
             f.write(model_dump_json(analysis, indent=2))
 
         logger.info(f"Analysis cached to {cache_file}")
 
     def _file_unchanged(self, file_path: Path, cached_module: PyModule) -> bool:
         """Check if a file has changed since it was cached.
-        
+
         Args:
             file_path: Path to the file to check
             cached_module: The cached PyModule for this file
-            
+
         Returns:
             bool: True if file is unchanged, False otherwise
         """
         try:
             # Check last modified time and file size
-            if (cached_module.last_modified is not None and
-                cached_module.file_size is not None and
-                cached_module.last_modified == file_path.stat().st_mtime and
-                cached_module.file_size == file_path.stat().st_size):
+            if (
+                cached_module.last_modified is not None
+                and cached_module.file_size is not None
+                and cached_module.last_modified == file_path.stat().st_mtime
+                and cached_module.file_size == file_path.stat().st_size
+            ):
                 return True
             # Also check content hash for extra safety
             if cached_module.content_hash is not None:
@@ -785,7 +844,7 @@ class Codeanalyzer:
 
             # No cached metadata mismatch, assume file changed
             return False
-            
+
         except Exception as e:
             logger.debug(f"Error checking file {file_path}: {e}")
             return False
@@ -805,16 +864,18 @@ class Codeanalyzer:
             sha256.update(py_file.read_bytes())
         return sha256.hexdigest()
 
-    def _build_symbol_table(self, cached_symbol_table: Optional[Dict[str, PyModule]] = None) -> Dict[str, PyModule]:
+    def _build_symbol_table(
+        self, cached_symbol_table: Optional[Dict[str, PyModule]] = None
+    ) -> Dict[str, PyModule]:
         """Builds the symbol table for the project.
 
         This method scans the project directory, identifies Python files,
         and constructs a symbol table containing information about classes,
         functions, and variables defined in those files.
-        
+
         Args:
             cached_app: Previously cached PyApplication to reuse unchanged files
-        
+
         Returns:
             Dict[str, PyModule]: A dictionary mapping file paths to PyModule objects.
         """
@@ -834,10 +895,12 @@ class Codeanalyzer:
                     logger.info(f"Using cached analysis for {single_file}")
                     symbol_table[file_key] = cached_symbol_table[file_key]
                     return symbol_table
-            
+
             # File is new or changed, analyze it
             try:
-                symbol_table_builder = SymbolTableBuilder(self.project_dir, self.virtualenv)
+                symbol_table_builder = SymbolTableBuilder(
+                    self.project_dir, self.virtualenv
+                )
                 py_module = symbol_table_builder.build_pymodule_from_file(single_file)
                 symbol_table[file_key] = py_module
                 logger.info("✅ Single file analysis complete.")
@@ -845,7 +908,7 @@ class Codeanalyzer:
             except Exception as e:
                 logger.error(f"Failed to process {single_file}: {e}")
                 return symbol_table
-        
+
         # Get all Python files first to show accurate progress
         py_files = []
         for py_file in self.project_dir.rglob("*.py"):
@@ -884,13 +947,22 @@ class Codeanalyzer:
                         symbol_table[file_key] = cached_symbol_table[file_key]
                         continue
                 files_to_process.append(py_file)
-            
+
             # Process only new/changed files with Ray
             if files_to_process:
                 _ensure_ray()
-                futures = [_process_file_with_ray.remote(py_file, self.project_dir, str(self.virtualenv) if self.virtualenv else None) for py_file in files_to_process]
-                
-                with ProgressBar(len(futures), "Building symbol table (parallel)") as progress:
+                futures = [
+                    _process_file_with_ray.remote(
+                        py_file,
+                        self.project_dir,
+                        str(self.virtualenv) if self.virtualenv else None,
+                    )
+                    for py_file in files_to_process
+                ]
+
+                with ProgressBar(
+                    len(futures), "Building symbol table (parallel)"
+                ) as progress:
                     pending = futures[:]
                     while pending:
                         done, pending = ray.wait(pending, num_returns=1)
@@ -903,11 +975,11 @@ class Codeanalyzer:
             symbol_table_builder = SymbolTableBuilder(self.project_dir, self.virtualenv)
             files_processed = 0
             files_from_cache = 0
-            
+
             with ProgressBar(len(py_files), "Building symbol table") as progress:
                 for py_file in py_files:
                     file_key = str(py_file.relative_to(self.project_dir))
-                    
+
                     # Check if file is cached and unchanged
                     if file_key in cached_symbol_table and not self.rebuild_analysis:
                         if self._file_unchanged(py_file, cached_symbol_table[file_key]):
@@ -915,18 +987,22 @@ class Codeanalyzer:
                             files_from_cache += 1
                             progress.advance()
                             continue
-                    
+
                     # File is new or changed, analyze it
                     try:
-                        py_module = symbol_table_builder.build_pymodule_from_file(py_file)
+                        py_module = symbol_table_builder.build_pymodule_from_file(
+                            py_file
+                        )
                         symbol_table[file_key] = py_module
                         files_processed += 1
                     except Exception as e:
                         logger.error(f"Failed to process {py_file}: {e}")
                     progress.advance()
-            
+
             if files_from_cache > 0:
-                logger.info(f"Reused {files_from_cache} files from cache, processed {files_processed} new/changed files")
+                logger.info(
+                    f"Reused {files_from_cache} files from cache, processed {files_processed} new/changed files"
+                )
 
         if py_files and not symbol_table:
             logger.error(
@@ -939,7 +1015,8 @@ class Codeanalyzer:
 
         logger.info(
             "✅ Symbol table: %d modules in %.1fs",
-            len(symbol_table), time.perf_counter() - t0_st,
+            len(symbol_table),
+            time.perf_counter() - t0_st,
         )
         return symbol_table
 
@@ -972,9 +1049,13 @@ class Codeanalyzer:
             )
             return pycg.build_call_graph_edges(symbol_table, jedi_edges=jedi_edges)
         except PyCGExceptions.PyCGImportError as exc:
-            logger.warning(f"PyCG not installed — level 2 edges will be Jedi-only: {exc}")
+            logger.warning(
+                f"PyCG not installed — level 2 edges will be Jedi-only: {exc}"
+            )
             return []
         except PyCGExceptions.PyCGAnalysisError as exc:
-            logger.warning(f"PyCG analysis failed — level 2 edges will be Jedi-only: {exc}")
+            logger.warning(
+                f"PyCG analysis failed — level 2 edges will be Jedi-only: {exc}"
+            )
             logger.debug("PyCG full traceback:", exc_info=True)
             return []

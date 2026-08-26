@@ -20,7 +20,6 @@ This module defines the data models used to represent Python code structures
 for static analysis purposes.
 """
 from __future__ import annotations
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from pydantic import BaseModel
 from typing_extensions import Literal
@@ -101,16 +100,21 @@ def builder(cls):
     return cls
 
 
-def byte_offsets(source: str, start_line: int, start_col: int,
-                 end_line: int, end_col: int) -> Tuple[int, int]:
+def byte_offsets(
+    source: str, start_line: int, start_col: int, end_line: int, end_col: int
+) -> Tuple[int, int]:
     """Convert (1-based line, 0-based col) ast positions to utf-8 byte offsets
     into `source`. `col` is a character offset within the line (ast semantics);
     we re-encode the line prefix to bytes so multibyte chars are handled."""
     lines = source.splitlines(keepends=True)
+
     def offset(line: int, col: int) -> int:
         prefix_bytes = len("".join(lines[: line - 1]).encode("utf-8"))
-        col_bytes = len(lines[line - 1][:col].encode("utf-8")) if line - 1 < len(lines) else 0
+        col_bytes = (
+            len(lines[line - 1][:col].encode("utf-8")) if line - 1 < len(lines) else 0
+        )
         return prefix_bytes + col_bytes
+
     return offset(start_line, start_col), offset(end_line, end_col)
 
 
@@ -118,6 +122,7 @@ def byte_offsets(source: str, start_line: int, start_col: int,
 class Span(BaseModel):
     """Where a node lives in source. `start`/`end` are [line, col] (1-based line,
     0-based col, ast semantics); `bytes` are utf-8 offsets into module.source."""
+
     start: Tuple[int, int]
     end: Tuple[int, int]
     bytes: Tuple[int, int]
@@ -127,11 +132,12 @@ class Span(BaseModel):
 class BodyNode(BaseModel):
     """A node in a callable's `body`: an AST region (statement/call/branch/…) or
     a synthetic analysis vertex (entry/exit/formal_in/out/actual_in/out)."""
+
     kind: str
     span: Optional[Span] = None
-    callee: Optional[str] = None   # only on `call` nodes; the sanctioned null→id slot
-    of: Optional[str] = None       # param vertices: the variable/return they carry
-    parent: Optional[str] = None   # actuals: owning callsite ordinal id
+    callee: Optional[str] = None  # only on `call` nodes; the sanctioned null→id slot
+    of: Optional[str] = None  # param vertices: the variable/return they carry
+    parent: Optional[str] = None  # actuals: owning callsite ordinal id
     # Call-site detail (#120). Previously reachable only through the parallel
     # `PyCallable.call_sites` list, which emitted the same fact a second time under
     # an unrelated id scheme. `method_name` and `is_constructor_call` are carried
@@ -148,27 +154,35 @@ class BodyNode(BaseModel):
 
 @builder
 class CfgEdge(BaseModel):
-    src: str; dst: str; kind: str = "fallthrough"
+    src: str
+    dst: str
+    kind: str = "fallthrough"
 
 
 @builder
 class CdgEdge(BaseModel):
-    src: str; dst: str
+    src: str
+    dst: str
 
 
 @builder
 class DdgEdge(BaseModel):
-    src: str; dst: str; var: Optional[str] = None; prov: List[str] = []
+    src: str
+    dst: str
+    var: Optional[str] = None
+    prov: List[str] = []
 
 
 @builder
 class SummaryEdge(BaseModel):
-    src: str; dst: str
+    src: str
+    dst: str
 
 
 @builder
 class ParamEdge(BaseModel):
-    src: str; dst: str
+    src: str
+    dst: str
 
 
 @builder
@@ -258,13 +272,13 @@ class PyEntrypoint(BaseModel):
     """
 
     framework: str
-    confidence: str = "certain"   # "declared" | "certain" | "heuristic"
-    rule: str = ""                # rules.yml `id:`, or an engine name
-    ruleset: str = "shipped"      # "shipped" | "user:<path>"
+    confidence: str = "certain"  # "declared" | "certain" | "heuristic"
+    rule: str = ""  # rules.yml `id:`, or an engine name
+    ruleset: str = "shipped"  # "shipped" | "user:<path>"
     evidence: Optional[str] = None
     route: Optional[str] = None
     http_methods: List[str] = []
-    via: Optional[str] = None     # can:// id of the routed node dispatching here
+    via: Optional[str] = None  # can:// id of the routed node dispatching here
 
 
 @builder
@@ -372,8 +386,6 @@ class PyCallable(BaseModel):
     def __hash__(self) -> int:
         """Generate a hash based on the callable's signature."""
         return hash(self.signature)
-    
-    
 
 
 @builder
@@ -473,6 +485,88 @@ class PyRepositoryInfo(BaseModel):
 
 
 @builder
+class PyDependency(BaseModel):
+    """One declared dependency, parsed from a manifest artifact.
+
+    A first-class node contained under its manifest ``PyArtifact`` (the
+    containment edge replaces a foreign-key string back to the manifest).
+    ``name`` is the ecosystem-native identity verbatim (pypi plain name);
+    ``scope`` is the shared cross-language vocabulary, not a pip concept.
+    """
+
+    id: str = ""  # can://…/@artifact/<manifest>/<name>
+    kind: str = "dependency"
+    name: str
+    version_spec: Optional[str] = None  # as declared (">=0.27", "^1.7.0")
+    resolved_version: Optional[str] = None  # when a lockfile pins it
+    ecosystem: Optional[str] = None  # "pypi"
+    scope: Literal[
+        "runtime", "development", "test", "build", "optional", "unknown"
+    ] = "unknown"
+    direct: bool = True  # False for lockfile-only transitives
+
+
+@builder
+class PyConfigKey(BaseModel):
+    """One configuration key defined in a structured config artifact.
+
+    Contained under its config ``PyArtifact``. Flat ``.properties``/``.env`` keys
+    and nested ``.yml`` keys share one dotted key space, so a later config-use
+    edge can resolve to a definition by shared (``namespace``, ``key``). Config
+    parsing is an overlay: a parse failure must never suppress the underlying
+    artifact node.
+    """
+
+    id: str = ""  # can://…/@artifact/<file>/<dotted-key>
+    kind: str = "config_key"
+    key: str  # canonical dotted key
+    namespace: Optional[str] = None  # shared key-space namespace ("env", …)
+    value: Optional[Any] = None
+    references: List[str] = []  # e.g. ["env:PAYMENT_HOST"]
+    span: Optional[Span] = None
+
+
+@builder
+class PyArtifact(BaseModel):
+    """A non-source repository file, inventoried into the analysis.
+
+    A first-class node in the containment tree, keyed in ``PyApplication.artifacts``
+    by repo-relative path (like ``symbol_table`` keys modules). ``artifact_kind``
+    is a closed enum whose catch-all is ``other`` — a file is never dropped for
+    lack of a parser. Raw ``text`` is captured by default subject to the emit-time
+    capture policy; ``path`` + ``content_hash`` + ``size_bytes`` are always present
+    so a binary or over-cap artifact still dereferences to source.
+    """
+
+    id: str = ""  # can://…/@artifact/<repo-relative-path>
+    kind: str = "artifact"
+    artifact_kind: Literal[
+        "build_manifest",
+        "dependency_lockfile",
+        "configuration",
+        "deployment_manifest",
+        "container",
+        "infrastructure",
+        "ci",
+        "script",
+        "documentation",
+        "data",
+        "other",
+    ] = "other"
+    path: str
+    format: Optional[str] = None  # "toml", "yaml", "json", …
+    source: Optional[str] = None  # producing subsystem, optional
+    content_hash: str = ""  # sha256 hexdigest, always present
+    size_bytes: int = 0  # always present
+    text: Optional[str] = None  # verbatim, per capture policy
+    text_encoding: Optional[str] = None  # "utf-8"; absent when bytes don't decode
+    text_truncated: bool = False  # True when size exceeded the cap
+    # Contained children (keystone containment, replacing string back-refs).
+    dependencies: Dict[str, PyDependency] = {}
+    config_keys: Dict[str, PyConfigKey] = {}
+
+
+@builder
 class PyAnalyzerInfo(BaseModel):
     """Which analyzer produced this snapshot, and how it was configured.
     Lives on the ``Analysis`` envelope (keystone ``analyzer{name,version}``;
@@ -499,6 +593,10 @@ class PyApplication(BaseModel):
     entrypoint_report: PyEntrypointReport = PyEntrypointReport()
     # Git provenance of the analyzed checkout, captured at analysis time.
     repository: Optional[PyRepositoryInfo] = None
+    # Non-source repository files, keyed by repo-relative path. Application-anchored
+    # and populated at every level (like `repository`), so the artifact layer is
+    # identical across -a 1..4. Dependencies and config keys are contained children.
+    artifacts: Dict[str, PyArtifact] = {}
     # Interprocedural parameter-passing edges (formal↔actual); populated at L4.
     param_in: List[ParamEdge] = []
     param_out: List[ParamEdge] = []
@@ -508,6 +606,7 @@ class PyApplication(BaseModel):
 class Analysis(BaseModel):
     """v2 payload root: envelope + the application tree node. ``k_limit`` is an
     L3+ envelope key (None below the dataflow levels; exclude_none drops it)."""
+
     schema_version: str = "2.0.0"
     language: str = "python"
     max_level: int = 1

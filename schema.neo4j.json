@@ -1,5 +1,5 @@
 {
-  "schema_version": "2.0.0",
+  "schema_version": "2.1.0",
   "generator": "codeanalyzer-python",
   "marker_labels": [],
   "node_labels": [
@@ -150,6 +150,49 @@
         "start_line": "integer",
         "end_line": "integer",
         "_module": "string"
+      }
+    },
+    {
+      "label": "PyArtifact",
+      "merge_label": "PyArtifact",
+      "key": "id",
+      "properties": {
+        "id": "string",
+        "path": "string",
+        "artifact_kind": "string",
+        "format": "string",
+        "source": "string",
+        "content_hash": "string",
+        "size_bytes": "integer",
+        "text": "string",
+        "text_encoding": "string",
+        "text_truncated": "boolean"
+      }
+    },
+    {
+      "label": "PyDependency",
+      "merge_label": "PyDependency",
+      "key": "id",
+      "properties": {
+        "id": "string",
+        "name": "string",
+        "version_spec": "string",
+        "resolved_version": "string",
+        "ecosystem": "string",
+        "scope": "string",
+        "direct": "boolean"
+      }
+    },
+    {
+      "label": "PyConfigKey",
+      "merge_label": "PyConfigKey",
+      "key": "id",
+      "properties": {
+        "id": "string",
+        "key": "string",
+        "namespace": "string",
+        "value": "string",
+        "references": "string[]"
       }
     }
   ],
@@ -354,6 +397,36 @@
         "PyBodyNode"
       ],
       "properties": {}
+    },
+    {
+      "type": "PY_HAS_ARTIFACT",
+      "from": [
+        "PyApplication"
+      ],
+      "to": [
+        "PyArtifact"
+      ],
+      "properties": {}
+    },
+    {
+      "type": "PY_DECLARES_DEPENDENCY",
+      "from": [
+        "PyArtifact"
+      ],
+      "to": [
+        "PyDependency"
+      ],
+      "properties": {}
+    },
+    {
+      "type": "PY_DEFINES_CONFIG",
+      "from": [
+        "PyArtifact"
+      ],
+      "to": [
+        "PyConfigKey"
+      ],
+      "properties": {}
     }
   ],
   "constraints": [
@@ -364,7 +437,10 @@
     "CREATE CONSTRAINT pydecorator_name IF NOT EXISTS FOR (x:PyDecorator) REQUIRE x.name IS UNIQUE",
     "CREATE CONSTRAINT pyattribute_id IF NOT EXISTS FOR (x:PyAttribute) REQUIRE x.id IS UNIQUE",
     "CREATE CONSTRAINT pyvariable_id IF NOT EXISTS FOR (x:PyVariable) REQUIRE x.id IS UNIQUE",
-    "CREATE CONSTRAINT pybodynode_id IF NOT EXISTS FOR (x:PyBodyNode) REQUIRE x.id IS UNIQUE"
+    "CREATE CONSTRAINT pybodynode_id IF NOT EXISTS FOR (x:PyBodyNode) REQUIRE x.id IS UNIQUE",
+    "CREATE CONSTRAINT pyartifact_id IF NOT EXISTS FOR (x:PyArtifact) REQUIRE x.id IS UNIQUE",
+    "CREATE CONSTRAINT pydependency_id IF NOT EXISTS FOR (x:PyDependency) REQUIRE x.id IS UNIQUE",
+    "CREATE CONSTRAINT pyconfigkey_id IF NOT EXISTS FOR (x:PyConfigKey) REQUIRE x.id IS UNIQUE"
   ],
   "indexes": [
     "CREATE INDEX py_callable_name IF NOT EXISTS FOR (c:PyCallable) ON (c.name)",

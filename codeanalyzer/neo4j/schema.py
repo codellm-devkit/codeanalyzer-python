@@ -35,7 +35,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List
 
-SCHEMA_VERSION = "2.0.0"
+SCHEMA_VERSION = "2.1.0"
 
 # PropType ∈ {"string", "integer", "float", "boolean", "string[]", "integer[]"}.
 
@@ -201,6 +201,54 @@ NODE_LABELS: List[NodeLabel] = [
             "_module": "string",
         },
     ),
+    # Repository-artifact layer: application-anchored, non-source nodes, present
+    # at every -a level (like :PyApplication's provenance props). Merge keys are
+    # the durable can:// `@artifact/…` ids, which never enter the callable
+    # signatureOf id space. `text` is a plain property with no index — dozens per
+    # repo, never a hot path.
+    NodeLabel(
+        "PyArtifact",
+        "PyArtifact",
+        "id",
+        {
+            "id": "string",
+            "path": "string",
+            "artifact_kind": "string",
+            "format": "string",
+            "source": "string",
+            "content_hash": "string",
+            "size_bytes": "integer",
+            "text": "string",
+            "text_encoding": "string",
+            "text_truncated": "boolean",
+        },
+    ),
+    NodeLabel(
+        "PyDependency",
+        "PyDependency",
+        "id",
+        {
+            "id": "string",
+            "name": "string",
+            "version_spec": "string",
+            "resolved_version": "string",
+            "ecosystem": "string",
+            "scope": "string",
+            "direct": "boolean",
+        },
+    ),
+    NodeLabel(
+        "PyConfigKey",
+        "PyConfigKey",
+        "id",
+        {
+            "id": "string",
+            "key": "string",
+            "namespace": "string",
+            "value": "string",
+            "references": "string[]",
+        },
+    ),
 ]
 
 _DECL_TARGETS = ["PyClass", "PyCallable"]
@@ -244,12 +292,26 @@ REL_TYPES: List[RelType] = [
     # true/false pair), PY_DDG per ``(var, prov)`` (one dependence per variable,
     # and the ssa/points-to split) — a plain endpoint-pair MERGE would collapse
     # legitimately-distinct edges.
-    RelType("PY_CFG_NEXT", ["PyBodyNode"], ["PyBodyNode"], {"kind": "string", "_k": "string"}),
+    RelType(
+        "PY_CFG_NEXT",
+        ["PyBodyNode"],
+        ["PyBodyNode"],
+        {"kind": "string", "_k": "string"},
+    ),
     RelType("PY_CDG", ["PyBodyNode"], ["PyBodyNode"]),
-    RelType("PY_DDG", ["PyBodyNode"], ["PyBodyNode"], {"var": "string", "prov": "string[]", "_k": "string"}),
+    RelType(
+        "PY_DDG",
+        ["PyBodyNode"],
+        ["PyBodyNode"],
+        {"var": "string", "prov": "string[]", "_k": "string"},
+    ),
     RelType("PY_PARAM_IN", ["PyBodyNode"], ["PyBodyNode"], {"var": "string"}),
     RelType("PY_PARAM_OUT", ["PyBodyNode"], ["PyBodyNode"], {"var": "string"}),
     RelType("PY_SUMMARY", ["PyBodyNode"], ["PyBodyNode"]),
+    # Repository-artifact layer containment (all -a levels).
+    RelType("PY_HAS_ARTIFACT", ["PyApplication"], ["PyArtifact"]),
+    RelType("PY_DECLARES_DEPENDENCY", ["PyArtifact"], ["PyDependency"]),
+    RelType("PY_DEFINES_CONFIG", ["PyArtifact"], ["PyConfigKey"]),
 ]
 
 
