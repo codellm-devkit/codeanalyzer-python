@@ -7,30 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- **`--call-graph jedi`** (#148): skip PyCG and build the call graph from Jedi
-  alone. Deterministic and fast — on a 2,364-file Odoo subset the whole L2
-  phase collapses to the symbol-table build, where sharded PyCG ran for over
-  three hours without one shard converging. The price is recall: calls only
-  PyCG's points-to can resolve (callbacks, registries, functions passed as
-  values) stay unresolved, so level-4 `param_in`/`param_out` edges stop at
-  those call sites. L3 graphs are unaffected. The default (`jedi+pycg`) is
-  unchanged; combining `--call-graph jedi` with `--pycg-shard` is a flag
-  error. This is the manual escape hatch for the liveness gap; #148 tracks
-  routing expensive shards to Jedi automatically.
-
 ### Changed
 
-- **BREAKING: `--pycg-shard-timeout` is removed** (#145). It bounded PyCG's
-  fixpoint a second time, by the clock, after `--pycg-max-iter` had already
-  bounded it by iteration count — and that second bound is what made the output
-  load-dependent. Anyone passing `--pycg-shard-timeout` must drop the flag;
-  `--pycg-max-iter` remains the knob that trades analysis depth against
-  runtime. Note that nothing bounds wall-clock time anymore: `--pycg-max-iter`
-  caps fixpoint *passes*, not their duration (see Fixed below), so a
-  pathological shard can still run long at any setting, and
-  `--pycg-max-iter -1` (run to convergence, no cap) can run indefinitely.
+- **BREAKING: PyCG is removed; level 2 is Jedi + the defuse linker** (#148).
+  PyCG's whole-program fixpoint was the analyzer's cost pathology — on a
+  2,364-file project a seed-pinned sharded run spent 3h19m without one of 17
+  shards converging, and no setting of its knobs bounds a single pass — so it
+  is gone wholesale: the `pycg` dependency, the sharding machinery, and the
+  `--pycg-shard`, `--pycg-shard-ceiling`, `--pycg-shard-strategy`,
+  `--pycg-max-iter`, and `--pycg-shard-timeout` flags (the never-released
+  `--call-graph` selector is gone with them; there is one code path). Level 2
+  call edges now come from Jedi plus a per-callable **defuse linker** that
+  resolves remaining call sites through local def-use chains and module-scope
+  bindings — deterministic, no global fixpoint. Call-edge `prov` values are
+  now `"jedi"`, `"defuse"`, or both; `"pycg"` no longer appears (and is
+  removed from the schema's `prov` literal). Design:
+  `docs/design/specs/2026-08-25-defuse-linker-call-graph-design.md`.
 - **BREAKING: the msgpack output format is removed** (#118, TS parity): the
   `--format msgpack` CLI choice, the `analysis.msgpack` artifact, the msgpack
   serialization mixin on schema models, and the `msgpack` dependency are gone.
@@ -56,37 +48,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   happening there too.
 
 ### Fixed
-
-- **Sharded PyCG no longer drops shards by wall clock** (#145): `--pycg-shard` decided which
-  shards to keep by wall-clock timeout, so which shards survived depended on
-  machine load and Ray scheduling. A dropped shard contributed *zero* edges —
-  three byte-identical invocations over one 2,364-file fixture produced 48,595 /
-  43,431 / 40,224 call edges, an 11% spread with PyCG's own contribution swinging
-  44%. Shard outcomes are now decided by PyCG's own convergence
-  (`has_converged()`): a shard is a runaway when its fixpoint stopped at
-  `--pycg-max-iter` instead of converging, which is a function of the input
-  alone.
-
-  **`--pycg-max-iter` is not a termination guarantee.** It bounds fixpoint
-  *passes*, and PyCG consults the cap only between passes, so one expensive
-  pass escapes it — a single 100-file shard has run for over an hour inside
-  its pass budget without completing. Removing the wall-clock timeout
-  therefore removes the only wall-clock bound that existed; that bound was
-  load-dependent and had to go, but nothing replaces it yet — #148 tracks
-  a deterministic fallback that routes predicted-expensive shards to
-  Jedi-only coverage.
-
-  Adaptive decomposition is unchanged: a runaway is still re-partitioned at a
-  tighter file budget to recover recall, and a shard that cannot be split
-  further now keeps the edges it did produce instead of being discarded — a
-  capped fixpoint is a sound under-approximation, so those edges are real.
-
-  **Scope:** this removes the load-dependent shard-dropping mechanism, which was
-  the 11% effect. Output is not yet byte-identical across runs: a separate,
-  much smaller source remains in Jedi's overload resolution for `open()` —
-  `f.read()` resolves to `_TextIOBase.read` or `_BufferedIOBase.read` depending
-  on the run, accounting for **0.1–0.3%** of edges on the Flask fixture. That is
-  tracked as #146 and is not addressed here.
 
 ## [1.1.1] - 2026-07-27
 

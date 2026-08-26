@@ -52,21 +52,31 @@ repo as the L3 kernels (`dataflow/defuse.py`, `access_paths.py`, CFG).
 5. **No backend flag.** The linker is cheap and deterministic; nothing to opt
    out of.
 
-## Linker design (MVP)
+## Linker design (as implemented)
 
-For each `call` node whose `callee` is null after Jedi:
+For each call site whose `callee_signature` is null after Jedi:
 
-1. Take the called expression's access path (`f`, `self.handler`, `obj.cb`).
-2. Walk the **intra-callable def-use chain** to the reaching definitions of
-   that path (`f = handler; f(x)` → `handler`).
-3. If the chain exits the callable, consult **module-scope bindings** (module
-   constants, same-module registries, decorator-wrapped module functions).
-4. If the resolved value names a declared callable (or import), emit the edge
-   with `prov: ["defuse"]` and backfill `callee`.
+1. **Bare names** resolve through the lexical chain of *function* scopes out
+   to the module (class bodies are transparent, matching Python's own rule):
+   local/nested `def`s, alias-assignment chains (`f = handler; f(x)`), and
+   `from m import f [as g]` bindings — the latter resolved **cross-module**
+   through the symbol table (absolute and relative spellings; module quals
+   derived from file keys, `requests/api.py` → `requests.api`). Recursion
+   self-loops are kept.
+2. **`self.X()` / `cls.X()`** resolves against the enclosing class and its
+   same-module base chain (BFS over `base_classes`) — Jedi misses a
+   surprising number of these on decorated and mixin-heavy classes.
+3. A resolution emits the edge with `prov: ["defuse"]` and lands in a
+   returned resolutions map that `l2_callees.backfill_callees` applies to the
+   L1 `call` body nodes. Resolutions are **never written into
+   `callee_signature`**: the symbol table round-trips through the analysis
+   cache, and a persisted resolution would resurface on a warm run as a Jedi
+   edge, silently changing provenance.
 
-Out of MVP scope, recorded as extensions: cross-module registry flows,
-parameter-flow via SDG summaries (`f` passed as argument), Scalpel copy-closure
-alias widening of step 2.
+Out of scope, recorded as extensions: other receivers (`obj.m()` via local
+instance tracking), parameter-flow (`f` passed as argument — the
+context-insensitive half of PyCG's closure edges), module-scope call sites
+(not present in the symbol table today), Scalpel copy-closure alias widening.
 
 **What is knowingly lost vs PyCG:** cross-module global registries (odoo's
 registry pattern) and deep dynamic dispatch. Those edges were unobtainable in

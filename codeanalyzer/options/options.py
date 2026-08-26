@@ -22,34 +22,6 @@ class EmitTarget(str, Enum):
     SCHEMA = "schema"
 
 
-class ShardStrategy(str, Enum):
-    """How ``--pycg-shard`` groups files into shards (level 2 only).
-
-    - ``jedi``    : partition the Jedi module-dependency graph (strongly-
-                    connected-component condensation + Louvain) so tightly-
-                    coupled modules co-compute and few call edges are severed
-                    between shards. Import cycles are never split.
-    - ``package`` : legacy one-shard-per-package-directory grouping.
-    """
-
-    JEDI = "jedi"
-    PACKAGE = "package"
-
-
-class CallGraphBackend(str, Enum):
-    """Which backends contribute call edges (level 2+).
-
-    - ``jedi+pycg`` : Jedi's type-inferred edges merged with PyCG's
-                      flow-sensitive points-to edges (default).
-    - ``jedi``      : Jedi only — deterministic and fast, but calls only
-                      PyCG can resolve (callbacks, registries, functions
-                      passed as values) stay unresolved.
-    """
-
-    JEDI = "jedi"
-    JEDI_PYCG = "jedi+pycg"
-
-
 @dataclass
 class AnalysisOptions:
     input: Path
@@ -74,9 +46,4 @@ class AnalysisOptions:
     cache_dir: Optional[Path] = None
     clear_cache: bool = False
     verbosity: int = 0
-    call_graph: CallGraphBackend = CallGraphBackend.JEDI_PYCG
-    pycg_shard: bool = False
-    pycg_shard_ceiling: int = 100
-    pycg_shard_strategy: ShardStrategy = ShardStrategy.JEDI
-    pycg_max_iter: int = 50
     entrypoint_rules: Tuple[Path, ...] = ()

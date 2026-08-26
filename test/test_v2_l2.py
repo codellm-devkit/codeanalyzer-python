@@ -126,9 +126,9 @@ def test_l2_audit_gate_callee_name_equality(tmp_path):
 
 def test_l2_runs_are_byte_identical(tmp_path):
     """Issue #99: same flags, same input → byte-identical analysis.json.
-    Exercises the deterministic PyCG shard root, sorted entry points, the
-    canonical call_graph sort, the Jedi union tie-break, and the CLI's
-    self-pinned PYTHONHASHSEED (each subprocess re-execs with seed 0)."""
+    Exercises sorted entry points, the canonical call_graph sort, the Jedi
+    union tie-break, and the CLI's self-pinned PYTHONHASHSEED (each
+    subprocess re-execs with seed 0)."""
     import filecmp
     import shutil
     import subprocess

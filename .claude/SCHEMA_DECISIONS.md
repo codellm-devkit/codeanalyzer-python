@@ -263,3 +263,24 @@ adopts a name a sibling analyzer had already validated rather than coining a thi
 **Breaking for an existing database**: nodes written under the old label are not
 rewritten by a subsequent load, and the old uniqueness constraint remains. A graph
 built before this change needs re-projecting, not migrating in place.
+
+## 2026-08-25 — PyCG removed; `"defuse"` joins the call-edge `prov` vocabulary
+
+Design: `docs/design/specs/2026-08-25-defuse-linker-call-graph-design.md`
+(work item #148; supersedes #145 / PR #147).
+
+Level 2's call graph is now Jedi (base) plus a per-callable **defuse linker**
+that resolves remaining call sites through intra-callable def-use chains and
+module-scope bindings — the Joern-style local-CPG pattern. PyCG's global
+fixpoint is removed wholesale: on real projects it either never converged
+(3h19m, 0/17 shards, seed-pinned) or had to be truncated by mechanisms that
+made output load-dependent (#145).
+
+- `PyCallEdge.prov` literal: `"pycg"` **removed**, `"defuse"` **added**
+  (technique-named, like the DDG's `"ssa"`/`"points-to"`/`"reaching-defs"`;
+  coined once — the parity clause binds siblings that adopt the technique).
+- An edge found by both resolvers carries `["defuse", "jedi"]` (sorted union
+  via `merge_edges`, as before).
+- Refinement contract unchanged: the linker runs inside the L2 build, so
+  `callee: null→id` remains the single sanctioned L1→L2 refinement.
+- Neo4j projection unchanged (`PY_CALLS` carries `prov` as data).

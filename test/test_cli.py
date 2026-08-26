@@ -157,32 +157,25 @@ def test_decorators_hof_level1(cli_runner, single_functionalities__decorators_an
 
 
 def test_decorators_hof_level2(cli_runner, single_functionalities__decorators_and_hof):
-    """Level 2 on decorators_and_hof: call_graph non-empty with PyCG edges.
+    """Level 2 on decorators_and_hof: Jedi base plus defuse-linker backfill.
 
-    Key assertions:
-    - At least 20 total edges (observed ~34)
-    - PyCG resolves HOF points-to: apply->triple (missed by Jedi's single call-site inference)
-    - PyCG finds closure call: log_call.wrapper->greet
+    Provenance must come only from the two shipping resolvers; the linker
+    commit tightens this with resolution-specific assertions.
     """
     main_py = single_functionalities__decorators_and_hof / "main.py"
     obj = _run_analysis(cli_runner, single_functionalities__decorators_and_hof,
                         analysis_level=2, file_name=main_py)
     assert len(obj["symbol_table"]) > 0
-    assert len(obj["call_graph"]) >= 20, \
-        f"Expected >=20 edges for decorators_and_hof, got {len(obj['call_graph'])}"
+    assert len(obj["call_graph"]) > 0
+    provs = {p for e in obj["call_graph"] for p in e["prov"]}
+    assert provs <= {"jedi", "defuse"}, f"unexpected prov values: {provs}"
 
-    pycg_edges = [(e["src"], e["dst"]) for e in obj["call_graph"]
-                  if "pycg" in e["prov"]]
-    assert len(pycg_edges) >= 10, \
-        f"Expected >=10 PyCG edges, got {len(pycg_edges)}"
-
-    pycg_targets_from_apply = {t for s, t in pycg_edges if "apply" in s}
-    assert any("triple" in t for t in pycg_targets_from_apply), \
-        "PyCG must resolve apply->triple via points-to (Jedi misses the second call site)"
-
-    pycg_targets_from_wrapper = {t for s, t in pycg_edges if "wrapper" in s}
-    assert any("greet" in t for t in pycg_targets_from_wrapper), \
-        "PyCG must resolve log_call.wrapper->greet (closure call)"
+    # The linker's contribution on this fixture: calls to decorator-wrapped
+    # functions, which Jedi's inference loses through the wrapper.
+    defuse = {(e["src"], e["dst"]) for e in obj["call_graph"] if "defuse" in e["prov"]}
+    for target in ("greet", "say_hello", "stacked"):
+        assert any("main" in s and target in t for s, t in defuse), \
+            f"defuse linker must resolve main -> {target} through the decorator"
 
 
 def test_class_hierarchy_level1(cli_runner, single_functionalities__class_hierarchy):
@@ -199,29 +192,13 @@ def test_class_hierarchy_level1(cli_runner, single_functionalities__class_hierar
 
 
 def test_class_hierarchy_level2(cli_runner, single_functionalities__class_hierarchy):
-    """Level 2 on class_hierarchy: PyCG resolves virtual dispatch and super() calls.
-
-    Key assertions:
-    - At least 30 total edges (observed ~51)
-    - PyCG finds virtual dispatch: Animal.describe->PoliceDog.speak
-    - PyCG finds super().__init__ chains (present as super edges)
-    - __init__ edges present from constructor calls
-    """
+    """Level 2 on class_hierarchy: Jedi base + defuse backfill; __init__ edges present."""
     main_py = single_functionalities__class_hierarchy / "main.py"
     obj = _run_analysis(cli_runner, single_functionalities__class_hierarchy,
                         analysis_level=2, file_name=main_py)
-    assert len(obj["call_graph"]) >= 30, \
-        f"Expected >=30 edges for class_hierarchy, got {len(obj['call_graph'])}"
-
-    pycg_edges = [(e["src"], e["dst"]) for e in obj["call_graph"]
-                  if "pycg" in e["prov"]]
-    assert len(pycg_edges) >= 15, \
-        f"Expected >=15 PyCG edges, got {len(pycg_edges)}"
-
-    # PyCG resolves virtual dispatch: Animal.describe calls speak() on subclasses
-    describe_targets = {t for s, t in pycg_edges if "describe" in s}
-    assert any("speak" in t for t in describe_targets), \
-        "PyCG must find Animal.describe->*.speak virtual dispatch"
+    assert len(obj["call_graph"]) > 0
+    provs = {p for e in obj["call_graph"] for p in e["prov"]}
+    assert provs <= {"jedi", "defuse"}, f"unexpected prov values: {provs}"
 
     targets = {e["dst"] for e in obj["call_graph"]}
     assert any("__init__" in t for t in targets), "Expected __init__ edges in class hierarchy"
@@ -240,28 +217,13 @@ def test_async_patterns_level1(cli_runner, single_functionalities__async_pattern
 
 
 def test_async_patterns_level2(cli_runner, single_functionalities__async_patterns):
-    """Level 2 on async_patterns: PyCG resolves async calls and asyncio stdlib edges.
-
-    Key assertions:
-    - At least 15 total edges (observed ~31)
-    - PyCG finds asyncio.sleep in async functions (await targets)
-    - PyCG finds asyncio.gather in fetch_all
-    - Pipeline chain is fully connected (async_main->pipeline->fetch_all->process_url->fetch_data)
-    """
+    """Level 2 on async_patterns: pipeline chain connected from the shipping resolvers."""
     main_py = single_functionalities__async_patterns / "main.py"
     obj = _run_analysis(cli_runner, single_functionalities__async_patterns,
                         analysis_level=2, file_name=main_py)
-    assert len(obj["call_graph"]) >= 15, \
-        f"Expected >=15 edges for async_patterns, got {len(obj['call_graph'])}"
-
-    pycg_edges = [(e["src"], e["dst"]) for e in obj["call_graph"]
-                  if "pycg" in e["prov"]]
-    assert len(pycg_edges) >= 8, \
-        f"Expected >=8 PyCG edges, got {len(pycg_edges)}"
-
-    pycg_targets = {t for _, t in pycg_edges}
-    assert any("asyncio" in t or "sleep" in t for t in pycg_targets), \
-        "PyCG must resolve asyncio.sleep calls in async functions"
+    assert len(obj["call_graph"]) > 0
+    provs = {p for e in obj["call_graph"] for p in e["prov"]}
+    assert provs <= {"jedi", "defuse"}, f"unexpected prov values: {provs}"
 
     all_edges = {(e["src"], e["dst"]) for e in obj["call_graph"]}
     assert any("pipeline" in s and "fetch_all" in t for s, t in all_edges), \
@@ -284,18 +246,13 @@ def test_flask_level1(cli_runner, whole_applications__flask):
 
 
 def test_flask_level2(cli_runner, whole_applications__flask):
-    """Level 2 on Flask 3.0.3: PyCG substantially augments Jedi's edges.
-
-    PyCG contributes >50% of total edges for a decorator-heavy codebase like Flask
-    (observed ~852 PyCG out of ~1450 total edges).
-    """
+    """Level 2 on Flask 3.0.3: Jedi base (869 edges observed) + defuse backfill."""
     obj = _run_analysis(cli_runner, whole_applications__flask, analysis_level=2)
     assert len(obj["symbol_table"]) > 0
     assert len(obj["call_graph"]) >= 500, \
         f"Expected >=500 edges for Flask, got {len(obj['call_graph'])}"
-    pycg_edges = [e for e in obj["call_graph"] if "pycg" in e["prov"]]
-    assert len(pycg_edges) >= 200, \
-        f"Expected >=200 PyCG edges for Flask, got {len(pycg_edges)}"
+    provs = {p for e in obj["call_graph"] for p in e["prov"]}
+    assert provs <= {"jedi", "defuse"}, f"unexpected prov values: {provs}"
 
 
 def test_requests_level1(cli_runner, whole_applications__requests):
@@ -306,18 +263,13 @@ def test_requests_level1(cli_runner, whole_applications__requests):
 
 
 def test_requests_level2(cli_runner, whole_applications__requests):
-    """Level 2 on requests 2.31.0: PyCG resolves OO dispatch and session/adapter calls.
-
-    PyCG contributes >50% of total edges for a clean OO codebase like requests
-    (observed ~724 PyCG out of ~1121 total edges).
-    """
+    """Level 2 on requests 2.31.0: Jedi base (530 edges observed) + defuse backfill."""
     obj = _run_analysis(cli_runner, whole_applications__requests, analysis_level=2)
     assert len(obj["symbol_table"]) > 0
     assert len(obj["call_graph"]) >= 400, \
         f"Expected >=400 edges for requests, got {len(obj['call_graph'])}"
-    pycg_edges = [e for e in obj["call_graph"] if "pycg" in e["prov"]]
-    assert len(pycg_edges) >= 150, \
-        f"Expected >=150 PyCG edges for requests, got {len(pycg_edges)}"
+    provs = {p for e in obj["call_graph"] for p in e["prov"]}
+    assert provs <= {"jedi", "defuse"}, f"unexpected prov values: {provs}"
 
 
 # ---------------------------------------------------------------------------
