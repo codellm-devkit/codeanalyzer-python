@@ -25,6 +25,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up Python 3.10
+        id: py310
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
@@ -43,7 +44,9 @@ jobs:
           # The venv-building CLI tests must find a base interpreter that can
           # create virtual environments; inside uv's own venv the discovery
           # walk has no anchor on the runner, so hand it the setup-python one.
-          SYSTEM_PYTHON: python3.10
+          # Must be an absolute path — the override is checked with
+          # Path(...).exists(), which never searches PATH.
+          SYSTEM_PYTHON: ${{ steps.py310.outputs.python-path }}
 
   release:
     needs: compat
