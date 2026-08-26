@@ -202,12 +202,12 @@ def _scope_expressions(node: ast.AST):
             # reference CPG tools emit exactly those.
             if isinstance(cur.left, ast.Name) and cur.left.id in ("self", "cls"):
                 yield ("selfeq", cur)
-        elif isinstance(cur, (ast.For, ast.AsyncFor)) and isinstance(
-            cur.iter, ast.Name
-        ):
+        elif isinstance(cur, (ast.For, ast.AsyncFor)):
             # `for x in y:` calls y.__iter__() at runtime; resolvable when
             # y's type is locally known (the reference tools lower this too).
-            yield ("iter", cur)
+            yield ("iter", cur.iter)
+        elif isinstance(cur, ast.comprehension):
+            yield ("iter", cur.iter)
         elif isinstance(cur, ast.FormattedValue):
             conv = {114: "repr", 115: "str", 97: "ascii"}.get(cur.conversion)
             if conv is not None:
@@ -563,6 +563,10 @@ def _resolve_self_call(
             except SyntaxError:
                 expr = None
             if expr is not None:
+                if isinstance(expr, ast.Call):
+                    # `path_type = click.Path(...)` — the attribute holds an
+                    # instance; a call through it targets that type
+                    expr = expr.func
                 sig = _resolve_expr(expr, module_scope, mod, module_qual, by_qual)
                 if sig is None and isinstance(expr, ast.Name):
                     target_cls = classes.get(expr.id)
@@ -588,6 +592,18 @@ def _resolve_self_call(
             base_cls = classes.get(base)
             if base_cls is not None:
                 stack.append(base_cls)
+                continue
+            if "." in base:
+                # dotted spelling (`class X(click.Path)`) — resolve the root
+                # through the module scope, append the rest
+                root, *restp = base.split(".")
+                target = _resolve_name(root, module_scope)
+                if target is not None and target[0] in (_MODALIAS, _FROM):
+                    dotted = _target_signature(
+                        target, mod, module_qual, by_qual, tuple(restp)
+                    )
+                    if dotted:
+                        return f"{dotted}.{method_name}"
                 continue
             target = _resolve_name(base, module_scope)
             if target is None or target[0] == _LOCAL:
@@ -714,7 +730,32 @@ def _resolve_uncovered_call(
         lt = _lookup_literal_type(root, scope)
         if lt is not None:
             return f"builtins.{lt}.{func.attr}"
+    elif (
+        isinstance(func, ast.Attribute)
+        and isinstance(func.value, ast.Call)
+        and isinstance(func.value.func, ast.Name)
+        and func.value.func.id in _BUILTINS
+    ):
+        # method on a builtin temporary: `TypeError(...).with_traceback(tb)`
+        return f"builtins.{func.value.func.id}.{func.attr}"
     return _resolve_expr(func, scope, mod, module_qual, by_qual)
+
+
+class _SyntheticSite:
+    """A call the AST shows but Jedi recorded no ``PyCallsite`` for.
+
+    Shaped like the slice of ``PyCallsite`` the pending loop reads; its
+    position never matches an L1 body node, so a resolutions entry for it is
+    inert by construction.
+    """
+
+    __slots__ = ("method_name", "receiver_expr", "start_line", "start_column")
+
+    def __init__(self, method_name, receiver_expr, line, col):
+        self.method_name = method_name
+        self.receiver_expr = receiver_expr
+        self.start_line = line
+        self.start_column = col
 
 
 class _TypeOracle:
@@ -739,6 +780,9 @@ class _TypeOracle:
 
     def __init__(self) -> None:
         self.classes_global: Dict[str, List[PyClass]] = {}
+        # bare callable name -> sorted signatures of every internal callable
+        # with that name (methods and functions alike) — the name-linked tier
+        self.by_name: Dict[str, List[str]] = {}
         self.func_by_sig: Dict[str, PyCallable] = {}
         self.param_names: Dict[str, List[str]] = {}
         self.param_declared: Dict[Tuple[str, str], str] = {}
@@ -755,6 +799,7 @@ class _TypeOracle:
             self.classes_global.setdefault(name, []).append(cls)
         for caller, _owner in _iter_callables(mod):
             self.func_by_sig[caller.signature] = caller
+            self.by_name.setdefault(caller.name, []).append(caller.signature)
             names = [p.name for p in caller.parameters or []]
             self.param_names[caller.signature] = names
             for prm in caller.parameters or []:
@@ -965,19 +1010,30 @@ def defuse_linker_edges(
                             bump(caller.signature, sig)
                     continue
                 if kind == "iter":
-                    name = node.iter.id
-                    if name in ("self", "cls"):
-                        target_cls = owner
+                    if isinstance(node, ast.Name):
+                        name = node.id
+                        if name in ("self", "cls"):
+                            target_cls = owner
+                        else:
+                            cls_name = _lookup_instance_type(name, scope)
+                            target_cls = (
+                                classes.get(cls_name) if cls_name else None
+                            )
+                        if target_cls is not None:
+                            sig = _resolve_self_call(
+                                "__iter__", target_cls, classes
+                            )
+                            if sig is not None:
+                                bump(caller.signature, sig)
+                        else:
+                            pending_iter.append(
+                                (caller, owner, name, scope, mod, qual, classes)
+                            )
                     else:
-                        cls_name = _lookup_instance_type(name, scope)
-                        target_cls = classes.get(cls_name) if cls_name else None
-                    if target_cls is not None:
-                        sig = _resolve_self_call("__iter__", target_cls, classes)
-                        if sig is not None:
-                            bump(caller.signature, sig)
-                    else:
+                        # attribute chains, calls, subscripts — no local type;
+                        # the name-linked tier covers the iteration protocol
                         pending_iter.append(
-                            (caller, owner, name, scope, mod, qual, classes)
+                            (caller, owner, None, scope, mod, qual, classes)
                         )
                     continue
                 if kind != "call":
@@ -992,6 +1048,25 @@ def defuse_linker_edges(
                 )
                 if sig is not None:
                     bump(caller.signature, sig)
+                elif isinstance(node.func, ast.Attribute) and isinstance(
+                    node.func.value, ast.Name
+                ) and node.func.value.id not in ("self", "cls"):
+                    pending.append(
+                        (
+                            caller,
+                            owner,
+                            _SyntheticSite(
+                                node.func.attr,
+                                node.func.value.id,
+                                node.lineno,
+                                node.col_offset,
+                            ),
+                            scope,
+                            mod,
+                            qual,
+                            classes,
+                        )
+                    )
 
         # --- module/class-scope call sites (from the AST; #131 attribution) -
         for kind, node in facts.toplevel_calls:
@@ -1096,6 +1171,14 @@ def defuse_linker_edges(
     for _round in (1, 2):
         still: List[Tuple] = []
         for caller, owner, site, scope, mod, qual, classes in remaining:
+            recv_txt = (site.receiver_expr or "").strip()
+            root_tok = recv_txt.split("(", 1)[0].split(".", 1)[0].strip()
+            if "(" in recv_txt and root_tok in _BUILTINS:
+                # method on a builtin temporary whose site Jedi recorded with
+                # the call text as the receiver: TypeError(...).with_traceback
+                sig = f"builtins.{root_tok}.{site.method_name}"
+                bump(caller.signature, sig)
+                continue
             parts = tuple(
                 p_ for p_ in (site.receiver_expr or "").split(".") if p_
             )
@@ -1117,6 +1200,9 @@ def defuse_linker_edges(
                 continue
             sig = _method_on(t, site.method_name, qual)
             if sig is None:
+                # typed, but the type does not declare the method — the type
+                # was a bad vote; fall through to the name-linked tier
+                still.append((caller, owner, site, scope, mod, qual, classes))
                 continue
             oracle.vote(sig, site)
             bump(caller.signature, sig)
@@ -1125,12 +1211,33 @@ def defuse_linker_edges(
             ] = sig
         remaining = still
 
+    iter_still: List[Tuple] = []
     for caller, owner, name, scope, mod, qual, classes in pending_iter:
-        t = _typed_receiver(caller, owner, name, scope, mod, qual, classes)
-        if t is None:
-            continue
-        sig = _method_on(t, "__iter__", qual)
+        t = (
+            _typed_receiver(caller, owner, name, scope, mod, qual, classes)
+            if name is not None
+            else None
+        )
+        sig = _method_on(t, "__iter__", qual) if t is not None else None
         if sig is not None:
+            bump(caller.signature, sig)
+        else:
+            iter_still.append((caller, "__iter__"))
+
+    # ---- name-linked tier (CHA-by-name): a receiver no typing tier could
+    # resolve may target any internal callable of that name — the same
+    # over-approximation Joern emits for untyped receivers. Sound may-call;
+    # bounded per site so a common name cannot explode the graph.
+    _FAN_CAP = 16
+    for caller, owner, site, scope, mod, qual, classes in remaining:
+        recv = site.receiver_expr or ""
+        if recv in ("self", "cls"):
+            continue  # typed tiers exhausted the honest candidates
+        for sig in (oracle.by_name.get(site.method_name) or [])[:_FAN_CAP]:
+            if sig != caller.signature:
+                bump(caller.signature, sig)
+    for caller, mname in iter_still:
+        for sig in (oracle.by_name.get(mname) or [])[:_FAN_CAP]:
             bump(caller.signature, sig)
 
     return (

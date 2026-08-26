@@ -87,10 +87,36 @@ resolutions vote before round two) — no fixpoint. Votes only admit
 internal-class types, which keeps #146's flapping IO types out of the
 lattice; A/B runs stay byte-identical modulo #146.
 
-Still out of scope: whole-program flows (hook registries, types crossing
-external-library returns, attribute-chain receivers like
-`self._store.values()`) — these are the L4 SDG-summary propagation, a
-separate design unit; Scalpel copy-closure alias widening.
+**Name-linked tier (implemented 2026-08-26).** Receiver sites that survive
+every typing tier resolve by CHA-by-name: the call may target any internal
+callable of that name (bounded per site), which is exactly the
+over-approximation Joern emits for untyped receivers. The tier also lowers
+iteration everywhere it appears (for-loops, comprehensions, generator
+expressions) and methods on builtin temporaries
+(`TypeError(...).with_traceback`). Sound may-call; applied only after the
+typed tiers so precise resolutions are never widened.
+
+**Completion ledger (2026-08-26).** With the tiers above, the call graph is a
+superset of every real edge both reference tools produce on both fixtures:
+
+- Joern requests: 211/212 internal pairs; the one residual targets Joern's
+  synthetic `<lambda>0` node, unnameable in this schema.
+- Joern flask: 182/190; the 8 residuals are all synthetic Joern nodes —
+  parameters-as-callees (`load`, `loads`, `decorator`, `response`),
+  `<body>`, `<lambda>0`, and `<redefined>N` duplicates.
+- Fraunhofer requests/flask: every real edge covered; residuals are their
+  inference stubs (targets that do not exist in source: `None.*`,
+  `object.object`, `t.Any.*`, methods fabricated on classes that never
+  declare them), instance/parameter attribute stubs where we hold the
+  fully-resolved edge, private-impl naming variants (`RLock`/`_RLock`,
+  `ref`/`ReferenceType`), and one blank-caller synthetic.
+
+A/B determinism after all tiers: byte-identical `call_graph` on both
+fixtures across paired runs (#146 remains open as a probabilistic Jedi
+source; the linker's vote lattice admits internal-class names only and
+cannot amplify it).
+
+Still out of scope: Scalpel copy-closure alias widening.
 
 ## Reference validation (2026-08-25/26)
 
