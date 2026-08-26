@@ -142,6 +142,24 @@ descriptor-protocol resolutions (`builtins.classmethod.__get__` on
 `cls.helper()` sites) and cross-namespace stamps (`self._warn` resolved to
 stdlib `_warnings.warn` — the declared-method edge is now added alongside).
 
+**Whole-program propagation (#150, implemented 2026-08-26).** The one-round
+oracle became a capped monotone fixpoint (progress-driven, ≤8 rounds), and
+three transfer families joined it: **chained return summaries** (`return
+self.build_response(...)` resolves through the callee's own returns,
+memoized, cycle-safe, depth-capped), **returned callables** (`return inner`
+lets `f = factory(); f()` point at the inner def — bare-name fan is
+owner-filtered at the same time, since a bare name can never invoke a
+method), and **container element types** (`self.adapters[k] = adapter` typed
+by the writer's parameter votes; a loop variable drawn from
+`self.adapters.items()` carries the element type into return summaries — the
+`get_adapter`/`send` chain). Measured on odoo-slim-19: the audited Joern
+residual fell 292 → 243 (0.9%), the closure-target bucket to zero, with the
+graph size flat (+0.02% — fan replacement offset by the new precise arrows).
+Determinism: requests byte-identical; flask differs by the single canonical
+#146 edge; odoo paired samples flap 0.088% / 0.118% with the
+downstream-amplification ratio constant at ~60% — same composition, no new
+flap class, #146 remains the sole source.
+
 Still out of scope: Scalpel copy-closure alias widening.
 
 ## Reference validation (2026-08-25/26)

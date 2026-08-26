@@ -78,13 +78,16 @@ def test_emit_neo4j_runs_full_depth_by_default(cli_runner, tiny_project, tmp_pat
 # ----------------------------------------------------------------------------------------------
 
 
-def test_format_msgpack_is_rejected(cli_runner, tiny_project, tmp_path):
-    r = _invoke(
-        cli_runner,
-        "--input", str(tiny_project), "--output", str(tmp_path / "out"),
-        "--no-venv", "--format", "msgpack",
-    )
-    assert r.exit_code != 0, "--format msgpack must no longer be accepted"
+def test_format_flag_is_gone(cli_runner, tiny_project, tmp_path):
+    """#118 removed msgpack; with one format left the flag itself is gone —
+    any --format spelling is an unknown-option error."""
+    for value in ("json", "msgpack"):
+        r = _invoke(
+            cli_runner,
+            "--input", str(tiny_project), "--output", str(tmp_path / "out"),
+            "--no-venv", "--format", value,
+        )
+        assert r.exit_code != 0, f"--format {value} must be rejected"
 
 
 def test_msgpack_absent_from_model_and_help(cli_runner):

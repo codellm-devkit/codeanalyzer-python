@@ -91,6 +91,46 @@ class Holder:
         return self.gadget.tick()
 
 
+class Registry:
+    def __init__(self):
+        self.things = {}
+
+    def mount(self, key, thing):
+        self.things[key] = thing
+
+    def lookup(self, key):
+        for k, v in self.things.items():
+            if k == key:
+                return v
+        return None
+
+    def use(self, key):
+        t = self.lookup(key)
+        return t.tick()
+
+
+def build_registry():
+    r = Registry()
+    r.mount("w", Widget())
+    return r
+
+
+def make_adder():
+    def adder(x):
+        return x + 1
+    return adder
+
+
+def uses_closure():
+    add = make_adder()
+    return add(1)
+
+
+def chained_return():
+    r = build_registry()
+    return r.lookup("w")
+
+
 @_h
 def decorated_at_module():
     return 1
@@ -381,3 +421,22 @@ def test_self_attr_type_resolves(stripped_edges):
     """self.gadget = Widget() in __init__ -> self.gadget.tick() elsewhere."""
     pairs, _ = stripped_edges
     assert _has(pairs, "poke", "Widget.tick")
+
+
+def test_closure_call_resolves(stripped_edges):
+    """add = make_adder(); add(1) -> the inner def, through the return summary."""
+    pairs, _ = stripped_edges
+    assert _has(pairs, "uses_closure", "make_adder.adder")
+
+
+def test_chained_return_types_receiver(stripped_edges):
+    """r = build_registry() -> Registry via `return r` of a ctor-typed local."""
+    pairs, _ = stripped_edges
+    assert _has(pairs, "chained_return", "Registry.lookup")
+
+
+def test_container_element_chain(stripped_edges):
+    """mount(thing) votes Widget -> self.things element -> lookup's loop-var
+    return -> use's receiver -> Widget.tick. The whole-program chain (#150)."""
+    pairs, _ = stripped_edges
+    assert _has(pairs, "Registry.use", "Widget.tick")

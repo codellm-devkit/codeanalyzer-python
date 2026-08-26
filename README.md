@@ -165,9 +165,6 @@ $ canpy --help
 │                                                                    --emit schema).               │
 │ --output             -o                     <path>                 Output directory for          │
 │                                                                    artifacts.                    │
-│ --format             -f                     <json>                 Output format for --emit      │
-│                                                                    json: json.                   │
-│                                                                    [default: json]               │
 │ --emit                                      <json|neo4j|schema>    Output target: json           │
 │                                                                    (analysis.json, default) |    │
 │                                                                    neo4j (graph.cypher or live   │
@@ -273,13 +270,14 @@ $ canpy --help
    canpy --input ./my-python-project --output ./out --format msgpack   # → ./out/analysis.msgpack
    ```
 
-3. **Enrich the call graph with PyCG (level 2):**
+3. **Enrich the call graph with the defuse linker (level 2):**
    ```sh
    canpy --input ./my-python-project -a 2
    ```
-   Level 1 edges come from Jedi's lexical resolution. `-a 2` runs **PyCG** and merges its
-   flow-sensitive edges in (RPC / third-party / dynamically-dispatched targets), backfilling
-   callees Jedi could not resolve. Every edge is provenance-tagged (e.g. `jedi`, `pycg`).
+   Level 1 edges come from Jedi's lexical resolution. `-a 2` runs the **defuse linker** —
+   per-callable resolution over lexical scopes, import bindings, class hierarchies, and a
+   bounded type-propagation round — and merges its edges with Jedi's, backfilling the
+   callees Jedi could not resolve. Every edge is provenance-tagged (`jedi`, `defuse`).
 
 4. **Emit a Neo4j snapshot, or push to a live database:**
    ```sh
@@ -321,7 +319,7 @@ levels are cumulative and additive — `analysis.json(-a 1) ⊆ … ⊆ analysis
 | Level | Flag | What it adds | Where it lands |
 | --- | --- | --- | --- |
 | **1** | `-a 1` (default) | Symbol table, Jedi call graph, and `call` nodes in each callable's `body` | `body` calls (`callee: null`) |
-| **2** | `-a 2` | PyCG call-graph enrichment; each call's `callee` backfilled to a `can://` id | `call_graph`, `body` callees |
+| **2** | `-a 2` | Defuse-linker call-graph enrichment; each call's `callee` backfilled to a `can://` id | `call_graph`, `body` callees |
 | **3** | `-a 3` | Native **intraprocedural** CFG/CDG/DDG (syntactic, name-equality, `prov: ["ssa"]`) | `cfg`, `cdg`, `ddg`, `@entry`/`@exit` on each callable |
 | **4** | `-a 4` | **Interprocedural** SDG: synthetic param vertices, alias-aware DDG (`prov: ["points-to"]`) | `param_in`, `param_out`, `summary`, semantic `ddg` |
 
@@ -350,7 +348,7 @@ symbol-table signature by construction
   external dependency to install; the analyzer falls back to the built-in `TypeBasedAliasOracle`
   (Jedi-inferred types; unknown types conservatively alias) only when Scalpel can't resolve a
   construct or a per-callable build fails, keeping the `may_alias` interface total. Call dispatch
-  comes from the merged Jedi(+PyCG) call graph, treated as a frozen oracle.
+  comes from the merged Jedi + defuse-linker call graph, treated as a frozen oracle.
 - **Summaries:** relational formal-in → formal-out flows composed bottom-up over the Tarjan SCC
   condensation of the call graph, a monotone fixpoint within SCCs; globals ride as extra formals,
   closure captures bind at definition sites.
@@ -389,7 +387,7 @@ just populate more of the same tree:
       }
     },
     "call_graph": [ { "src": "can://…/main(a)", "dst": "can://…/helper(x)",
-                      "weight": 1, "prov": ["jedi", "pycg"] } ],
+                      "weight": 1, "prov": ["defuse", "jedi"] } ],
     "external_symbols": {         // imported/builtin call targets, keyed by id
       "can://python/<app>/@external/os/getcwd":
         { "id": "can://python/<app>/@external/os/getcwd", "kind": "external",

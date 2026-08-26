@@ -76,6 +76,7 @@ class _Scope:
     __slots__ = (
         "parent", "funcs", "bindings", "imports", "mod_imports", "blocked",
         "literal_types", "instance_types", "call_assigns", "return_ctors",
+        "return_calls", "loopvar_sources",
     )
 
     def __init__(self, parent: Optional["_Scope"]) -> None:
@@ -100,6 +101,12 @@ class _Scope:
         self.call_assigns: Dict[str, ast.expr] = {}
         # bare class names this scope's `return C(...)` statements construct
         self.return_ctors: set = set()
+        # func expressions of every `return <call>(...)` in this scope, for
+        # chained return summaries (`return self.build_response(...)`)
+        self.return_calls: List[ast.expr] = []
+        # loop variables drawn from a self-attribute container:
+        # `for k, v in self.adapters.items():` -> v: ("elem", "adapters")
+        self.loopvar_sources: Dict[str, Tuple[str, str]] = {}
 
 
 def _module_qual(file_key: str) -> str:
@@ -276,12 +283,23 @@ def _record_stmt(stmt: ast.AST, scope: _Scope) -> None:
                         if isinstance(stmt.value.func, ast.Name):
                             scope.instance_types[tgt.id] = stmt.value.func.id
                         scope.call_assigns[tgt.id] = stmt.value.func
+    elif isinstance(stmt, (ast.For, ast.AsyncFor)):
+        attr = _self_container_of(stmt.iter)
+        if attr is not None:
+            targets = (
+                stmt.target.elts if isinstance(stmt.target, ast.Tuple) else [stmt.target]
+            )
+            # the value position: last element of a tuple target (items()),
+            # or the single target (values()/direct iteration)
+            val = targets[-1]
+            if isinstance(val, ast.Name):
+                scope.loopvar_sources[val.id] = ("elem", attr)
     elif isinstance(stmt, ast.Return):
         if stmt.value is not None:
-            if isinstance(stmt.value, ast.Call) and isinstance(
-                stmt.value.func, ast.Name
-            ):
-                scope.return_ctors.add(stmt.value.func.id)
+            if isinstance(stmt.value, ast.Call):
+                scope.return_calls.append(stmt.value.func)
+                if isinstance(stmt.value.func, ast.Name):
+                    scope.return_ctors.add(stmt.value.func.id)
             elif isinstance(stmt.value, ast.Name):
                 # `cj = RequestsCookieJar(); ...; return cj` — resolved when
                 # the summary is read, against this scope's ctor-typed locals.
@@ -291,6 +309,22 @@ def _record_stmt(stmt: ast.AST, scope: _Scope) -> None:
             scope.bindings[stmt.target.id] = stmt.value.id
         elif stmt.value is not None:
             scope.blocked.add(stmt.target.id)
+
+
+def _self_container_of(expr: ast.expr) -> Optional[str]:
+    """``self.X`` / ``self.X.items()`` / ``self.X.values()`` -> ``"X"``."""
+    node = expr
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+        if node.func.attr not in ("items", "values"):
+            return None
+        node = node.func.value
+    if (
+        isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "self"
+    ):
+        return node.attr
+    return None
 
 
 def _record_import_from(node: ast.ImportFrom, scope: _Scope) -> None:
@@ -811,6 +845,10 @@ class _TypeOracle:
         self.self_attr: Dict[Tuple[str, str], Tuple[str, str]] = {}
         self.return_class: Dict[str, Optional[str]] = {}
         self.module_classes: Dict[str, Dict[str, PyClass]] = {}
+        self.owner_by_sig: Dict[str, Optional[PyClass]] = {}
+        # (class sig, attr) -> [(writer method name, value var name)] for
+        # `self.attr[key] = value` container writes
+        self.elem_writes: Dict[Tuple[str, str], List[Tuple[str, str]]] = {}
 
     # -- construction ------------------------------------------------------
     def add_module(self, qual: str, mod: PyModule, tree: ast.Module,
@@ -820,6 +858,7 @@ class _TypeOracle:
             self.classes_global.setdefault(name, []).append(cls)
         for caller, _owner in _iter_callables(mod):
             self.func_by_sig[caller.signature] = caller
+            self.owner_by_sig[caller.signature] = _owner
             self.by_name.setdefault(caller.name, []).append(caller.signature)
             names = [p.name for p in caller.parameters or []]
             self.param_names[caller.signature] = names
@@ -838,6 +877,26 @@ class _TypeOracle:
             cls = classes.get(node.name)
             if cls is None:
                 continue
+            method_stack: Dict[int, str] = {}
+            for m in ast.walk(node):
+                if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    for sub in ast.walk(m):
+                        if not isinstance(sub, ast.Assign):
+                            continue
+                        for tgt in sub.targets:
+                            if (
+                                isinstance(tgt, ast.Subscript)
+                                and isinstance(tgt.value, ast.Attribute)
+                                and isinstance(tgt.value.value, ast.Name)
+                                and tgt.value.value.id == "self"
+                                and isinstance(sub.value, ast.Name)
+                            ):
+                                # self.X[key] = value_name — the writer method
+                                # and value name; the value's type resolves
+                                # lazily (parameter votes land later)
+                                self.elem_writes.setdefault(
+                                    (cls.signature, tgt.value.attr), []
+                                ).append((m.name, sub.value.id))
             for sub in ast.walk(node):
                 if not isinstance(sub, ast.Assign):
                     continue
@@ -1029,10 +1088,9 @@ def defuse_linker_edges(
                                 global_classes=oracle.classes_global,
                             )
                 if sig is None:
-                    if site.receiver_expr:
-                        pending.append(
-                            (caller, owner, site, scope, mod, qual, classes)
-                        )
+                    pending.append(
+                        (caller, owner, site, scope, mod, qual, classes)
+                    )
                     continue
                 oracle.vote(sig, site)
                 bump(caller.signature, sig)
@@ -1141,27 +1199,99 @@ def defuse_linker_edges(
     # ---- interprocedural round (#148 extension): type the receivers the
     # local pass could not, in a strict deterministic order, then resolve
     # the method on the typed class. One round, no fixpoint.
-    def _returned_ctor_class(callee, qual):
-        """Unique `return C(...)` inside *callee*, resolved to a class."""
+    def _container_elem_type(owner, attr, qual):
+        """`self.attr[k] = value` writers vote the container's element type."""
+        if owner is None:
+            return None
+        cands = set()
+        for method_name, value_name in oracle.elem_writes.get(
+            (owner.signature, attr), []
+        ):
+            writer = (owner.callables or {}).get(method_name)
+            if writer is None:
+                continue
+            t = oracle.param_type(writer, value_name, qual)
+            if t is not None and t[0] == "class":
+                cands.add(t[1].name)
+        return next(iter(cands)) if len(cands) == 1 else None
+
+    _ret_memo: Dict[str, Optional[Tuple]] = {}
+
+    def _returned_summary(callee, depth=0):
+        """What does *callee* return? -> ("class", PyClass) |
+        ("callable", sig) | None. Memoized, cycle-safe, depth-capped —
+        chains through `return self.m(...)` / `return f(...)`.
+        """
+        if callee is None or depth > 4:
+            return None
+        key = callee.signature
+        if key in _ret_memo:
+            return _ret_memo[key]
+        _ret_memo[key] = None  # cycle guard
+        result = None
         for home_qual, (hmod, hfacts, hclasses) in sorted(module_ctx.items()):
-            if not callee.signature.startswith(home_qual + "."):
+            if not key.startswith(home_qual + "."):
                 continue
             cscope = _scope_for_callable(callee, hfacts.by_def, hfacts.module_scope)
             if cscope is hfacts.module_scope:
-                continue
+                break
             names = set()
+            fn_paths = set()
             for c in sorted(cscope.return_ctors):
                 if c.startswith("~"):
-                    it = cscope.instance_types.get(c[1:])
+                    nm = c[1:]
+                    if nm in cscope.funcs:
+                        fn_paths.add(cscope.funcs[nm])
+                        continue
+                    it = cscope.instance_types.get(nm)
+                    if it is None and nm in cscope.loopvar_sources:
+                        # loop var drawn from a self container:
+                        # `for k, v in self.adapters.items(): ... return v`
+                        _, attr = cscope.loopvar_sources[nm]
+                        own = oracle.owner_by_sig.get(key)
+                        it = _container_elem_type(own, attr, home_qual)
                     if it is not None:
                         names.add(it)
                 else:
                     names.add(c)
             hits = sorted({n for n in names if n in hclasses})
-            if len(hits) == 1 and len(names) == 1:
-                return hclasses[hits[0]]
-            return None
-        return None
+            if len(hits) == 1 and len(names) == 1 and not fn_paths:
+                result = ("class", hclasses[hits[0]])
+                break
+            if len(fn_paths) == 1 and not names:
+                sig = _signature_for_path(hmod, next(iter(fn_paths)))
+                if sig:
+                    result = ("callable", sig)
+                    break
+            if len(cscope.return_calls) == 1 and not names and not fn_paths:
+                fexpr = cscope.return_calls[0]
+                nxt_sig = None
+                if (
+                    isinstance(fexpr, ast.Attribute)
+                    and isinstance(fexpr.value, ast.Name)
+                    and fexpr.value.id in ("self", "cls")
+                ):
+                    own = oracle.owner_by_sig.get(key)
+                    if own is not None:
+                        nxt_sig = _resolve_self_call(
+                            fexpr.attr, own, hclasses,
+                            hfacts.module_scope, hmod, home_qual, by_qual,
+                            global_classes=oracle.classes_global,
+                        )
+                else:
+                    nxt_sig = _resolve_expr(
+                        fexpr, cscope, hmod, home_qual, by_qual
+                    )
+                nxt = oracle.func_by_sig.get(nxt_sig) if nxt_sig else None
+                if nxt is not None:
+                    result = _returned_summary(nxt, depth + 1)
+            break
+        _ret_memo[key] = result
+        return result
+
+    def _returned_ctor_class(callee, qual):
+        r = _returned_summary(callee)
+        return r[1] if r is not None and r[0] == "class" else None
 
     def _typed_receiver(caller, owner, name, scope, mod, qual, classes):
         t = oracle.param_type(caller, name, qual)
@@ -1224,9 +1354,56 @@ def defuse_linker_edges(
         )
 
     remaining = pending
-    for _round in (1, 2):
+    _MAX_ROUNDS = 8  # monotone: resolutions only grow; cap is a safety net
+    for _round in range(_MAX_ROUNDS):
+        made_progress = False
         still: List[Tuple] = []
         for caller, owner, site, scope, mod, qual, classes in remaining:
+            if not (site.receiver_expr or ""):
+                # bare call of a variable holding a returned closure:
+                # `compute = make_compute(...); compute(...)`
+                sig = None
+                s_ = scope
+                while s_ is not None:
+                    if site.method_name in s_.call_assigns:
+                        fexpr = s_.call_assigns[site.method_name]
+                        fsig = None
+                        if (
+                            isinstance(fexpr, ast.Attribute)
+                            and isinstance(fexpr.value, ast.Name)
+                            and fexpr.value.id in ("self", "cls")
+                            and owner is not None
+                        ):
+                            fsig = _resolve_self_call(
+                                fexpr.attr, owner, classes,
+                                module_ctx[qual][1].module_scope, mod, qual,
+                                by_qual, global_classes=oracle.classes_global,
+                            )
+                        else:
+                            fsig = _resolve_expr(fexpr, s_, mod, qual, by_qual)
+                        summ = _returned_summary(oracle.func_by_sig.get(fsig)) if fsig else None
+                        if summ is not None and summ[0] == "callable":
+                            sig = summ[1]
+                        break
+                    if (
+                        site.method_name in s_.blocked
+                        or site.method_name in s_.bindings
+                        or site.method_name in s_.funcs
+                        or site.method_name in s_.imports
+                        or site.method_name in s_.mod_imports
+                    ):
+                        break
+                    s_ = s_.parent
+                if sig is not None:
+                    oracle.vote(sig, site)
+                    bump(caller.signature, sig)
+                    resolutions[
+                        (caller.signature, f"{site.start_line}:{site.start_column}")
+                    ] = sig
+                    made_progress = True
+                else:
+                    still.append((caller, owner, site, scope, mod, qual, classes))
+                continue
             if (site.receiver_expr or "") in ("self", "cls") and owner is not None:
                 sig = _resolve_self_call(
                     site.method_name, owner, classes,
@@ -1277,7 +1454,10 @@ def defuse_linker_edges(
             resolutions[
                 (caller.signature, f"{site.start_line}:{site.start_column}")
             ] = sig
+            made_progress = True
         remaining = still
+        if not made_progress:
+            break
 
     iter_still: List[Tuple] = []
     for caller, owner, name, scope, mod, qual, classes in pending_iter:
@@ -1298,7 +1478,12 @@ def defuse_linker_edges(
     # bounded per site so a common name cannot explode the graph.
     _FAN_CAP = 1024  # pathology guard only; Joern's widest observed fan is 222
     for caller, owner, site, scope, mod, qual, classes in remaining:
-        for sig in (oracle.by_name.get(site.method_name) or [])[:_FAN_CAP]:
+        cands = oracle.by_name.get(site.method_name) or []
+        if not (site.receiver_expr or ""):
+            # a bare name can never invoke a method (no receiver at runtime)
+            # — only module-level functions are legal targets
+            cands = [c for c in cands if oracle.owner_by_sig.get(c) is None]
+        for sig in cands[:_FAN_CAP]:
             if sig != caller.signature:
                 bump(caller.signature, sig)
     for caller, mname in iter_still:

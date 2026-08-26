@@ -27,7 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--format msgpack` CLI choice, the `analysis.msgpack` artifact, the msgpack
   serialization mixin on schema models, and the `msgpack` dependency are gone.
   `analysis.json` is the single wire format; anyone passing `--format msgpack`
-  must drop the flag. `--format json` still works unchanged.
+  must drop the flag. With one format left, the `--format` flag itself is now
+  removed too — `analysis.json` is always written; anyone passing
+  `--format json` must simply drop the flag.
 - **`--emit neo4j` now enforces its always-full-depth contract** (#119): it
   runs at level 4 with every graph section regardless of defaults, and
   explicitly passing `-a`/`--graphs` alongside it is now the documented
