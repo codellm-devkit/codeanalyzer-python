@@ -20,6 +20,14 @@ from codeanalyzer.core import Codeanalyzer
 # ----------------------------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _no_ambient_system_python(monkeypatch):
+    """Discovery tests fabricate their own interpreters; an ambient
+    SYSTEM_PYTHON (the CI compat job sets one for the venv-building CLI
+    tests) would short-circuit the walk they are exercising."""
+    monkeypatch.delenv("SYSTEM_PYTHON", raising=False)
+
+
 def test_grammar_stems_parse_to_versions():
     got = Codeanalyzer._versions_from_grammar_stems(
         ["grammar36", "grammar39", "grammar310", "grammar313", "grammar314"]
