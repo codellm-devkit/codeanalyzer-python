@@ -17,7 +17,7 @@
 """Stage 5b of the level-3 dataflow ladder: SCC condensation of the call graph.
 
 The call graph is a frozen oracle (level-1 Jedi edges, provenance-merged with
-level-2 PyCG when enabled); Tarjan condenses it into strongly connected
+level-2 resolvers); Tarjan condenses it into strongly connected
 components, and the condensation DAG in reverse topological order is the
 bottom-up processing schedule for summary composition — callees before
 callers, one monotone fixpoint per SCC (mutual recursion).

@@ -139,7 +139,7 @@ def make_sample_app() -> Tuple[PyApplication, Dict[str, str]]:
             src="service.helper",
             dst="os.getcwd",
             weight=2,
-            prov=["jedi", "pycg"],
+            prov=["defuse", "jedi"],
         ),
     ]
 

@@ -29,7 +29,7 @@ from codeanalyzer.semantic_analysis.call_graph import (
     merge_edges,
     resolve_unresolved_constructors,
 )
-from codeanalyzer.semantic_analysis.pycg import PyCG, PyCGExceptions
+from codeanalyzer.semantic_analysis.defuse_linker import defuse_linker_edges
 from codeanalyzer.syntactic_analysis.exceptions import SymbolTableBuilderRayError
 from codeanalyzer.syntactic_analysis.import_resolver import resolve_imports
 from codeanalyzer.syntactic_analysis.symbol_table_builder import SymbolTableBuilder
@@ -41,7 +41,7 @@ def _ensure_ray() -> None:
     """Initialize Ray with the driver's pinned hash seed in the workers.
 
     An implicit auto-init would not carry PYTHONHASHSEED into worker
-    interpreters, so PyCG shards (and Jedi inference) run there with random
+    interpreters, so Jedi inference in Ray workers would run with random
     set-iteration order and the emitted edges vary run to run (issue #99)."""
     if not ray.is_initialized():
         ray.init(
@@ -592,14 +592,20 @@ class Codeanalyzer:
         logger.info("✅ Jedi: %d edges in %.1fs", len(call_graph), time.perf_counter() - t0_jedi)
 
         if self.analysis_level >= 2:
-            # Level 2: also add PyCG edges. The Jedi edges double as the
-            # coupling graph that drives coupling-aware PyCG sharding.
-            pycg_edges = self._get_pycg_call_graph(symbol_table, jedi_edges)
-            call_graph = merge_edges(call_graph, pycg_edges)
+            # Level 2: the defuse linker backfills call sites Jedi could not
+            # resolve, from local def-use chains and module-scope bindings
+            # (docs/design/specs/2026-08-25-defuse-linker-call-graph-design.md).
+            t0_linker = time.perf_counter()
+            defuse_edges, defuse_resolutions = defuse_linker_edges(symbol_table)
+            call_graph = merge_edges(call_graph, defuse_edges)
+            logger.info(
+                "✅ defuse linker: %d edges in %.1fs",
+                len(defuse_edges), time.perf_counter() - t0_linker,
+            )
 
         call_graph = filter_external_edges(call_graph, symbol_table)
-        # Canonical edge order: backend iteration order (PyCG dicts, Counter
-        # insertion) is not a contract — sort so identical edge SETS always
+        # Canonical edge order: backend iteration order (Counter insertion,
+        # dict iteration) is not a contract — sort so identical edge SETS always
         # serialize identically (issue #99 determinism gate), and so the
         # external-symbol homing below assigns ids in a stable order.
         call_graph.sort(key=lambda e: (e.src, e.dst))
@@ -633,7 +639,7 @@ class Codeanalyzer:
         app.external_symbols = self._home_external_symbols(app, app.id, sig_to_id)
         populate_l1_body(app)
         if self.analysis_level >= 2:
-            backfill_callees(app, sig_to_id)
+            backfill_callees(app, sig_to_id, resolutions=defuse_resolutions)
         reidentify_call_graph(app, sig_to_id)
 
         # Entrypoints: a post-pass over the built L1 tree (#27). Runs at every
@@ -942,39 +948,3 @@ class Codeanalyzer:
             len(symbol_table), time.perf_counter() - t0_st,
         )
         return symbol_table
-
-    def _get_pycg_call_graph(
-        self,
-        symbol_table: Dict[str, PyModule],
-        jedi_edges: List[PyCallEdge],
-    ) -> List[PyCallEdge]:
-        """Build PyCG-resolved call edges.
-
-        Runs PyCG's iterative name-pointer analysis over the whole project
-        and returns edges with ``prov=["pycg"]``.  Falls back to an
-        empty list and logs a warning on any failure so the caller can
-        continue with Jedi-only edges.
-
-        *jedi_edges* are the level-1 call edges; under the ``jedi`` shard
-        strategy they drive coupling-aware partitioning (see
-        :func:`shard_planner.plan_shards`).
-        """
-        try:
-            pycg = PyCG(
-                self.project_dir,
-                skip_tests=self.skip_tests,
-                shard=self.options.pycg_shard,
-                shard_ceiling=self.options.pycg_shard_ceiling,
-                shard_timeout=self.options.pycg_shard_timeout,
-                shard_strategy=self.options.pycg_shard_strategy,
-                max_iter=self.options.pycg_max_iter,
-                using_ray=self.using_ray,
-            )
-            return pycg.build_call_graph_edges(symbol_table, jedi_edges=jedi_edges)
-        except PyCGExceptions.PyCGImportError as exc:
-            logger.warning(f"PyCG not installed — level 2 edges will be Jedi-only: {exc}")
-            return []
-        except PyCGExceptions.PyCGAnalysisError as exc:
-            logger.warning(f"PyCG analysis failed — level 2 edges will be Jedi-only: {exc}")
-            logger.debug("PyCG full traceback:", exc_info=True)
-            return []

@@ -51,7 +51,7 @@ def test_decorated_function_flagged_and_helper_not(tmp_path):
 
 def test_malformed_entrypoint_rules_fails_fast_before_analysis(tmp_path):
     """A malformed ``--entrypoint-rules`` file must exit BEFORE the symbol
-    table, venv build, Jedi and PyCG run -- not deep in the pipeline
+    table, venv build, Jedi and the defuse linker run -- not deep in the pipeline
     (#122 review, IMPORTANT 1). Proven by wall-clock: a real analysis of
     even this tiny fixture takes noticeably longer than the sub-second
     failure this must produce."""

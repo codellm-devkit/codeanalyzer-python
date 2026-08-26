@@ -11,7 +11,7 @@ import typer
 def _pin_hash_seed() -> None:
     """Re-exec once with ``PYTHONHASHSEED=0`` unless the caller pinned one.
 
-    PyCG's capped fixpoint (``--pycg-max-iter``) iterates hash-ordered sets
+    Jedi's inference (and any hash-ordered iteration in the pipeline) walks sets
     keyed on module/access-path strings, so an unpinned per-interpreter hash
     seed makes the emitted L2+ call graph vary run to run (issue #99). The
     seed cannot be set after interpreter start, hence the exec. Export
@@ -40,7 +40,7 @@ from codeanalyzer.core import Codeanalyzer
 from codeanalyzer.utils import _set_log_level, logger
 from codeanalyzer.config import OutputFormat
 from codeanalyzer.schema import model_dump_json, strip_internal_only
-from codeanalyzer.options import AnalysisOptions, EmitTarget, ShardStrategy
+from codeanalyzer.options import AnalysisOptions, EmitTarget
 
 
 def _version_callback(value: bool) -> None:
@@ -146,7 +146,7 @@ def main(
         typer.Option(
             "-a",
             "--analysis-level",
-            help="Analysis depth: 1=symbol table+Jedi call graph, 2=+PyCG call "
+            help="Analysis depth: 1=symbol table+Jedi call graph, 2=+defuse-linker call "
             "graph, 3=+native intraprocedural dataflow (CFG/PDG), "
             "4=+interprocedural SDG (param/summary edges, alias-aware DDG). "
             "[default: 1; incompatible with --emit neo4j, which is always "
@@ -228,78 +228,6 @@ def main(
     verbosity: Annotated[
         int, typer.Option("-v", count=True, help="Increase verbosity: -v, -vv, -vvv")
     ] = 0,
-    pycg_shard: Annotated[
-        bool,
-        typer.Option(
-            "--pycg-shard/--no-pycg-shard",
-            help=(
-                "Shard PyCG call-graph analysis by Python package (level 2 only). "
-                "When the project exceeds the 500-file ceiling, PyCG is run "
-                "independently per top-level package with cross-package imports "
-                "treated as ghost nodes. Without this flag, projects over the "
-                "ceiling fall back to Jedi-only edges."
-            ),
-        ),
-    ] = False,
-    pycg_shard_ceiling: Annotated[
-        int,
-        typer.Option(
-            "--pycg-shard-ceiling",
-            help=(
-                "Maximum files per shard when --pycg-shard is active (default 100). "
-                "Shards exceeding this limit are skipped; their call edges are "
-                "omitted from the call graph (Jedi edges for those packages are "
-                "still included). Lower values are safer for packages with deep "
-                "class hierarchies or heavy import graphs."
-            ),
-            min=1,
-        ),
-    ] = 100,
-    pycg_shard_timeout: Annotated[
-        int,
-        typer.Option(
-            "--pycg-shard-timeout",
-            help=(
-                "Per-shard wall-clock timeout in seconds when --pycg-shard is "
-                "active (default 120). A shard that exceeds this limit is skipped "
-                "gracefully. PyCG's fixpoint is bimodal: it either converges "
-                "quickly or diverges indefinitely, so the timeout acts as a final "
-                "safety net after the file-count ceiling. Set to 0 to disable. "
-                "POSIX only (macOS / Linux); ignored on Windows."
-            ),
-            min=0,
-        ),
-    ] = 120,
-    pycg_shard_strategy: Annotated[
-        ShardStrategy,
-        typer.Option(
-            "--pycg-shard-strategy",
-            help=(
-                "How --pycg-shard groups files (level 2 only). 'jedi' (default) "
-                "partitions the Jedi module-dependency graph (SCC + Louvain) so "
-                "tightly-coupled modules co-compute and few call edges are "
-                "severed between shards; import cycles are never split. "
-                "'package' uses the legacy one-shard-per-package-directory "
-                "grouping."
-            ),
-        ),
-    ] = ShardStrategy.JEDI,
-    pycg_max_iter: Annotated[
-        int,
-        typer.Option(
-            "--pycg-max-iter",
-            help=(
-                "Cap on PyCG's fixpoint passes per shard/project (level 2; "
-                "default 50). PyCG iterates until its points-to state stops "
-                "changing, but its access-path domain has no convergence bound, "
-                "so heavy metaclass/mixin code (e.g. an ORM) can loop with each "
-                "pass costing seconds. The cap returns a sound-but-incomplete "
-                "call graph instead of looping until the timeout kills it. "
-                "Set to -1 for PyCG's unbounded run-to-convergence behaviour."
-            ),
-            min=-1,
-        ),
-    ] = 50,
     entrypoint_rules: Annotated[
         Optional[List[Path]],
         typer.Option(
@@ -389,11 +317,6 @@ def main(
         cache_dir=cache_dir,
         clear_cache=clear_cache,
         verbosity=verbosity,
-        pycg_shard=pycg_shard,
-        pycg_shard_ceiling=pycg_shard_ceiling,
-        pycg_shard_timeout=pycg_shard_timeout,
-        pycg_shard_strategy=pycg_shard_strategy,
-        pycg_max_iter=pycg_max_iter,
         entrypoint_rules=tuple(entrypoint_rules or ()),
     )
 
@@ -401,7 +324,7 @@ def main(
 
     # Entrypoint rules are configuration, validated before any analysis work
     # starts (#122 review) -- a typo must fail in milliseconds, not after the
-    # symbol table, venv build, Jedi and PyCG have all run. `detect_entrypoints`
+    # symbol table, venv build, Jedi and the defuse linker have all run. `detect_entrypoints`
     # loads the rules again at its own call site; that second load is cheap
     # and keeps the entrypoints pipeline self-contained.
     if options.entrypoint_rules:
@@ -482,7 +405,7 @@ def _write_output(artifacts, output_dir: Path, format: OutputFormat):
 app = typer.Typer(
     callback=main,
     name="canpy",
-    help="Static Analysis on Python source code using Jedi, PyCG and Tree sitter.",
+    help="Static Analysis on Python source code using Jedi and Tree sitter.",
     invoke_without_command=True,
     no_args_is_help=True,
     add_completion=False,

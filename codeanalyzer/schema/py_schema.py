@@ -448,7 +448,7 @@ class PyCallEdge(BaseModel):
     src: str  # caller callable id
     dst: str  # callee callable (or external) id
     weight: int = 1
-    prov: List[Literal["jedi", "pycg", "joern"]] = []
+    prov: List[Literal["jedi", "defuse"]] = []
 
 
 @builder

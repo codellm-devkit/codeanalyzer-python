@@ -28,6 +28,7 @@ from typing import Dict, Iterator, List, Tuple
 
 import networkx as nx
 
+from codeanalyzer.semantic_analysis.defuse_linker import _module_qual
 from codeanalyzer.schema.py_schema import (
     PyApplication,
     PyCallable,
@@ -170,7 +171,7 @@ def jedi_call_graph_edges(
 
     Edges are coalesced on ``(source, target)``: ``weight`` is the count of
     matching sites. Provenance is always ``["jedi"]``; combine with
-    PyCG-derived edges via ``merge_edges``.
+    defuse-linker edges via ``merge_edges``.
     """
     counts: Counter = Counter()
     for caller in iter_callables_in_symbol_table(symbol_table):
@@ -253,9 +254,9 @@ def filter_external_edges(
     retained; only lib→lib edges are dropped.  The app symbol set is built by
     walking every callable in the symbol table recursively (including nested
     functions and closures via ``callables``) plus every class, so
-    PyCG-discovered closure nodes are correctly recognised as app symbols.
+    resolver-discovered closure nodes are correctly recognised as app symbols.
 
-    Module names count as app symbols too (#131). PyCG attributes a call made in
+    Module names count as app symbols too (#131). A resolver attributes a call in
     module scope to the MODULE -- ``app -> functools.reduce`` for a module-level
     ``functools.reduce(...)``, or for a decorator applied to a top-level
     definition, since a decorator executes in its enclosing scope. Without the
@@ -267,6 +268,10 @@ def filter_external_edges(
     app_symbols.update(
         mod.module_name for mod in symbol_table.values() if mod.module_name
     )
+    # Dotted module quals too: the defuse linker attributes module- and
+    # class-scope calls to "pkg.module" (collision-free across packages),
+    # which the bare `module_name` stems above never match.
+    app_symbols.update(_module_qual(key) for key in symbol_table)
 
     return [
         e for e in edges
@@ -279,7 +284,7 @@ def merge_edges(*edge_lists: list) -> list:
 
     Edges with the same ``(source, target)`` are coalesced: weights sum,
     provenance is the sorted union. Useful for combining edges produced
-    by different backends (e.g. Jedi + PyCG).
+    by different backends (e.g. Jedi + the defuse linker).
     """
     by_key: Dict[Tuple[str, str], PyCallEdge] = {}
     for edges in edge_lists:

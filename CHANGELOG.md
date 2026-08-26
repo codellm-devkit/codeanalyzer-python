@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+
+- **BREAKING: PyCG is removed; level 2 is Jedi + the defuse linker** (#148).
+  PyCG's whole-program fixpoint was the analyzer's cost pathology — on a
+  2,364-file project a seed-pinned sharded run spent 3h19m without one of 17
+  shards converging, and no setting of its knobs bounds a single pass — so it
+  is gone wholesale: the `pycg` dependency, the sharding machinery, and the
+  `--pycg-shard`, `--pycg-shard-ceiling`, `--pycg-shard-strategy`,
+  `--pycg-max-iter`, and `--pycg-shard-timeout` flags (the never-released
+  `--call-graph` selector is gone with them; there is one code path). Level 2
+  call edges now come from Jedi plus a per-callable **defuse linker** that
+  resolves remaining call sites through local def-use chains and module-scope
+  bindings — deterministic, no global fixpoint. Call-edge `prov` values are
+  now `"jedi"`, `"defuse"`, or both; `"pycg"` no longer appears (and is
+  removed from the schema's `prov` literal). Design:
+  `docs/design/specs/2026-08-25-defuse-linker-call-graph-design.md`.
 - **BREAKING: the msgpack output format is removed** (#118, TS parity): the
   `--format msgpack` CLI choice, the `analysis.msgpack` artifact, the msgpack
   serialization mixin on schema models, and the `msgpack` dependency are gone.
@@ -31,6 +46,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   untouched — but with the cap gone it resolves to numpy 2.0.2, which ships
   cp39 manylinux wheels for x86_64 and aarch64, so the source build stops
   happening there too.
+
+### Fixed
 
 ## [1.1.1] - 2026-07-27
 
