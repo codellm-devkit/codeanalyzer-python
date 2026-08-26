@@ -73,10 +73,40 @@ For each call site whose `callee_signature` is null after Jedi:
    cache, and a persisted resolution would resurface on a warm run as a Jedi
    edge, silently changing provenance.
 
-Out of scope, recorded as extensions: other receivers (`obj.m()` via local
-instance tracking), parameter-flow (`f` passed as argument — the
-context-insensitive half of PyCG's closure edges), module-scope call sites
-(not present in the symbol table today), Scalpel copy-closure alias widening.
+Out of scope, recorded as extensions: parameter- and return-typed receiver
+flows (`adapter = self.get_adapter(...); adapter.send(...)`, `for c in
+cookiejar:` where `cookiejar` is a parameter) — the interprocedural type
+propagation Joern's global pass performs, deliverable here via SDG summaries;
+Scalpel copy-closure alias widening.
+
+## Reference validation (2026-08-25/26)
+
+Iterated edge-for-edge against Joern (`pysrc2cpg`, v4.0.611) and
+Fraunhofer-AISEC CPG (main, jep frontend) on the requests and flask fixtures
+until ours was a superset of every real, existing-target edge both tools
+produce. Along the way this hardened far more than the linker: the reference
+diff exposed L1 symbol-table gaps (defs under `if`/`try` at any nesting were
+invisible), Jedi junk resolutions (`typing.Callable`,
+`functools._lru_cache_wrapper`, `builtins.NoneType` stamps), and a
+`filter_external_edges` gap that dropped every module-scope edge to a library
+target. Documented exceptions, by class:
+
+- **Their inference stubs** — targets that do not exist in source
+  (`None.read`, `object.object` implicit-base constructors,
+  `FlaskClient._add_cookies_to_wsgi` fabricated on the subclass while the
+  method lives on werkzeug's `Client`; we emit the external base instead).
+- **Attribute-named variants** — they name the class attribute
+  (`Flask.request_class`); we resolve through it to the real target
+  (`Request.__init__`), usually via Jedi.
+- **Private-impl naming** — `RLock` vs `_dummy_threading._RLock`, `fspath`
+  vs `os._fspath`, `weakref.ref` vs `_weakref.ReferenceType`.
+- **Interprocedural type flows** (Joern only, 21 pairs on requests) — the
+  parameter/return-typed receivers named above, out of the local design by
+  construction.
+- Joern's remaining ~4.4k rows are speculative typed-attribute fan-out
+  (`dict.__iter__.read.split`, `None.split`) and `<metaClass*>` machinery —
+  candidate enumeration, not resolution; matching it would mean fabricating
+  edges to nonexistent symbols.
 
 **What is knowingly lost vs PyCG:** cross-module global registries (odoo's
 registry pattern) and deep dynamic dispatch. Those edges were unobtainable in

@@ -16,7 +16,12 @@ from codeanalyzer.schema.py_schema import PyApplication, PyClass, PyCallable
 def _do_callable(c: PyCallable, sig_to_id: dict, resolutions: dict) -> None:
     for cs in c.call_sites or []:
         key = f"{cs.start_line}:{cs.start_column}"
-        sig = cs.callee_signature or resolutions.get((c.signature, key))
+        jedi_sig = cs.callee_signature
+        if jedi_sig and jedi_sig.startswith("typing."):
+            # A decorator-typed callable resolved to its annotation, not a
+            # target; the linker's resolution (if any) is the real callee.
+            jedi_sig = None
+        sig = jedi_sig or resolutions.get((c.signature, key))
         if not sig:
             continue
         node = c.body.get(key)

@@ -259,10 +259,26 @@ class SymbolTableBuilder:
 
         return imports
 
+    @staticmethod
+    def _scope_definitions(node: AST):
+        """Yield the def/class statements belonging to *node*'s own scope.
+
+        Sees through compound statements — a ``def`` under a module-level
+        ``if sys.platform == ...:``, inside a ``try:`` import guard, or
+        conditionally defined within a method body is still a definition of
+        that scope (#148 reference comparison caught these missing). Never
+        descends into a yielded def/class: nested scopes recurse separately.
+        """
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                yield child
+            else:
+                yield from SymbolTableBuilder._scope_definitions(child)
+
     def _add_class(self, node: AST, script: Script, source: str, prefix: str = "") -> Dict[str, PyClass]:
         classes: Dict[str, PyClass] = {}
 
-        for child in ast.iter_child_nodes(node):
+        for child in self._scope_definitions(node):
             if not isinstance(child, ast.ClassDef):
                 continue
 
@@ -319,7 +335,7 @@ class SymbolTableBuilder:
     def _callables(self, node: AST, script: Script, source: str, prefix: str = "") -> Dict[str, PyCallable]:
         callables: Dict[str, PyCallable] = {}
 
-        for child in ast.iter_child_nodes(node):
+        for child in self._scope_definitions(node):
             if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 method_name = child.name  # Keep the actual method name unchanged
                 start_line = child.lineno

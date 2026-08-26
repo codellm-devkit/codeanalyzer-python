@@ -25,6 +25,51 @@ def unused(x):
     return x
 '''
 
+_EXTRA = '''\
+import logging
+from helpers import helper as _h
+
+
+class ExtBase:
+    pass
+
+
+class Widget:
+    label_class = Thing  # noqa: F821  (resolved lexically at call time)
+
+    def tick(self):
+        return self.label_class()
+
+    def stamp(self):
+        return f"{self!r:>10}"
+
+
+class Kid(ExtBase):
+    def go(self):
+        return self.inherited_thing()
+
+
+def uses_logging():
+    return logging.getLogger(__name__)
+
+
+def uses_builtin():
+    return sorted([3, 1])
+
+
+def iterates():
+    w = Widget()
+    return w.tick()
+
+
+getLogger_at_module = logging.getLogger(__name__)
+
+
+@_h
+def decorated_at_module():
+    return 1
+'''
+
 _MAIN = '''\
 from helpers import helper
 from helpers import unused as spare
@@ -90,6 +135,7 @@ def project(tmp_path_factory):
     proj = tmp_path_factory.mktemp("linkerproj")
     (proj / "helpers.py").write_text(_HELPERS, encoding="utf-8")
     (proj / "main.py").write_text(_MAIN, encoding="utf-8")
+    (proj / "extra.py").write_text(_EXTRA.replace("Thing", "ExtBase"), encoding="utf-8")
     return proj
 
 
@@ -252,3 +298,42 @@ def test_module_qual():
     assert _module_qual("requests/api.py") == "requests.api"
     assert _module_qual("requests/__init__.py") == "requests"
     assert _module_qual("src/flask/app.py") == "src.flask.app"
+
+
+def test_module_scope_call_attributed_to_module(stripped_edges):
+    """`logging.getLogger(...)` at module level -> edge from the module qual."""
+    pairs, _ = stripped_edges
+    assert ("extra", "logging.getLogger") in pairs
+
+
+def test_module_alias_receiver_in_function(stripped_edges):
+    pairs, _ = stripped_edges
+    assert _has(pairs, "uses_logging", "logging.getLogger")
+
+
+def test_builtin_fallback(stripped_edges):
+    pairs, _ = stripped_edges
+    assert _has(pairs, "uses_builtin", "builtins.sorted")
+
+
+def test_decorator_application_edge(stripped_edges):
+    """@_h at module level applies helpers.helper at import time."""
+    pairs, _ = stripped_edges
+    assert ("extra", "helpers.helper") in pairs
+
+
+def test_fstring_repr_lowering(stripped_edges):
+    pairs, _ = stripped_edges
+    assert _has(pairs, "stamp", "builtins.repr")
+
+
+def test_attr_initializer_resolution(stripped_edges):
+    """self.label_class() resolves through the class attribute's initializer."""
+    pairs, _ = stripped_edges
+    assert _has(pairs, "Widget", "ExtBase") or _has(pairs, "tick", "ExtBase")
+
+
+def test_instance_typed_receiver(stripped_edges):
+    """w = Widget(); w.tick() -> Widget.tick via constructor-typed local."""
+    pairs, _ = stripped_edges
+    assert _has(pairs, "iterates", "Widget.tick")

@@ -28,6 +28,7 @@ from typing import Dict, Iterator, List, Tuple
 
 import networkx as nx
 
+from codeanalyzer.semantic_analysis.defuse_linker import _module_qual
 from codeanalyzer.schema.py_schema import (
     PyApplication,
     PyCallable,
@@ -267,6 +268,10 @@ def filter_external_edges(
     app_symbols.update(
         mod.module_name for mod in symbol_table.values() if mod.module_name
     )
+    # Dotted module quals too: the defuse linker attributes module- and
+    # class-scope calls to "pkg.module" (collision-free across packages),
+    # which the bare `module_name` stems above never match.
+    app_symbols.update(_module_qual(key) for key in symbol_table)
 
     return [
         e for e in edges
