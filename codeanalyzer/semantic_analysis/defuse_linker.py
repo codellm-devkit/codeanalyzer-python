@@ -62,6 +62,11 @@ def _is_junk_resolution(sig: Optional[str]) -> bool:
         sig.startswith("typing.")
         or sig.startswith("functools._lru_cache")
         or sig == "builtins.NoneType"
+        # descriptor-protocol stamps: a @classmethod/@staticmethod/@property
+        # call site resolved to the descriptor's binding machinery, not to
+        # the wrapped callable
+        or (sig.startswith("builtins.") and sig.endswith((".__get__", ".__set__")))
+        or sig.startswith("builtins.property")
     )
 
 
@@ -508,6 +513,7 @@ def _resolve_self_call(
     mod: Optional[PyModule] = None,
     module_qual: str = "",
     by_qual: Optional[Dict[str, PyModule]] = None,
+    global_classes: Optional[Dict[str, List[PyClass]]] = None,
 ) -> Optional[str]:
     """Resolve ``self.X()`` against *owner*, its bases, then its subclasses.
 
@@ -532,6 +538,13 @@ def _resolve_self_call(
             return target.signature
         for base in cls.base_classes or []:
             base_cls = classes.get(base)
+            if base_cls is None and global_classes is not None:
+                # `class MyCase(TransactionCase)` with the base declared in
+                # another module — follow it through the global index when
+                # the bare name is unambiguous
+                cands = global_classes.get(base.rsplit(".", 1)[-1]) or []
+                if len(cands) == 1:
+                    base_cls = cands[0]
             if base_cls is not None:
                 queue.append(base_cls)
     declaring = [
@@ -621,10 +634,12 @@ def _scope_for_callable(
         scope = by_def.get((c.name, line))
         if scope is not None:
             return scope
-    # Decorated defs: PyCallable lines may point at the decorator; scan a
-    # small window below for the def line.
-    for delta in range(1, 8):
-        scope = by_def.get((c.name, c.start_line + delta))
+    # Decorated defs: PyCallable lines may point at the first decorator, and
+    # odoo-style stacks (`@http.route(...)` spanning many lines) push the
+    # `def` far below it — scan the callable's whole span for the def line.
+    end = c.end_line if c.end_line and c.end_line > c.start_line else c.start_line + 64
+    for line in range(c.start_line + 1, min(end, c.start_line + 256) + 1):
+        scope = by_def.get((c.name, line))
         if scope is not None:
             return scope
     return module_scope
@@ -638,6 +653,7 @@ def _receiver_target(
     module_qual: str,
     by_qual: Dict[str, PyModule],
     classes: Optional[Dict[str, PyClass]] = None,
+    global_classes: Optional[Dict[str, List[PyClass]]] = None,
 ) -> Optional[str]:
     """Resolve ``recv.method()`` when ``recv`` is (rooted at) a module alias."""
     lt = _literal_receiver_type(site_receiver)
@@ -654,7 +670,10 @@ def _receiver_target(
         if cls_name is not None and classes is not None:
             target_cls = classes.get(cls_name)
             if target_cls is not None:
-                sig = _resolve_self_call(method_name, target_cls, classes)
+                sig = _resolve_self_call(
+                    method_name, target_cls, classes,
+                    global_classes=global_classes,
+                )
                 if sig is not None:
                     return sig
     target = _resolve_name(parts[0], scope)
@@ -718,6 +737,7 @@ def _resolve_uncovered_call(
     mod: PyModule,
     module_qual: str,
     by_qual: Dict[str, PyModule],
+    global_classes: Optional[Dict[str, List[PyClass]]] = None,
 ) -> Optional[str]:
     """Resolve an AST call that has no recorded ``PyCallsite``."""
     func = call.func
@@ -725,7 +745,8 @@ def _resolve_uncovered_call(
         root = func.value.id
         if root in ("self", "cls") and owner is not None:
             return _resolve_self_call(
-                func.attr, owner, classes, scope, mod, module_qual, by_qual
+                func.attr, owner, classes, scope, mod, module_qual, by_qual,
+                global_classes=global_classes,
             )
         lt = _lookup_literal_type(root, scope)
         if lt is not None:
@@ -950,6 +971,20 @@ def defuse_linker_edges(
                     site.callee_signature
                 ):
                     oracle.vote(site.callee_signature, site)
+                    # A self/cls call whose class chain declares the method:
+                    # the declared target holds regardless of what Jedi
+                    # stamped (it resolves e.g. odoo's `self._warn(...)` to
+                    # stdlib `_warnings.warn`). Additive — Jedi's edge stays.
+                    if (
+                        site.receiver_expr in ("self", "cls")
+                        and owner is not None
+                    ):
+                        declared = _resolve_self_call(
+                            site.method_name, owner, classes,
+                            global_classes=oracle.classes_global,
+                        )
+                        if declared and declared != site.callee_signature:
+                            bump(caller.signature, declared)
             sites = [
                 s
                 for s in (caller.call_sites or [])
@@ -962,15 +997,25 @@ def defuse_linker_edges(
                     target = _resolve_name(site.method_name, scope)
                     if target is not None:
                         sig = _target_signature(target, mod, qual, by_qual)
+                    if sig is None:
+                        # bare constructor of a class declared in this module
+                        # (or uniquely anywhere): `Frame(...)`
+                        ctor_cls = classes.get(site.method_name)
+                        if ctor_cls is None:
+                            cands = oracle.classes_global.get(site.method_name) or []
+                            ctor_cls = cands[0] if len(cands) == 1 else None
+                        if ctor_cls is not None:
+                            sig = f"{ctor_cls.signature}.__init__"
                 elif site.receiver_expr in ("self", "cls") and owner is not None:
                     sig = _resolve_self_call(
                         site.method_name, owner, classes,
                         facts.module_scope, mod, qual, by_qual,
+                        global_classes=oracle.classes_global,
                     )
                 else:
                     sig = _receiver_target(
                         site.receiver_expr, site.method_name, scope, mod, qual,
-                        by_qual, classes,
+                        by_qual, classes, global_classes=oracle.classes_global,
                     )
                     if sig is None and site.receiver_type:
                         # Jedi's per-site receiver-type inference names the
@@ -981,11 +1026,10 @@ def defuse_linker_edges(
                             sig = _resolve_self_call(
                                 site.method_name, target_cls, classes,
                                 facts.module_scope, mod, qual, by_qual,
+                                global_classes=oracle.classes_global,
                             )
                 if sig is None:
-                    if site.receiver_expr and site.receiver_expr not in (
-                        "self", "cls"
-                    ):
+                    if site.receiver_expr:
                         pending.append(
                             (caller, owner, site, scope, mod, qual, classes)
                         )
@@ -1005,6 +1049,7 @@ def defuse_linker_edges(
                         sig = _resolve_self_call(
                             "__eq__", owner, classes,
                             facts.module_scope, mod, qual, by_qual,
+                            global_classes=oracle.classes_global,
                         )
                         if sig is not None:
                             bump(caller.signature, sig)
@@ -1019,12 +1064,17 @@ def defuse_linker_edges(
                             target_cls = (
                                 classes.get(cls_name) if cls_name else None
                             )
-                        if target_cls is not None:
-                            sig = _resolve_self_call(
-                                "__iter__", target_cls, classes
+                        sig = (
+                            _resolve_self_call(
+                                "__iter__", target_cls, classes,
+                                facts.module_scope, mod, qual, by_qual,
+                                global_classes=oracle.classes_global,
                             )
-                            if sig is not None:
-                                bump(caller.signature, sig)
+                            if target_cls is not None
+                            else None
+                        )
+                        if sig is not None:
+                            bump(caller.signature, sig)
                         else:
                             pending_iter.append(
                                 (caller, owner, name, scope, mod, qual, classes)
@@ -1044,13 +1094,14 @@ def defuse_linker_edges(
                 if (node.lineno, node.col_offset) in recorded:
                     continue
                 sig = _resolve_uncovered_call(
-                    node, scope, owner, classes, mod, qual, by_qual
+                    node, scope, owner, classes, mod, qual, by_qual,
+                    global_classes=oracle.classes_global,
                 )
                 if sig is not None:
                     bump(caller.signature, sig)
                 elif isinstance(node.func, ast.Attribute) and isinstance(
                     node.func.value, ast.Name
-                ) and node.func.value.id not in ("self", "cls"):
+                ):
                     pending.append(
                         (
                             caller,
@@ -1127,6 +1178,7 @@ def defuse_linker_edges(
                     callee_sig = _resolve_self_call(
                         func.attr, owner, classes, module_ctx[qual][1].module_scope,
                         mod, qual, by_qual,
+                        global_classes=oracle.classes_global,
                     )
                 else:
                     callee_sig = _resolve_expr(
@@ -1160,17 +1212,33 @@ def defuse_linker_edges(
             None,
         )
         if home_qual is None or home_qual not in module_ctx:
-            return _resolve_self_call(method, cls, {cls.name: cls})
+            return _resolve_self_call(
+                method, cls, {cls.name: cls},
+                global_classes=oracle.classes_global,
+            )
         home_mod, home_facts, home_classes = module_ctx[home_qual]
         return _resolve_self_call(
             method, cls, home_classes, home_facts.module_scope,
             home_mod, home_qual, by_qual,
+            global_classes=oracle.classes_global,
         )
 
     remaining = pending
     for _round in (1, 2):
         still: List[Tuple] = []
         for caller, owner, site, scope, mod, qual, classes in remaining:
+            if (site.receiver_expr or "") in ("self", "cls") and owner is not None:
+                sig = _resolve_self_call(
+                    site.method_name, owner, classes,
+                    module_ctx[qual][1].module_scope, mod, qual, by_qual,
+                    global_classes=oracle.classes_global,
+                )
+                if sig is not None:
+                    oracle.vote(sig, site)
+                    bump(caller.signature, sig)
+                    continue
+                still.append((caller, owner, site, scope, mod, qual, classes))
+                continue
             recv_txt = (site.receiver_expr or "").strip()
             root_tok = recv_txt.split("(", 1)[0].split(".", 1)[0].strip()
             if "(" in recv_txt and root_tok in _BUILTINS:
@@ -1228,11 +1296,8 @@ def defuse_linker_edges(
     # resolve may target any internal callable of that name — the same
     # over-approximation Joern emits for untyped receivers. Sound may-call;
     # bounded per site so a common name cannot explode the graph.
-    _FAN_CAP = 16
+    _FAN_CAP = 1024  # pathology guard only; Joern's widest observed fan is 222
     for caller, owner, site, scope, mod, qual, classes in remaining:
-        recv = site.receiver_expr or ""
-        if recv in ("self", "cls"):
-            continue  # typed tiers exhausted the honest candidates
         for sig in (oracle.by_name.get(site.method_name) or [])[:_FAN_CAP]:
             if sig != caller.signature:
                 bump(caller.signature, sig)

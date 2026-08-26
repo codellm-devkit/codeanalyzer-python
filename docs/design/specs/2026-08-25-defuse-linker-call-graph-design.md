@@ -112,9 +112,35 @@ superset of every real edge both reference tools produce on both fixtures:
   `ref`/`ReferenceType`), and one blank-caller synthetic.
 
 A/B determinism after all tiers: byte-identical `call_graph` on both
-fixtures across paired runs (#146 remains open as a probabilistic Jedi
-source; the linker's vote lattice admits internal-class names only and
-cannot amplify it).
+fixtures across paired runs. On odoo-slim-19 (2,364 modules, ~760k edges)
+paired runs agree on 99.91% of edges; the 0.088% flap is Jedi's
+probabilistic inference (#146's family — `open()` overloads and
+receiver-type flips like `Environment.execute` vs `Model`), 256 edges
+directly and 408 more where the linker's type tiers consume the flapping
+inference. The linker adds no nondeterminism of its own; #146 tracks the
+source.
+
+## odoo-slim-19 benchmark (2026-08-26)
+
+2,364 modules, tests included, `-a 2 --ray`:
+
+| tool | outcome |
+| --- | --- |
+| this analyzer | **7m31s**, 760,233 edges (jedi 29k / defuse 731k) |
+| Joern v4.0.611 | 2m parse; 376,656 raw internal rows → 28,486 real name-pairs after removing `<meta*>`/`<lambda>`/`<redefined>`/`<body>` synthetics |
+| Fraunhofer CPG | **DNF — OutOfMemoryError at 20GB and again at 44GB heap, ~3 min in** |
+| old PyCG pipeline | 3h19m without one of 17 shards converging; zero PyCG edges |
+
+Ours covers **99.0%** of Joern's real name-pairs. The audited residual
+(292): callers Joern fabricates (edges from functions whose source contains
+no such call — verified), closure-inner-def targets reached only by their
+whole-program propagation, property-access-as-call modeling, and
+alias-followed naming variants (odoo's `guess_mimetype =
+_odoo_guess_mimetype`: we name the real def, they name the alias). The
+comparison also surfaced two more Jedi junk-stamp families, now handled:
+descriptor-protocol resolutions (`builtins.classmethod.__get__` on
+`cls.helper()` sites) and cross-namespace stamps (`self._warn` resolved to
+stdlib `_warnings.warn` — the declared-method edge is now added alongside).
 
 Still out of scope: Scalpel copy-closure alias widening.
 
