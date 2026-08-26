@@ -70,7 +70,7 @@ class _Scope:
 
     __slots__ = (
         "parent", "funcs", "bindings", "imports", "mod_imports", "blocked",
-        "literal_types", "instance_types",
+        "literal_types", "instance_types", "call_assigns", "return_ctors",
     )
 
     def __init__(self, parent: Optional["_Scope"]) -> None:
@@ -90,6 +90,11 @@ class _Scope:
         # names assigned from a constructor call -> class bare name
         # ("jar = RequestsCookieJar()" -> "RequestsCookieJar")
         self.instance_types: Dict[str, str] = {}
+        # names assigned from any call -> the call's func expression, for the
+        # oracle's return-summary pass ("adapter = self.get_adapter(url)")
+        self.call_assigns: Dict[str, ast.expr] = {}
+        # bare class names this scope's `return C(...)` statements construct
+        self.return_ctors: set = set()
 
 
 def _module_qual(file_key: str) -> str:
@@ -262,10 +267,20 @@ def _record_stmt(stmt: ast.AST, scope: _Scope) -> None:
                     lt = _literal_type(stmt.value)
                     if lt is not None:
                         scope.literal_types[tgt.id] = lt
-                    elif isinstance(stmt.value, ast.Call) and isinstance(
-                        stmt.value.func, ast.Name
-                    ):
-                        scope.instance_types[tgt.id] = stmt.value.func.id
+                    elif isinstance(stmt.value, ast.Call):
+                        if isinstance(stmt.value.func, ast.Name):
+                            scope.instance_types[tgt.id] = stmt.value.func.id
+                        scope.call_assigns[tgt.id] = stmt.value.func
+    elif isinstance(stmt, ast.Return):
+        if stmt.value is not None:
+            if isinstance(stmt.value, ast.Call) and isinstance(
+                stmt.value.func, ast.Name
+            ):
+                scope.return_ctors.add(stmt.value.func.id)
+            elif isinstance(stmt.value, ast.Name):
+                # `cj = RequestsCookieJar(); ...; return cj` — resolved when
+                # the summary is read, against this scope's ctor-typed locals.
+                scope.return_ctors.add("~" + stmt.value.id)
     elif isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
         if isinstance(stmt.value, ast.Name):
             scope.bindings[stmt.target.id] = stmt.value.id
@@ -702,6 +717,144 @@ def _resolve_uncovered_call(
     return _resolve_expr(func, scope, mod, module_qual, by_qual)
 
 
+class _TypeOracle:
+    """One deterministic interprocedural round of receiver typing (#148).
+
+    Everything is derived from the symbol table plus one AST pass per module,
+    computed once and consulted in a strict order — no fixpoint:
+
+    1. the caller's own parameter ``type`` (Jedi fills these from defaults
+       and annotations);
+    2. cross-site propagation: for every call site whose callee is already
+       resolved (Jedi stamp or the local pass), each positional argument's
+       ``inferred_type`` votes for the callee parameter's type — a parameter
+       with exactly one internal-class candidate is typed;
+    3. a return summary of the assigned call (unique ``return C(...)`` /
+       ``return self.attr`` of a known type inside the target callable);
+    4. ``self.attr`` instance-attribute types collected from ``self.X = C()``
+       and ``self.X = <literal>`` assignments anywhere in the class.
+
+    The vocabulary of results is ("class", PyClass) or ("builtin", name).
+    """
+
+    def __init__(self) -> None:
+        self.classes_global: Dict[str, List[PyClass]] = {}
+        self.func_by_sig: Dict[str, PyCallable] = {}
+        self.param_names: Dict[str, List[str]] = {}
+        self.param_declared: Dict[Tuple[str, str], str] = {}
+        self.param_votes: Dict[Tuple[str, int], set] = {}
+        self.self_attr: Dict[Tuple[str, str], Tuple[str, str]] = {}
+        self.return_class: Dict[str, Optional[str]] = {}
+        self.module_classes: Dict[str, Dict[str, PyClass]] = {}
+
+    # -- construction ------------------------------------------------------
+    def add_module(self, qual: str, mod: PyModule, tree: ast.Module,
+                   classes: Dict[str, PyClass]) -> None:
+        self.module_classes[qual] = classes
+        for name, cls in sorted(classes.items()):
+            self.classes_global.setdefault(name, []).append(cls)
+        for caller, _owner in _iter_callables(mod):
+            self.func_by_sig[caller.signature] = caller
+            names = [p.name for p in caller.parameters or []]
+            self.param_names[caller.signature] = names
+            for prm in caller.parameters or []:
+                if prm.type and prm.type not in ("None", "NoneType"):
+                    self.param_declared[(caller.signature, prm.name)] = (
+                        prm.type.rsplit(".", 1)[-1]
+                    )
+        self._collect_self_attrs(qual, tree, classes)
+
+    def _collect_self_attrs(self, qual: str, tree: ast.Module,
+                            classes: Dict[str, PyClass]) -> None:
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            cls = classes.get(node.name)
+            if cls is None:
+                continue
+            for sub in ast.walk(node):
+                if not isinstance(sub, ast.Assign):
+                    continue
+                for tgt in sub.targets:
+                    if not (
+                        isinstance(tgt, ast.Attribute)
+                        and isinstance(tgt.value, ast.Name)
+                        and tgt.value.id == "self"
+                    ):
+                        continue
+                    key = (cls.signature, tgt.attr)
+                    lt = _literal_type(sub.value)
+                    if lt is not None:
+                        self.self_attr.setdefault(key, ("builtin", lt))
+                    elif isinstance(sub.value, ast.Call) and isinstance(
+                        sub.value.func, ast.Name
+                    ):
+                        self.self_attr.setdefault(
+                            key, ("class", sub.value.func.id)
+                        )
+
+    def vote(self, callee_sig: str, site) -> None:
+        """One resolved call site's positional argument types vote."""
+        for i, arg in enumerate(site.arguments or []):
+            t = arg.inferred_type
+            if t and t not in ("None", "NoneType"):
+                self.param_votes.setdefault((callee_sig, i), set()).add(
+                    t.rsplit(".", 1)[-1]
+                )
+
+    # -- queries -----------------------------------------------------------
+    def _unique_class(self, name: str, prefer_qual: str) -> Optional[PyClass]:
+        cands = self.classes_global.get(name) or []
+        if len(cands) == 1:
+            return cands[0]
+        same = [c for c in cands if c.signature.startswith(prefer_qual + ".")]
+        return same[0] if len(same) == 1 else None
+
+    def param_type(self, caller: PyCallable, name: str, qual: str):
+        declared = self.param_declared.get((caller.signature, name))
+        if declared:
+            cls = self._unique_class(declared, qual)
+            if cls is not None:
+                return ("class", cls)
+            if declared.lower() in _BUILTIN_TYPE_NAMES:
+                return ("builtin", declared.lower())
+        names = self.param_names.get(caller.signature) or []
+        if name not in names:
+            return None
+        idx = names.index(name)
+        if names and names[0] in ("self", "cls"):
+            idx -= 1
+        votes = self.param_votes.get((caller.signature, idx)) or set()
+        internal = sorted(
+            v for v in votes if self._unique_class(v, qual) is not None
+        )
+        if len(internal) == 1:
+            return ("class", self._unique_class(internal[0], qual))
+        return None
+
+    def returned_class(self, callee: PyCallable, qual: str) -> Optional[PyClass]:
+        cached = self.return_class.get(callee.signature, "?")
+        if cached != "?":
+            return self._unique_class(cached, qual) if cached else None
+        self.return_class[callee.signature] = None
+        if callee.return_type:
+            name = callee.return_type.rsplit(".", 1)[-1]
+            if self._unique_class(name, qual) is not None:
+                self.return_class[callee.signature] = name
+                return self._unique_class(name, qual)
+        return None
+
+    def attr_type(self, owner: Optional[PyClass], attr: str):
+        if owner is None:
+            return None
+        return self.self_attr.get((owner.signature, attr))
+
+
+_BUILTIN_TYPE_NAMES = frozenset(
+    {"str", "bytes", "int", "float", "bool", "list", "dict", "set", "tuple"}
+)
+
+
 def defuse_linker_edges(
     symbol_table: Dict[str, PyModule],
 ) -> Tuple[List[PyCallEdge], Resolutions]:
@@ -721,6 +874,8 @@ def defuse_linker_edges(
     def bump(src: str, dst: str) -> None:
         edges[(src, dst)] = edges.get((src, dst), 0) + 1
 
+    oracle = _TypeOracle()
+    module_ctx: Dict[str, Tuple[PyModule, _ModuleFacts, Dict[str, PyClass]]] = {}
     for key, mod in sorted(symbol_table.items()):
         if not mod.source:
             continue
@@ -731,12 +886,25 @@ def defuse_linker_edges(
         qual = _module_qual(key)
         facts = _collect(tree, qual)
         classes = _classes_by_name(mod)
+        oracle.add_module(qual, mod, tree, classes)
+        module_ctx[qual] = (mod, facts, classes)
+
+    # sites whose receiver could not be typed locally — the oracle's round
+    pending: List[Tuple] = []
+    pending_iter: List[Tuple] = []
+
+    for qual, (mod, facts, classes) in sorted(module_ctx.items()):
 
         # --- function-level call sites (from the symbol table) -------------
         for caller, owner in _iter_callables(mod):
             recorded = {
                 (s.start_line, s.start_column) for s in (caller.call_sites or [])
             }
+            for site in caller.call_sites or []:
+                if site.callee_signature and not _is_junk_resolution(
+                    site.callee_signature
+                ):
+                    oracle.vote(site.callee_signature, site)
             sites = [
                 s
                 for s in (caller.call_sites or [])
@@ -770,7 +938,14 @@ def defuse_linker_edges(
                                 facts.module_scope, mod, qual, by_qual,
                             )
                 if sig is None:
+                    if site.receiver_expr and site.receiver_expr not in (
+                        "self", "cls"
+                    ):
+                        pending.append(
+                            (caller, owner, site, scope, mod, qual, classes)
+                        )
                     continue
+                oracle.vote(sig, site)
                 bump(caller.signature, sig)
                 resolutions[
                     (caller.signature, f"{site.start_line}:{site.start_column}")
@@ -800,6 +975,10 @@ def defuse_linker_edges(
                         sig = _resolve_self_call("__iter__", target_cls, classes)
                         if sig is not None:
                             bump(caller.signature, sig)
+                    else:
+                        pending_iter.append(
+                            (caller, owner, name, scope, mod, qual, classes)
+                        )
                     continue
                 if kind != "call":
                     # f-string conversion/format-spec lowering (repr/str/
@@ -832,6 +1011,127 @@ def defuse_linker_edges(
                 continue
             src = _signature_for_path(mod, container) if container else None
             bump(src or qual, sig)
+
+    # ---- interprocedural round (#148 extension): type the receivers the
+    # local pass could not, in a strict deterministic order, then resolve
+    # the method on the typed class. One round, no fixpoint.
+    def _returned_ctor_class(callee, qual):
+        """Unique `return C(...)` inside *callee*, resolved to a class."""
+        for home_qual, (hmod, hfacts, hclasses) in sorted(module_ctx.items()):
+            if not callee.signature.startswith(home_qual + "."):
+                continue
+            cscope = _scope_for_callable(callee, hfacts.by_def, hfacts.module_scope)
+            if cscope is hfacts.module_scope:
+                continue
+            names = set()
+            for c in sorted(cscope.return_ctors):
+                if c.startswith("~"):
+                    it = cscope.instance_types.get(c[1:])
+                    if it is not None:
+                        names.add(it)
+                else:
+                    names.add(c)
+            hits = sorted({n for n in names if n in hclasses})
+            if len(hits) == 1 and len(names) == 1:
+                return hclasses[hits[0]]
+            return None
+        return None
+
+    def _typed_receiver(caller, owner, name, scope, mod, qual, classes):
+        t = oracle.param_type(caller, name, qual)
+        if t is not None:
+            return t
+        s_ = scope
+        while s_ is not None:
+            if name in s_.call_assigns:
+                func = s_.call_assigns[name]
+                callee_sig = None
+                if isinstance(func, ast.Attribute) and isinstance(
+                    func.value, ast.Name
+                ) and func.value.id in ("self", "cls") and owner is not None:
+                    callee_sig = _resolve_self_call(
+                        func.attr, owner, classes, module_ctx[qual][1].module_scope,
+                        mod, qual, by_qual,
+                    )
+                else:
+                    callee_sig = _resolve_expr(
+                        func, s_, mod, qual, by_qual
+                    )
+                if callee_sig:
+                    callee = oracle.func_by_sig.get(callee_sig)
+                    if callee is not None:
+                        cls = oracle.returned_class(callee, qual)
+                        if cls is None:
+                            cls = _returned_ctor_class(callee, qual)
+                        if cls is not None:
+                            return ("class", cls)
+                break
+            if name in s_.blocked or name in s_.bindings:
+                break
+            s_ = s_.parent
+        return None
+
+    def _method_on(t, method, qual):
+        kind, val = t
+        if kind == "builtin":
+            return f"builtins.{val}.{method}"
+        cls = val
+        home_qual = next(
+            (
+                q
+                for q, cmap in sorted(oracle.module_classes.items())
+                if cmap.get(cls.name) is cls
+            ),
+            None,
+        )
+        if home_qual is None or home_qual not in module_ctx:
+            return _resolve_self_call(method, cls, {cls.name: cls})
+        home_mod, home_facts, home_classes = module_ctx[home_qual]
+        return _resolve_self_call(
+            method, cls, home_classes, home_facts.module_scope,
+            home_mod, home_qual, by_qual,
+        )
+
+    remaining = pending
+    for _round in (1, 2):
+        still: List[Tuple] = []
+        for caller, owner, site, scope, mod, qual, classes in remaining:
+            parts = tuple(
+                p_ for p_ in (site.receiver_expr or "").split(".") if p_
+            )
+            t = None
+            if len(parts) == 1:
+                t = _typed_receiver(
+                    caller, owner, parts[0], scope, mod, qual, classes
+                )
+            elif len(parts) == 2 and parts[0] in ("self", "cls"):
+                at = oracle.attr_type(owner, parts[1])
+                if at is not None:
+                    if at[0] == "class":
+                        cls = oracle._unique_class(at[1], qual)
+                        t = ("class", cls) if cls is not None else None
+                    else:
+                        t = at
+            if t is None:
+                still.append((caller, owner, site, scope, mod, qual, classes))
+                continue
+            sig = _method_on(t, site.method_name, qual)
+            if sig is None:
+                continue
+            oracle.vote(sig, site)
+            bump(caller.signature, sig)
+            resolutions[
+                (caller.signature, f"{site.start_line}:{site.start_column}")
+            ] = sig
+        remaining = still
+
+    for caller, owner, name, scope, mod, qual, classes in pending_iter:
+        t = _typed_receiver(caller, owner, name, scope, mod, qual, classes)
+        if t is None:
+            continue
+        sig = _method_on(t, "__iter__", qual)
+        if sig is not None:
+            bump(caller.signature, sig)
 
     return (
         [

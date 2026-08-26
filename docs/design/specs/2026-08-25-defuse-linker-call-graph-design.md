@@ -73,11 +73,24 @@ For each call site whose `callee_signature` is null after Jedi:
    cache, and a persisted resolution would resurface on a warm run as a Jedi
    edge, silently changing provenance.
 
-Out of scope, recorded as extensions: parameter- and return-typed receiver
-flows (`adapter = self.get_adapter(...); adapter.send(...)`, `for c in
-cookiejar:` where `cookiejar` is a parameter) — the interprocedural type
-propagation Joern's global pass performs, deliverable here via SDG summaries;
-Scalpel copy-closure alias widening.
+**Interprocedural round (implemented 2026-08-26).** One deterministic
+propagation round on top of the local pass — a `_TypeOracle` built from the
+symbol table plus the same per-module AST facts: (1) Jedi's declared
+parameter types; (2) cross-site voting — every resolved call site's
+positional argument `inferred_type` votes for the callee parameter, a
+singleton internal-class vote types it; (3) return summaries (unique
+`return C(...)` or `return name` of a ctor-typed local, plus Jedi
+`return_type`); (4) `self.attr` instance-attribute types from `self.X = C()`
+/ literal assignments anywhere in the class. Receivers the local pass could
+not type are retried against the oracle in two bounded rounds (round one's
+resolutions vote before round two) — no fixpoint. Votes only admit
+internal-class types, which keeps #146's flapping IO types out of the
+lattice; A/B runs stay byte-identical modulo #146.
+
+Still out of scope: whole-program flows (hook registries, types crossing
+external-library returns, attribute-chain receivers like
+`self._store.values()`) — these are the L4 SDG-summary propagation, a
+separate design unit; Scalpel copy-closure alias widening.
 
 ## Reference validation (2026-08-25/26)
 
@@ -100,9 +113,10 @@ target. Documented exceptions, by class:
   (`Request.__init__`), usually via Jedi.
 - **Private-impl naming** — `RLock` vs `_dummy_threading._RLock`, `fspath`
   vs `os._fspath`, `weakref.ref` vs `_weakref.ReferenceType`.
-- **Interprocedural type flows** (Joern only, 21 pairs on requests) — the
-  parameter/return-typed receivers named above, out of the local design by
-  construction.
+- **Whole-program type flows** (Joern only, 16 pairs on requests after the
+  interprocedural round landed — was 21) — hook registries, types crossing
+  external-library returns, attribute-chain receivers; the L4 SDG-summary
+  propagation unit.
 - Joern's remaining ~4.4k rows are speculative typed-attribute fan-out
   (`dict.__iter__.read.split`, `None.split`) and `<metaClass*>` machinery —
   candidate enumeration, not resolution; matching it would mean fabricating

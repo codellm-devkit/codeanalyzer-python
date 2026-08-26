@@ -65,6 +65,32 @@ def iterates():
 getLogger_at_module = logging.getLogger(__name__)
 
 
+def make_widget():
+    w = Widget()
+    return w
+
+
+def uses_return_type():
+    thing = make_widget()
+    return thing.tick()
+
+
+def typed_param_callee(w):
+    return w.stamp()
+
+
+def typed_param_caller():
+    typed_param_callee(Widget())
+
+
+class Holder:
+    def __init__(self):
+        self.gadget = Widget()
+
+    def poke(self):
+        return self.gadget.tick()
+
+
 @_h
 def decorated_at_module():
     return 1
@@ -337,3 +363,21 @@ def test_instance_typed_receiver(stripped_edges):
     """w = Widget(); w.tick() -> Widget.tick via constructor-typed local."""
     pairs, _ = stripped_edges
     assert _has(pairs, "iterates", "Widget.tick")
+
+
+def test_return_summary_types_local(stripped_edges):
+    """thing = make_widget(); thing.tick() -> Widget.tick via return summary."""
+    pairs, _ = stripped_edges
+    assert _has(pairs, "uses_return_type", "Widget.tick")
+
+
+def test_param_vote_types_receiver(stripped_edges):
+    """typed_param_callee(Widget()) votes w: Widget -> w.stamp() resolves."""
+    pairs, _ = stripped_edges
+    assert _has(pairs, "typed_param_callee", "Widget.stamp")
+
+
+def test_self_attr_type_resolves(stripped_edges):
+    """self.gadget = Widget() in __init__ -> self.gadget.tick() elsewhere."""
+    pairs, _ = stripped_edges
+    assert _has(pairs, "poke", "Widget.tick")
