@@ -144,3 +144,18 @@ def test_same_name_match_carries_no_heuristic_prov(tmp_path):
     setuptools_dep = next(d for d in deps if d.name == "setuptools")
     assert setuptools_dep.prov == ["declared"]
     assert setuptools_dep.provides_imports == ["setuptools"]
+
+
+def test_local_package_top_level_not_falsely_unresolved(tmp_path):
+    """Regression (confirmed on odoo-slim): module_name is py_file.stem --
+    the leaf filename only ("api" for "odoo/api.py") -- so a local set built
+    from module_name alone never contains the top-level PACKAGE name itself.
+    A sibling module doing `import odoo` then falsely lands in
+    unresolved_imports. Fix: also derive local tops from the symbol-table
+    keys (first path segment when nested)."""
+    mods = {
+        "odoo/api.py": _module("api", []),
+        "pkg/main.py": _module("main", ["odoo"]),
+    }
+    _, unresolved = build_dependency_view({}, mods, tmp_path, None, False)
+    assert "odoo" not in {u.module for u in unresolved}

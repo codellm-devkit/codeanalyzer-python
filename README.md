@@ -428,9 +428,10 @@ A **callable** (function or method) carries its own CPG, keyed by node id:
 
 The application envelope also contains three substrate sections:
 
-- **`artifacts`** — discovered non-code files (manifests, configs, Docker files, CI workflows) with
-  extraction status (`none`, `partial`, or `full`; default `none`), keyed by relative path; each
-  artifact carries the `can://artifact/<app>/<path>` id namespace.
+- **`artifacts`** — discovered non-code files (manifests, configs, Docker files, CI workflows,
+  packaging files, scripts, docs, and legal files) with extraction status (`none`, `partial`, or
+  `full`; default `none`), keyed by relative path; each artifact carries the
+  `can://artifact/<app>/<path>` id namespace.
 - **`dependencies`** — declared packages with kind (`runtime`/`dev`/`optional`/`build`), spec,
   locked version, and provenance (`prov`): where each binding came from (manifest file, lock file,
   installed metadata).

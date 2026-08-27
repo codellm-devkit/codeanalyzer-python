@@ -20,12 +20,15 @@ def test_discovers_known_shapes(tmp_path):
     _mk(tmp_path, ".github/workflows/ci.yml")
     _mk(tmp_path, "k8s/deploy.yaml")
     _mk(tmp_path, "src/app.py", "x = 1\n")          # code: never an artifact
-    _mk(tmp_path, "notes.md", "hi\n")               # unmatched: no node
+    _mk(tmp_path, "notes.md", "hi\n")               # *.md -> docs
+    _mk(tmp_path, "data.bin", "hi\n")               # unmatched extension: no node
     arts = discover_artifacts(tmp_path, "myapp")
     assert sorted(arts) == [
         ".github/workflows/ci.yml", "Dockerfile", "deploy/docker-compose.yml",
-        "k8s/deploy.yaml", "pyproject.toml", "requirements-dev.txt", "svc/Dockerfile",
+        "k8s/deploy.yaml", "notes.md", "pyproject.toml", "requirements-dev.txt",
+        "svc/Dockerfile",
     ]
+    assert arts["notes.md"].roles == ["docs"]
     py = arts["pyproject.toml"]
     assert py.id == "can://artifact/myapp/pyproject.toml"
     assert py.format == "toml" and "dependency-manifest" in py.roles
@@ -74,3 +77,41 @@ def test_discovers_kind_yaml(tmp_path):
     arts = discover_artifacts(tmp_path, "a")
     assert list(arts) == ["kind/cluster.yml"]
     assert arts["kind/cluster.yml"].roles == ["service-topology"]
+
+
+def test_discovers_packaging_docs_legal_files(tmp_path):
+    """Round-2 role vocabulary growth: packaging/docs/legal."""
+    _mk(tmp_path, "MANIFEST.in", "include *.txt\n")
+    _mk(tmp_path, "LICENSE", "MIT\n")
+    _mk(tmp_path, "LICENSE.md", "MIT\n")   # legal-prefixed rule wins over *.md
+    _mk(tmp_path, "COPYRIGHT.txt", "(c) 2026\n")
+    _mk(tmp_path, "NOTICE", "third-party notices\n")
+    _mk(tmp_path, "CONTRIBUTING.rst", "how to contribute\n")
+    arts = discover_artifacts(tmp_path, "a")
+    assert arts["MANIFEST.in"].roles == ["packaging"]
+    assert arts["LICENSE"].roles == ["legal"]
+    assert arts["LICENSE.md"].roles == ["legal"]
+    assert arts["COPYRIGHT.txt"].roles == ["legal"]
+    assert arts["NOTICE"].roles == ["legal"]
+    assert arts["CONTRIBUTING.rst"].roles == ["docs"]
+
+
+def test_extensionless_shebang_script_is_captured(tmp_path):
+    """odoo-bin-style entrypoint: no extension, so no RULES glob can name it --
+    the one content-sniff fallback: dotless basename + shebang."""
+    _mk(tmp_path, "odoo-bin", "#!/usr/bin/env python3\nimport sys\n")
+    arts = discover_artifacts(tmp_path, "a")
+    assert list(arts) == ["odoo-bin"]
+    assert arts["odoo-bin"].format == "text" and arts["odoo-bin"].roles == ["script"]
+
+
+def test_extensionless_binary_is_skipped(tmp_path):
+    (tmp_path / "odoo-bin").write_bytes(b"\xff\xfe\x00#!bad")
+    arts = discover_artifacts(tmp_path, "a")
+    assert arts == {}
+
+
+def test_extensionless_text_without_shebang_is_skipped(tmp_path):
+    _mk(tmp_path, "README", "just some notes, no shebang\n")
+    arts = discover_artifacts(tmp_path, "a")
+    assert arts == {}

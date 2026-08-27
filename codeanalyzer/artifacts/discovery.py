@@ -41,6 +41,12 @@ RULES: List[Tuple[str, str, List[str]]] = [
     ("tox.ini", "ini", ["tool-config"]),
     ("noxfile.py", "text", ["tool-config"]),
     ("Makefile", "text", ["tool-config"]),
+    ("MANIFEST.in", "text", ["packaging"]),
+    ("LICENSE*", "text", ["legal"]),
+    ("COPYRIGHT*", "text", ["legal"]),
+    ("NOTICE*", "text", ["legal"]),
+    ("*.md", "text", ["docs"]),
+    ("*.rst", "text", ["docs"]),
     ("*.cfg", "ini", ["unknown"]),
     ("*.toml", "toml", ["unknown"]),
 ]
@@ -73,13 +79,22 @@ def discover_artifacts(project_dir: Path, app_name: str) -> Dict[str, PyArtifact
         rel_posix = rel.as_posix()
         hit = _classify(rel_posix)
         if hit is None:
-            continue
-        fmt, roles = hit
+            # Extensionless shebang script (e.g. odoo-bin): no RULES glob can
+            # name these (nothing to match on but the shebang itself), so this
+            # is the one deterministic content-sniff fallback. Cheap dotless
+            # check first, so non-candidate files never pay for a read.
+            if "." in rel_posix.rsplit("/", 1)[-1]:
+                continue
+            fmt, roles = "text", ["script"]
+        else:
+            fmt, roles = hit
         raw = path.read_bytes()
         try:
             text = raw.decode("utf-8")
         except UnicodeDecodeError:
             continue  # text-only by spec; binaries never become artifacts
+        if hit is None and not text.startswith("#!"):
+            continue
         out[rel_posix] = PyArtifact(
             id=artifact_id(app_name, rel_posix), path=rel_posix, format=fmt,
             roles=list(roles), size_bytes=len(raw),

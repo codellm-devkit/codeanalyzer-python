@@ -142,7 +142,16 @@ def build_dependency_view(
             d.prov = sorted(set(d.prov) | {"lockfile"})
 
     # 3. Import universe from the symbol table (top-level segments only).
+    # `module_name` is `py_file.stem` -- the leaf filename only (e.g. "api"
+    # for "odoo/api.py"), never the package path -- so it alone misses the
+    # top-level package name itself. Derive that from the symbol-table KEYS
+    # (repo-relative POSIX paths) too: first path segment when nested, else
+    # the root file's own stem. Keep the module_name-derived stems as well
+    # (harmless -- still excludes leaf-name imports the key pass can't see).
     local = {m.module_name.split(".")[0] for m in modules.values() if m.module_name}
+    local |= {
+        key.split("/", 1)[0] if "/" in key else Path(key).stem for key in modules
+    }
     stdlib = _stdlib_names()
     imported: set = set()
     for m in modules.values():
