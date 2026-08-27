@@ -149,3 +149,9 @@ def test_parse_requirement_refs():
     assert parse_requirement_refs(text) == ["base.txt", "constraints/prod.txt"]
     long_form = "--requirement base.txt\n--constraint constraints/prod.txt\n"
     assert parse_requirement_refs(long_form) == ["base.txt", "constraints/prod.txt"]
+
+
+def test_setup_py_syntax_error():
+    deps, partial = parse_manifest("setup.py", "def foo(:\n    pass")
+    assert deps == []
+    assert partial is True

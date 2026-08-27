@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Schema v2 now captures non-code artifacts (`application.artifacts`), declared
+  dependencies with provenance (`application.dependencies`), and undeclared
+  imports (`application.unresolved_imports`) at every analysis level (#157).
+  Neo4j gains language-neutral `:Artifact`/`:Package` nodes (purl ids) joined
+  to the existing `:PyExternal` ghosts. New flag: `--resolve-installed`.
+
 ## [1.2.0] - 2026-08-26
 
 ### Changed
