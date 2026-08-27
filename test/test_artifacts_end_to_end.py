@@ -1,5 +1,4 @@
 """Task 7: full pipeline over the manifests_app fixture + determinism."""
-import json
 from pathlib import Path
 from codeanalyzer.core import Codeanalyzer
 from codeanalyzer.options import AnalysisOptions
@@ -27,8 +26,9 @@ def test_full_surface(tmp_path):
     assert deps["requests"].prov == ["declared", "lockfile"]
     assert deps["pytest"].kind == "dev"
     assert deps["numpy"].spec == "=1.26"
-    unresolved = sorted([u.module for u in app.unresolved_imports])
-    assert "colorama" in unresolved
+    # setup.py is repo code to the symbol table (statically parsed, never
+    # executed); its setuptools import is undeclared here by design.
+    assert [u.module for u in app.unresolved_imports] == ["colorama", "setuptools"]
 
 
 def test_determinism_two_runs(tmp_path):
