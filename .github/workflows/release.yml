@@ -121,6 +121,8 @@ jobs:
           mkdir -p release-assets
           uv run canpy --emit schema > release-assets/schema.json
           cp packaging/install/canpy-installer.sh release-assets/canpy-installer.sh
+          tar -czf release-assets/analyzing-canpy-graphs-skill.tar.gz -C docs/skills analyzing-canpy-graphs
+          cp docs/skills/analyzing-canpy-graphs/SKILL.md release-assets/analyzing-canpy-graphs-SKILL.md
           ls -lh release-assets
 
       - name: Get version from tag
