@@ -334,11 +334,16 @@ def _project_artifacts(b: RowBuilder, app: PyApplication, app_name: str, app_ref
     for d in app.dependencies or []:
         pkg_id = purl_pypi(d.name)
         pkg_ref = b.node(["Package"], "id", pkg_id, {"ecosystem": "pypi", "name": d.name})
+        # kind-discriminated: the same manifest may declare one package twice
+        # under different kinds (e.g. requests in [project.dependencies] AND
+        # again under [project.optional-dependencies]) -- same endpoint pair,
+        # so a plain MERGE would collapse the two declarations into one row.
         b.edge(
             "DECLARES_DEPENDENCY",
             NodeRef("Artifact", "id", d.declared_in),
             pkg_ref,
             prune({"spec": d.spec, "kind": d.kind, "extras": d.extras, "prov": d.prov}),
+            key=d.kind,
         )
         if d.locked_version:
             for lock_id in lock_ids:

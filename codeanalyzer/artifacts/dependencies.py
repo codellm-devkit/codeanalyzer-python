@@ -5,7 +5,12 @@ filesystem reads of ``<venv>/**/site-packages/*.dist-info`` (never runs an
 interpreter), tagged ``prov: installed-metadata``.
 
 ``-r``/``-c`` refs in a requirements-format manifest are chased one level
-only, by design: a chased target's own refs are not followed further."""
+only, by design: a chased target's own refs are not followed further.
+
+``unresolved_imports`` is byte-identical run-to-run only within one Python
+minor version: it is filtered against ``sys.stdlib_module_names``, and that
+set's membership varies across minors (a module added to or removed from the
+stdlib)."""
 
 import posixpath
 import re
@@ -24,12 +29,14 @@ from codeanalyzer.schema.py_schema import (
 _LOCK_BASENAMES = ("poetry.lock", "uv.lock", "Pipfile.lock")
 
 # Small, non-exhaustive alias table for the worst offenders; everything else
-# rides the same-name rule or --resolve-installed. prov: heuristic.
+# rides the same-name rule or --resolve-installed. prov: heuristic. Identity
+# entries (key == value) do not belong here -- the same-name rule below
+# already covers them, and a redundant identity entry only mints a spurious
+# "heuristic" prov on what is actually a plain same-name match.
 _KNOWN_IMPORT_ALIASES: Dict[str, str] = {
     "pyyaml": "yaml", "beautifulsoup4": "bs4", "pillow": "PIL",
     "scikit-learn": "sklearn", "opencv-python": "cv2", "python-dateutil": "dateutil",
-    "msgpack-python": "msgpack", "protobuf": "google.protobuf",
-    "setuptools": "setuptools", "attrs": "attr", "pymongo": "pymongo",
+    "msgpack-python": "msgpack", "protobuf": "google.protobuf", "attrs": "attr",
 }
 
 
@@ -164,7 +171,12 @@ def build_dependency_view(
         d.provides_imports = sorted(set(provides))
 
     # 5. Unresolved: imported, not stdlib/local, not provided by any dependency.
-    provided = {p for d in deps for p in d.provides_imports}
+    # Top-level segment only: `imported` (step 3) is already top-level-only, but
+    # a dotted alias (e.g. protobuf -> "google.protobuf") puts the FULL dotted
+    # path into provides_imports, so comparing it against `imported` verbatim
+    # never matches and "google" falsely resurfaces as unresolved even though
+    # protobuf declares it.
+    provided = {p.split(".")[0] for d in deps for p in d.provides_imports}
     unresolved = [
         PyImportBinding(module=m) for m in sorted(imported - provided)
     ]

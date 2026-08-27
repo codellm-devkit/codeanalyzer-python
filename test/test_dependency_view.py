@@ -117,3 +117,30 @@ def test_resolve_ref_does_not_over_reject_dotdot_prefixed_name(tmp_path):
     arts = discover_artifacts(tmp_path, "app")
     deps, _ = build_dependency_view(arts, {}, tmp_path, None, False)
     assert {d.name for d in deps} == {"click"}  # "..bak.txt" != escaping ".."/"../..."
+
+
+def test_dotted_alias_does_not_falsely_unresolve_top_level(tmp_path):
+    """Regression: protobuf's alias table entry maps to the dotted
+    "google.protobuf". provides_imports keeps that full dotted string, but
+    the unresolved check must compare TOP-LEVEL segments -- else "google"
+    falsely resurfaces as unresolved even though protobuf declares it."""
+    (tmp_path / "pyproject.toml").write_text('[project]\ndependencies = ["protobuf"]\n')
+    arts = discover_artifacts(tmp_path, "app")
+    mods = {"app.py": _module("app", ["google.protobuf"])}
+    deps, unresolved = build_dependency_view(arts, mods, tmp_path, None, False)
+    assert "google" not in {u.module for u in unresolved}
+    protobuf_dep = next(d for d in deps if d.name == "protobuf")
+    assert "google.protobuf" in protobuf_dep.provides_imports
+
+
+def test_same_name_match_carries_no_heuristic_prov(tmp_path):
+    """Regression: identity entries ("setuptools": "setuptools", "pymongo":
+    "pymongo") in the alias table minted a spurious "heuristic" prov on a
+    plain same-name match. A same-name match must be prov == ["declared"]."""
+    (tmp_path / "pyproject.toml").write_text('[project]\ndependencies = ["setuptools"]\n')
+    arts = discover_artifacts(tmp_path, "app")
+    mods = {"app.py": _module("app", ["setuptools"])}
+    deps, _ = build_dependency_view(arts, mods, tmp_path, None, False)
+    setuptools_dep = next(d for d in deps if d.name == "setuptools")
+    assert setuptools_dep.prov == ["declared"]
+    assert setuptools_dep.provides_imports == ["setuptools"]

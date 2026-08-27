@@ -29,6 +29,8 @@ RULES: List[Tuple[str, str, List[str]]] = [
     ("compose.yaml", "yaml", ["service-topology"]),
     ("k8s/*.yml", "yaml", ["service-topology"]),
     ("k8s/*.yaml", "yaml", ["service-topology"]),
+    ("kind/*.yml", "yaml", ["service-topology"]),
+    ("kind/*.yaml", "yaml", ["service-topology"]),
     ("Chart.yaml", "yaml", ["service-topology"]),
     ("values.yaml", "yaml", ["service-topology"]),
     (".github/workflows/*.yml", "yaml", ["ci"]),
@@ -46,7 +48,7 @@ RULES: List[Tuple[str, str, List[str]]] = [
 _IGNORED_DIRS = {
     ".git", ".hg", ".svn", "__pycache__", ".venv", "venv", ".tox", ".nox",
     "node_modules", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".idea",
-    "build", "dist", ".eggs",
+    "build", "dist", ".eggs", ".codeanalyzer", "virtualenv", "site-packages",
 }
 
 

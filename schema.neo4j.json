@@ -402,7 +402,8 @@
         "spec": "string",
         "kind": "string",
         "extras": "string[]",
-        "prov": "string[]"
+        "prov": "string[]",
+        "_k": "string"
       }
     },
     {

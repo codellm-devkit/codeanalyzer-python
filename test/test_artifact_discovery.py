@@ -53,3 +53,24 @@ def test_unreadable_binary_is_skipped(tmp_path):
     (tmp_path / "pyproject.toml").write_bytes(b"\xff\xfe\x00bad")
     arts = discover_artifacts(tmp_path, "a")
     assert arts == {}
+
+
+def test_ignores_own_codeanalyzer_venv(tmp_path):
+    """Regression: a default (non --no-venv) run provisions its own analysis
+    virtualenv under <project>/.codeanalyzer/<name>/virtualenv/ before
+    discovery runs (Codeanalyzer.__enter__). Without an ignore, discovery
+    walks straight into it and picks up pyvenv.cfg (machine-specific `home=`
+    -> breaks determinism) and site-packages *.toml files."""
+    _mk(tmp_path, ".codeanalyzer/x/virtualenv/pyvenv.cfg", "home = /machine/specific\n")
+    _mk(tmp_path, "pyproject.toml", "[project]\nname='a'\n")
+    arts = discover_artifacts(tmp_path, "a")
+    assert list(arts) == ["pyproject.toml"]
+
+
+def test_discovers_kind_yaml(tmp_path):
+    """kind/*.yml|yaml -> service-topology, alongside the existing k8s/ rules
+    (user-surfaced miss on a real corpus)."""
+    _mk(tmp_path, "kind/cluster.yml")
+    arts = discover_artifacts(tmp_path, "a")
+    assert list(arts) == ["kind/cluster.yml"]
+    assert arts["kind/cluster.yml"].roles == ["service-topology"]
