@@ -14,13 +14,13 @@
 | `PyAttribute` | `id` | _module, docstring, end_line, id, initializer, name, start_line, type |
 | `PyVariable` | `id` | _module, end_line, id, initializer, name, scope, start_line, type |
 | `PyBodyNode` | `id` (GLOBAL ordinal) | _module, arguments_json, call_node, end_line, id, is_constructor_call, kind, method_name, receiver_expr, receiver_type, return_type, start_line, var |
-| `Artifact` | `id` (`can://artifact/…`) | extraction, format, id, path, roles, sha256, size_bytes, source — **language-neutral, no Py prefix by design** |
+| `Artifact` | `id` (`can://artifact/…`) | extraction, format, id, path, roles, sha256, size_bytes, source, text_truncated — **language-neutral, no Py prefix by design**; every non-`.py` file is inventoried (never-drop), binaries with empty source |
 | `Package` | `id` (purl `pkg:pypi/<name>`, `<name>` PEP 503 normalized: lowercase, `[-_.]+` → `-`, so always `pkg:pypi/pyyaml`, never `pkg:pypi/PyYAML`) | ecosystem, id, name — language-neutral |
 
 `PyBodyNode.kind`: `entry`, `exit`, `statement`, `branch`, `loop`, `return`,
 `raise`, `handler`, `call`, `formal_in`, `formal_out`, `actual_in`, `actual_out`.
 
-`Artifact.format`: `toml` | `yaml` | `json` | `ini` | `requirements` | `dockerfile` | `text`.
+`Artifact.format`: `toml` | `yaml` | `json` | `ini` | `requirements` | `dockerfile` | `text` | `binary`.
 `Artifact.roles` (list): `dependency-manifest`, `service-topology`,
 `container-image`, `ci`, `env`, `tool-config`, `packaging`, `script`, `docs`,
 `legal`, `unknown`. `Artifact.extraction`: `none` | `partial` | `full`.
