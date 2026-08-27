@@ -102,8 +102,13 @@ def discover_artifacts(
 
     ``capture_text=False`` empties ``source`` everywhere (inventory otherwise
     identical); a decodable file over ``text_max_bytes`` gets a truncated
-    ``source`` and ``text_truncated=True``. ``sha256``/``size_bytes`` always
-    reflect the full file regardless of either knob."""
+    ``source`` and ``text_truncated=True`` -- except a ``dependency-manifest``
+    role artifact, which is always captured in full when decodable and
+    ``capture_text`` is on: its source is what ``build_dependency_view``
+    parses, not bulk/incidental content, so the byte cap does not apply to
+    it (``capture_text=False`` still empties it like everything else).
+    ``sha256``/``size_bytes`` always reflect the full file regardless of
+    either knob."""
     out: Dict[str, PyArtifact] = {}
     for path in sorted(project_dir.rglob("*")):
         if not path.is_file():
@@ -134,7 +139,13 @@ def discover_artifacts(
             if decodable and "." not in name and text.startswith("#!"):
                 roles = ["script"]
         if decodable:
-            source, text_truncated = _capture_source(raw, text, capture_text, text_max_bytes)
+            # A dependency-manifest's source IS the extracted meaning (build_
+            # dependency_view parses it) -- the byte cap targets bulk/incidental
+            # assets, never the files extraction depends on, so manifests are
+            # exempt from it. capture_text=False still empties source (handled
+            # inside _capture_source); only the byte CAP is bypassed here.
+            cap = len(raw) if "dependency-manifest" in roles else text_max_bytes
+            source, text_truncated = _capture_source(raw, text, capture_text, cap)
         else:
             fmt, source, text_truncated = "binary", "", False
 

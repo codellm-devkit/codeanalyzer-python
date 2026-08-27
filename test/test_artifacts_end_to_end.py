@@ -16,9 +16,14 @@ def _app(tmp_path, tag):
 def test_full_surface(tmp_path):
     app = _app(tmp_path, "a")
     arts = app.artifacts
-    assert {"pyproject.toml", "requirements-dev.txt", "setup.py", "uv.lock",
-            "environment.yml", "Dockerfile", "docker-compose.yml",
-            ".github/workflows/ci.yml", "data.csv", "logo.png"} <= set(arts)
+    # never-drop inventory (#157) makes the artifact set deterministic --
+    # exact equality, not a subset check: every non-.py fixture file, and
+    # nothing else, is inventoried (pkg/__init__.py, pkg/main.py excluded).
+    assert set(arts) == {
+        "pyproject.toml", "requirements-dev.txt", "setup.py", "uv.lock",
+        "environment.yml", "Dockerfile", "docker-compose.yml",
+        ".github/workflows/ci.yml", "data.csv", "logo.png",
+    }
     assert arts["setup.py"].extraction == "partial"      # computed install_requires
     assert arts["pyproject.toml"].extraction == "full"
     # never-drop inventory (#157 follow-up): unmatched files are captured too.

@@ -222,3 +222,24 @@ def test_capture_text_false_empties_source_everywhere_else_identical(tmp_path):
         a_dict["source"] = b_dict["source"] = ""
         a_dict["text_truncated"] = b_dict["text_truncated"] = False
         assert a_dict == b_dict
+
+
+def test_dependency_manifest_exempt_from_text_max_bytes(tmp_path):
+    """#157 review fix: a dependency-manifest's source IS the extraction
+    input -- the byte cap targets bulk/incidental assets, never manifests.
+    A cap far below the file's real size must not truncate it."""
+    content = '[project]\ndependencies = ["requests"]\n'  # > 16 bytes
+    _mk(tmp_path, "pyproject.toml", content)
+    arts = discover_artifacts(tmp_path, "a", text_max_bytes=16)
+    art = arts["pyproject.toml"]
+    assert art.source == content
+    assert art.text_truncated is False
+
+
+def test_dependency_manifest_still_empty_source_with_capture_text_false(tmp_path):
+    """The manifest exemption is from the byte CAP only -- capture_text=False
+    still empties source for manifests exactly like everything else."""
+    _mk(tmp_path, "pyproject.toml", '[project]\ndependencies = ["requests"]\n')
+    arts = discover_artifacts(tmp_path, "a", capture_text=False, text_max_bytes=16)
+    art = arts["pyproject.toml"]
+    assert art.source == "" and art.text_truncated is False

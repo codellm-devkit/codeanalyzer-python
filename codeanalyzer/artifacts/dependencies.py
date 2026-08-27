@@ -79,6 +79,19 @@ def _resolve_ref(manifest_path: str, ref: str) -> Optional[str]:
     return joined
 
 
+def _full_text(project_dir: Path, path: str, art: PyArtifact) -> str:
+    """Manifest/lock extraction must never depend on the stored ``source`` --
+    that's capped by ``text_max_bytes`` and emptied by ``capture_text=False``
+    (both payload-size controls on the JSON/Neo4j payload, not extraction
+    controls). Read the real file fresh instead; fall back to ``art.source``
+    only if it is gone (e.g. a synthetic artifact in a unit test, or the file
+    vanished mid-run)."""
+    try:
+        return (project_dir / path).read_bytes().decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return art.source
+
+
 def build_dependency_view(
     artifacts: Dict[str, PyArtifact],
     modules: Dict[str, PyModule],
@@ -103,7 +116,8 @@ def build_dependency_view(
             continue
         if path.rsplit("/", 1)[-1] in _LOCK_BASENAMES:
             continue
-        raw, partial = parse_manifest(path, art.source)
+        text = _full_text(project_dir, path, art)
+        raw, partial = parse_manifest(path, text)
         art.extraction = "partial" if partial else "full"
         _emit(raw, art.id)
 
@@ -116,7 +130,7 @@ def build_dependency_view(
         # "already parsed as a manifest above".
         if not _is_requirements_format(path):
             continue
-        for ref in parse_requirement_refs(art.source):
+        for ref in parse_requirement_refs(text):
             resolved = _resolve_ref(path, ref)
             if resolved is None:
                 continue
@@ -127,13 +141,13 @@ def build_dependency_view(
             if not target.is_file():
                 continue
             try:
-                text = target.read_bytes().decode("utf-8")
+                ref_text = target.read_bytes().decode("utf-8")
             except UnicodeDecodeError:
                 continue
             # Force requirements-format dispatch (chased targets may not be
             # named requirements*.txt), but recompute kind from the real
             # basename so e.g. `-r dev.txt` still yields kind="dev".
-            raw_ref, _ = parse_manifest("requirements.txt", text)
+            raw_ref, _ = parse_manifest("requirements.txt", ref_text)
             real_kind = _kind_for_requirements(resolved.rsplit("/", 1)[-1])
             _emit(raw_ref, art.id, kind_override=real_kind)
 
@@ -144,11 +158,18 @@ def build_dependency_view(
     pin_lock_artifact: Dict[str, str] = {}
     for path in sorted(artifacts):
         if path.rsplit("/", 1)[-1] in _LOCK_BASENAMES:
-            lock_pins = parse_lock_pins(path, artifacts[path].source)
+            lock_text = _full_text(project_dir, path, artifacts[path])
+            lock_pins = parse_lock_pins(path, lock_text)
             pins.update(lock_pins)
             for name in lock_pins:
                 pin_lock_artifact[name] = artifacts[path].id
-            artifacts[path].extraction = "full"
+            # A lock with real content that yields zero pins failed to parse
+            # (corrupt/unrecognized shape) -- don't claim "full" extraction
+            # for nothing extracted. An empty/whitespace-only lock is not a
+            # failure (nothing to extract), so it still counts as "full".
+            artifacts[path].extraction = (
+                "full" if lock_pins or not lock_text.strip() else "partial"
+            )
     for d in deps:
         if d.name in pins:
             d.locked_version = pins[d.name]

@@ -180,3 +180,57 @@ def test_lock_only_transitive_dep_emitted_indirect(tmp_path):
     assert u.prov == ["lockfile"] and u.locked_version == "2.2.1"
     assert u.declared_in == arts["uv.lock"].id
     assert u.spec == ""
+
+
+def _big_lock_text(min_bytes: int) -> str:
+    """Enough valid ``[[package]]`` entries to exceed ``min_bytes``."""
+    parts = []
+    size = 0
+    i = 0
+    while size < min_bytes:
+        entry = f'[[package]]\nname = "pkg{i}"\nversion = "1.0.{i}"\n\n'
+        parts.append(entry)
+        size += len(entry.encode("utf-8"))
+        i += 1
+    return "".join(parts)
+
+
+def test_large_lock_parses_all_pins_under_default_text_cap(tmp_path):
+    """#157 review fix: a lock bigger than the default 262144-byte cap must
+    still parse in full -- dependency-manifest artifacts are exempt from
+    text_max_bytes at discovery, and extraction reads the file fresh besides."""
+    text = _big_lock_text(300_000)
+    assert len(text.encode("utf-8")) > 262144
+    (tmp_path / "uv.lock").write_text(text)
+    package_count = text.count("[[package]]")
+    arts = discover_artifacts(tmp_path, "app")  # default text_max_bytes
+    assert arts["uv.lock"].text_truncated is False
+    deps, _ = build_dependency_view(arts, {}, tmp_path, None, False)
+    pinned = {d.name for d in deps if d.locked_version}
+    assert len(pinned) == package_count
+    assert arts["uv.lock"].extraction == "full"  # set by build_dependency_view
+
+
+def test_large_lock_parses_all_pins_even_with_capture_text_false(tmp_path):
+    """Extraction must not depend on the stored `source` at all: with
+    --no-artifact-text (capture_text=False) the stored source is empty, but
+    build_dependency_view reads the real file fresh, so deps are unaffected."""
+    text = _big_lock_text(300_000)
+    (tmp_path / "uv.lock").write_text(text)
+    package_count = text.count("[[package]]")
+    arts = discover_artifacts(tmp_path, "app", capture_text=False)
+    assert arts["uv.lock"].source == ""
+    deps, _ = build_dependency_view(arts, {}, tmp_path, None, False)
+    pinned = {d.name for d in deps if d.locked_version}
+    assert len(pinned) == package_count
+    assert arts["uv.lock"].extraction == "full"
+
+
+def test_corrupted_lock_extraction_is_partial_not_full(tmp_path):
+    """A lock with real (non-empty) content that parse_lock_pins can't make
+    sense of must not claim extraction="full" for zero pins extracted."""
+    (tmp_path / "uv.lock").write_text("this is not valid toml at all {{{\n")
+    arts = discover_artifacts(tmp_path, "app")
+    deps, _ = build_dependency_view(arts, {}, tmp_path, None, False)
+    assert arts["uv.lock"].extraction == "partial"
+    assert deps == []
