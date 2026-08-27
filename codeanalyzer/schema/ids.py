@@ -28,13 +28,7 @@ def ordinal_id(callable_id: str, tag: str) -> str:
     return f"{callable_id}@{tag}"
 
 
-# Repository-artifact layer: application-anchored, non-source nodes. The
-# `@artifact/` marker keeps these out of the callable `signatureOf` id space
-# (like `@external/` homes) so they never collide with a source-tree id.
 def artifact_id(app_name: str, rel_path: str) -> str:
-    # Normalize separators and drop a leading "./" or "/" ONLY -- not a character
-    # strip: dotfiles are exactly what this layer inventories (`.env`,
-    # `.flaskenv`, `.github/workflows/...`), so their leading dot must survive.
     rel = rel_path.replace("\\", "/")
     while rel.startswith("./"):
         rel = rel[2:]

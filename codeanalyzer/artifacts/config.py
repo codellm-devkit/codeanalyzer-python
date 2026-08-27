@@ -21,10 +21,13 @@ import yaml
 
 from codeanalyzer.schema.py_schema import PyConfigKey
 
-try:  # 3.11+ stdlib; not guaranteed under requires-python >=3.9.
+try:  # tomllib is 3.11+ stdlib; tomli is its identical-API backport on 3.9/3.10.
     import tomllib as _toml  # type: ignore
 except ModuleNotFoundError:  # pragma: no cover
-    _toml = None  # type: ignore
+    try:
+        import tomli as _toml  # type: ignore
+    except ModuleNotFoundError:
+        _toml = None  # type: ignore
 
 # `${VAR}`, `$VAR`, and `%(VAR)s` style placeholders -> recorded as env: refs.
 _PLACEHOLDER = re.compile(
@@ -122,7 +125,7 @@ def _parse_mapping(
 
 def _parse_toml(artifact_id: str, text: str) -> Dict[str, PyConfigKey]:
     if _toml is None:
-        return {}  # 3.9/3.10: artifact still inventoried, config-keys skipped
+        return {}  # no tomllib/tomli: artifact still inventoried, keys skipped
     return _parse_mapping(artifact_id, _toml.loads(text), namespace=None)
 
 

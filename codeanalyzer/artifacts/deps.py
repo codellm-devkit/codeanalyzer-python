@@ -17,10 +17,13 @@ from typing import Dict, Optional
 from codeanalyzer import manifests
 from codeanalyzer.schema.py_schema import PyDependency
 
-try:  # 3.11+ stdlib; requires-python is >=3.9, so this is not guaranteed.
+try:  # tomllib is 3.11+ stdlib; tomli is its identical-API backport on 3.9/3.10.
     import tomllib as _toml  # type: ignore
 except ModuleNotFoundError:  # pragma: no cover - exercised on 3.9/3.10 only
-    _toml = None  # type: ignore
+    try:
+        import tomli as _toml  # type: ignore
+    except ModuleNotFoundError:
+        _toml = None  # type: ignore
 
 
 def _dep(

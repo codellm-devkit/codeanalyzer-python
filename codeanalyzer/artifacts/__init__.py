@@ -49,10 +49,6 @@ def artifact_inventory(
 ) -> Dict[str, PyArtifact]:
     project_dir = Path(project_dir)
     artifacts: Dict[str, PyArtifact] = {}
-    # rel path -> decoded text, used for parsing ONLY. This is independent of
-    # whether the text is stored on the node (`capture_text`): --no-artifact-text
-    # drops the raw payload from the output, but dependency/config parsing still
-    # sees the file, so the inventory (deps + config keys) is unchanged.
     texts: Dict[str, Optional[str]] = {}
     # Owning manifest's rel path -> {name: resolved_version}.
     locks: Dict[str, Dict[str, str]] = {}
@@ -79,9 +75,6 @@ def _walk(root: Path):
         if not path.is_file():
             continue
         parts = path.relative_to(root).parts
-        # A `.env` FILE is an artifact; a `.env` DIRECTORY (a venv) is skipped.
-        # Guard on the containing components only (parts[:-1]), so a file whose
-        # own name is in the skip set is still inventoried.
         if any(part in _SKIP_DIRS for part in parts[:-1]):
             continue
         if path.suffix == ".py":
@@ -132,9 +125,6 @@ def _build_artifact(
         content_hash=hashlib.sha256(raw).hexdigest(),
         size_bytes=len(raw),
     )
-    # `text` is the parse buffer (a capped, decoded view); it is stored on the
-    # node only when capture is on. Binary files (`text is None`) carry no text
-    # either way — inventoried by path + hash.
     if capture_text and text is not None:
         node.text = text
         node.text_encoding = "utf-8"

@@ -61,10 +61,6 @@ class AnalysisOptions:
     rebuild_analysis: bool = False
     skip_tests: bool = True
     no_venv: bool = False
-    # Repository-artifact layer: capture non-source files' raw text into the
-    # artifact nodes (default on), and the per-file byte cap beyond which text is
-    # truncated. Disabling capture leaves the inventory unchanged, only the text
-    # payload drops.
     artifact_text: bool = True
     artifact_text_max_bytes: int = DEFAULT_ARTIFACT_TEXT_MAX_BYTES
     file_name: Optional[Path] = None

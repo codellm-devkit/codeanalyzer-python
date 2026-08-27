@@ -25,16 +25,27 @@ def _single_module_app(file_key: str = "appb/main.py"):
     """A minimal second application (with its own distinct module file_key) and
     its ``sig_to_id`` map — returns ``(app, sig_to_id)`` like ``make_sample_app``."""
     fn = PyCallable(
-        name="main", path=file_key, signature="appb.main", return_type="None",
-        code="def main():\n    ...", start_line=1, end_line=2,
-        code_start_line=1, cyclomatic_complexity=1,
+        name="main",
+        path=file_key,
+        signature="appb.main",
+        return_type="None",
+        code="def main():\n    ...",
+        start_line=1,
+        end_line=2,
+        code_start_line=1,
+        cyclomatic_complexity=1,
     )
     mod = PyModule(
-        file_path=file_key, module_name="appb.main", functions={"main": fn},
-        content_hash="h-b", last_modified=1.0, file_size=10,
+        file_path=file_key,
+        module_name="appb.main",
+        functions={"main": fn},
+        content_hash="h-b",
+        last_modified=1.0,
+        file_size=10,
     )
     app = PyApplication(symbol_table={file_key: mod}, call_graph=[])
     return app, assign_ids(app, "app-b")
+
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("RUN_CONTAINER_TESTS"),
@@ -124,21 +135,77 @@ def test_full_push_materializes_the_whole_graph_and_schema(driver, cfg):
     assert _num(driver, "MATCH (e:PyExternal) RETURN count(e)") >= 1
 
 
+def test_artifact_layer_round_trips_through_the_graph(driver, cfg):
+    """The repository-artifact layer (application-anchored, all levels) lands in
+    the database: PyArtifact nodes with their raw text, PY_HAS_ARTIFACT from the
+    application, and the PY_DECLARES_DEPENDENCY / PY_DEFINES_CONFIG children."""
+    app, sig_to_id = make_sample_app()
+    bolt_writer(project(app, "sample-app", sig_to_id), cfg, full_run=True)
+
+    # The manifest artifact is anchored on the application and carries its text.
+    assert (
+        _num(
+            driver,
+            "MATCH (:PyApplication {name:'sample-app'})-[:PY_HAS_ARTIFACT]->"
+            "(a:PyArtifact {path:'pyproject.toml'}) "
+            "WHERE a.artifact_kind = 'build_manifest' AND a.text IS NOT NULL "
+            "RETURN count(a)",
+        )
+        == 1
+    )
+
+    # Its declared dependency is a child via PY_DECLARES_DEPENDENCY.
+    assert (
+        _num(
+            driver,
+            "MATCH (:PyArtifact {path:'pyproject.toml'})-[:PY_DECLARES_DEPENDENCY]->"
+            "(d:PyDependency {name:'requests'}) "
+            "WHERE d.scope = 'runtime' AND d.version_spec = '>=2' RETURN count(d)",
+        )
+        == 1
+    )
+
+    # The config artifact's defined key is a child via PY_DEFINES_CONFIG, with its
+    # placeholder reference preserved.
+    assert (
+        _num(
+            driver,
+            "MATCH (:PyArtifact {path:'.env'})-[:PY_DEFINES_CONFIG]->"
+            "(k:PyConfigKey {key:'DB_URL'}) "
+            "WHERE k.namespace = 'env' AND 'env:DB_HOST' IN k.references "
+            "RETURN count(k)",
+        )
+        == 1
+    )
+
+
 def test_full_run_does_not_prune_another_applications_modules(driver, cfg):
     """Regression for #45: a full-run push for one application must not prune the
     modules of a *different* application sharing the database."""
     app_a, sig_to_id_a = make_sample_app()
     bolt_writer(project(app_a, "app-a", sig_to_id_a), cfg, full_run=True)
-    before = _num(driver, "MATCH (:PyApplication {name:'app-a'})-[:PY_HAS_MODULE]->(m) RETURN count(m)")
+    before = _num(
+        driver,
+        "MATCH (:PyApplication {name:'app-a'})-[:PY_HAS_MODULE]->(m) RETURN count(m)",
+    )
     assert before > 0
 
     # A full-run push for a different application must leave app-a untouched.
     app_b, sig_to_id_b = _single_module_app()
     bolt_writer(project(app_b, "app-b", sig_to_id_b), cfg, full_run=True)
 
-    after = _num(driver, "MATCH (:PyApplication {name:'app-a'})-[:PY_HAS_MODULE]->(m) RETURN count(m)")
+    after = _num(
+        driver,
+        "MATCH (:PyApplication {name:'app-a'})-[:PY_HAS_MODULE]->(m) RETURN count(m)",
+    )
     assert after == before, "full-run push for app-b pruned app-a's modules (#45)"
-    assert _num(driver, "MATCH (:PyApplication {name:'app-b'})-[:PY_HAS_MODULE]->(m) RETURN count(m)") == 1
+    assert (
+        _num(
+            driver,
+            "MATCH (:PyApplication {name:'app-b'})-[:PY_HAS_MODULE]->(m) RETURN count(m)",
+        )
+        == 1
+    )
 
 
 def test_re_pushing_identical_analysis_is_idempotent(driver, cfg):
@@ -168,4 +235,7 @@ def test_a_full_run_prunes_a_module_whose_source_vanished(driver, cfg):
     # :PyExternal/:PyPackage/:PyDecorator nodes are MERGE-only and never pruned, so we
     # compare only _module-tagged nodes.)
     module_scoped = sum(1 for n in rows.nodes if "_module" in n.props)
-    assert _num(driver, "MATCH (n) WHERE n._module IS NOT NULL RETURN count(n)") == module_scoped
+    assert (
+        _num(driver, "MATCH (n) WHERE n._module IS NOT NULL RETURN count(n)")
+        == module_scoped
+    )

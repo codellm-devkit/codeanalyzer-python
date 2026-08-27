@@ -50,6 +50,10 @@ dependencies = [
     # pyyaml: the entrypoint rules pack (#27) is YAML. Declared explicitly --
     # it was previously only reachable as a transitive dep of ray.
     "pyyaml>=6.0,<7.0",
+    # tomli: the artifact layer parses TOML manifests/config (pyproject
+    # optional-deps, Pipfile, poetry/uv locks, *.toml config). tomllib is stdlib
+    # only on 3.11+, so backfill the identical API on 3.9/3.10.
+    "tomli>=2.0.0,<3.0.0; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]

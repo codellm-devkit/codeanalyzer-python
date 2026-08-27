@@ -51,10 +51,43 @@ def _make_project(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     (proj / "requirements-dev.txt").write_text("black==24.1.0\n", encoding="utf-8")
+    # A poetry.lock owned by the pyproject.toml above: pins a declared dep's
+    # resolved_version and contributes a lock-only transitive (direct=False).
+    (proj / "poetry.lock").write_text(
+        "[[package]]\n"
+        'name = "requests"\n'
+        'version = "2.31.0"\n'
+        "\n"
+        "[[package]]\n"
+        'name = "urllib3"\n'
+        'version = "2.2.1"\n',
+        encoding="utf-8",
+    )
+    (proj / "Pipfile").write_text(
+        "[packages]\n" 'flask = "*"\n' "\n" "[dev-packages]\n" 'mypy = "==1.8.0"\n',
+        encoding="utf-8",
+    )
+    (proj / "setup.cfg").write_text(
+        "[options]\n"
+        "install_requires =\n"
+        "    numpy>=1.26\n"
+        "\n"
+        "[options.extras_require]\n"
+        "test =\n"
+        "    pytest-cov\n",
+        encoding="utf-8",
+    )
     (proj / ".env").write_text("DB_URL=${DB_HOST}\nDEBUG=1\n", encoding="utf-8")
     (proj / "settings.yml").write_text(
         "service:\n  name: demo\n  port: 8080\n", encoding="utf-8"
     )
+    (proj / "settings.json").write_text(
+        '{"cache": {"ttl": 60}, "endpoint": "${API_URL}"}\n', encoding="utf-8"
+    )
+    (proj / "config.toml").write_text(
+        '[server]\nhost = "0.0.0.0"\nport = 9000\n', encoding="utf-8"
+    )
+    (proj / "tox.ini").write_text("[testenv]\ndeps = pytest\n", encoding="utf-8")
     (proj / "app.properties").write_text("log.level=INFO\n", encoding="utf-8")
     # A binary file (invalid utf-8) — inventoried, no text.
     (proj / "logo.bin").write_bytes(b"\x89PNG\r\n\x1a\n\xff\xfe\x00")
@@ -114,6 +147,56 @@ def test_dependency_scopes_and_specs(tmp_path):
     dev = arts["requirements-dev.txt"]["dependencies"]
     assert dev["black"]["scope"] == "development"
     assert dev["black"]["version_spec"] == "==24.1.0"
+
+
+def test_lockfile_pins_resolved_version_and_adds_transitives(tmp_path):
+    """poetry.lock owned by pyproject.toml pins a declared dep's resolved_version
+    and contributes lock-only packages as direct=False transitives."""
+    proj = _make_project(tmp_path)
+    deps = _artifacts(_run(proj, 1))["pyproject.toml"]["dependencies"]
+
+    # A declared dep gets its resolved_version filled in from the lock.
+    assert deps["requests"]["resolved_version"] == "2.31.0"
+    assert deps["requests"]["direct"] is True
+
+    # A lock-only package (not declared in the manifest) is a transitive node.
+    assert deps["urllib3"]["resolved_version"] == "2.2.1"
+    assert deps["urllib3"]["direct"] is False
+    assert deps["urllib3"]["scope"] == "unknown"
+
+
+def test_pipfile_and_setup_cfg_dependency_scopes(tmp_path):
+    proj = _make_project(tmp_path)
+    arts = _artifacts(_run(proj, 1))
+
+    pip = arts["Pipfile"]["dependencies"]
+    assert pip["flask"]["scope"] == "runtime"
+    assert pip["mypy"]["scope"] == "development"
+    assert pip["mypy"]["version_spec"] == "==1.8.0"
+
+    cfg = arts["setup.cfg"]["dependencies"]
+    assert cfg["numpy"]["scope"] == "runtime"
+    assert cfg["numpy"]["version_spec"] == ">=1.26"
+    assert cfg["pytest-cov"]["scope"] == "test"
+
+
+def test_config_keys_across_structured_formats(tmp_path):
+    """JSON / TOML / INI config-key extraction (the .env/.yaml/.properties cases
+    are covered separately)."""
+    proj = _make_project(tmp_path)
+    arts = _artifacts(_run(proj, 1))
+
+    json_keys = arts["settings.json"]["config_keys"]
+    assert json_keys["cache.ttl"]["value"] == 60
+    assert json_keys["endpoint"]["references"] == ["env:API_URL"]
+
+    toml_keys = arts["config.toml"]["config_keys"]
+    assert toml_keys["server.host"]["value"] == "0.0.0.0"
+    assert toml_keys["server.port"]["value"] == 9000
+
+    # A plain .ini file flattens to <section>.<option> keys.
+    ini_keys = arts["tox.ini"]["config_keys"]
+    assert ini_keys["testenv.deps"]["value"] == "pytest"
 
 
 def test_config_keys_and_references(tmp_path):
