@@ -2,7 +2,10 @@
 
 Deterministic by default: reads only repo files. ``resolve_installed`` adds
 filesystem reads of ``<venv>/**/site-packages/*.dist-info`` (never runs an
-interpreter), tagged ``prov: installed-metadata``."""
+interpreter), tagged ``prov: installed-metadata``.
+
+``-r``/``-c`` refs in a requirements-format manifest are chased one level
+only, by design: a chased target's own refs are not followed further."""
 
 import posixpath
 import re
@@ -11,10 +14,11 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from codeanalyzer.artifacts.parsers import (
-    RawDep, normalize_name, parse_lock_pins, parse_manifest, parse_requirement_refs,
+    RawDep, _kind_for_requirements, normalize_name, parse_lock_pins, parse_manifest,
+    parse_requirement_refs,
 )
 from codeanalyzer.schema.py_schema import (
-    PyArtifact, PyDependency, PyImport, PyImportBinding, PyModule,
+    PyArtifact, PyDependency, PyImportBinding, PyModule,
 )
 
 _LOCK_BASENAMES = ("poetry.lock", "uv.lock", "Pipfile.lock")
@@ -38,7 +42,7 @@ def _installed_top_levels(venv_dir: Optional[Path]) -> Dict[str, List[str]]:
     out: Dict[str, List[str]] = {}
     if venv_dir is None or not venv_dir.exists():
         return out
-    for di in sorted(venv_dir.glob("lib/python*/site-packages/*.dist-info")):
+    for di in sorted(venv_dir.glob("**/site-packages/*.dist-info")):
         name = None
         meta = di / "METADATA"
         if meta.exists():
@@ -63,7 +67,7 @@ def _resolve_ref(manifest_path: str, ref: str) -> Optional[str]:
     normalized and repo-relative. ``None`` if it would escape ``project_dir``."""
     manifest_dir = manifest_path.rsplit("/", 1)[0] if "/" in manifest_path else ""
     joined = posixpath.normpath(posixpath.join(manifest_dir, ref) if manifest_dir else ref)
-    if joined.startswith("..") or posixpath.isabs(joined):
+    if joined == ".." or joined.startswith("../") or posixpath.isabs(joined):
         return None
     return joined
 
@@ -77,11 +81,12 @@ def build_dependency_view(
 ) -> Tuple[List[PyDependency], List[PyImportBinding]]:
     deps: List[PyDependency] = []
 
-    def _emit(raw: List[RawDep], declared_in: str) -> None:
+    def _emit(raw: List[RawDep], declared_in: str, kind_override: Optional[str] = None) -> None:
         for r in raw:
             deps.append(PyDependency(
-                name=r.name, spec=r.spec, kind=r.kind, extras=sorted(r.extras),
-                declared_in=declared_in, prov=["declared"],
+                name=r.name, spec=r.spec,
+                kind=kind_override if kind_override is not None else r.kind,
+                extras=sorted(r.extras), declared_in=declared_in, prov=["declared"],
             ))
 
     # 1. Declared records from every dependency-manifest artifact (non-lock).
@@ -111,8 +116,12 @@ def build_dependency_view(
                 text = target.read_bytes().decode("utf-8")
             except UnicodeDecodeError:
                 continue
+            # Force requirements-format dispatch (chased targets may not be
+            # named requirements*.txt), but recompute kind from the real
+            # basename so e.g. `-r dev.txt` still yields kind="dev".
             raw_ref, _ = parse_manifest("requirements.txt", text)
-            _emit(raw_ref, art.id)
+            real_kind = _kind_for_requirements(resolved.rsplit("/", 1)[-1])
+            _emit(raw_ref, art.id, kind_override=real_kind)
 
     # 2. Lock backfill (locked_version + prov "lockfile"); locks never create records.
     pins: Dict[str, str] = {}

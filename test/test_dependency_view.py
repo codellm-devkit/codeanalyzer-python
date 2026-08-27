@@ -87,3 +87,33 @@ def test_requirement_refs_chased(tmp_path):
     assert set(by) == {"requests", "flask"}  # ../../etc/passwd ref ignored
     assert by["flask"].declared_in == manifest_id
     assert by["requests"].declared_in == manifest_id
+
+
+def test_requirement_ref_chased_kind_from_real_basename(tmp_path):
+    (tmp_path / "reqs").mkdir()
+    (tmp_path / "reqs" / "requirements.txt").write_text("-r dev.txt\n")
+    (tmp_path / "reqs" / "dev.txt").write_text("mypy\n")
+    arts = discover_artifacts(tmp_path, "app")
+    assert "reqs/dev.txt" not in arts  # unmatched by discovery rules
+    deps, _ = build_dependency_view(arts, {}, tmp_path, None, False)
+    mypy = next(d for d in deps if d.name == "mypy")
+    assert mypy.kind == "dev"  # from dev.txt's real basename, not the forced "requirements.txt"
+
+
+def test_requirement_ref_to_discovered_target_not_duplicated(tmp_path):
+    (tmp_path / "requirements.txt").write_text("-r requirements-extra.txt\n")
+    (tmp_path / "requirements-extra.txt").write_text("rich\n")
+    arts = discover_artifacts(tmp_path, "app")
+    assert "requirements-extra.txt" in arts  # discovered and parsed on its own
+    deps, _ = build_dependency_view(arts, {}, tmp_path, None, False)
+    rich_deps = [d for d in deps if d.name == "rich"]
+    assert len(rich_deps) == 1  # not duplicated by the chase
+    assert rich_deps[0].declared_in == arts["requirements-extra.txt"].id
+
+
+def test_resolve_ref_does_not_over_reject_dotdot_prefixed_name(tmp_path):
+    (tmp_path / "requirements.txt").write_text("-r ..bak.txt\n")
+    (tmp_path / "..bak.txt").write_text("click\n")
+    arts = discover_artifacts(tmp_path, "app")
+    deps, _ = build_dependency_view(arts, {}, tmp_path, None, False)
+    assert {d.name for d in deps} == {"click"}  # "..bak.txt" != escaping ".."/"../..."
