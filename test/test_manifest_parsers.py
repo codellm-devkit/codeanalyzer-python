@@ -2,6 +2,7 @@
 import textwrap
 from codeanalyzer.artifacts.parsers import (
     RawDep, normalize_name, parse_lock_pins, parse_manifest,
+    parse_requirement_line, parse_requirement_refs,
 )
 
 
@@ -83,9 +84,11 @@ def test_pipfile_and_environment_yml():
     assert {(d.name, d.kind, d.spec) for d in deps} == {
         ("requests", "runtime", ">=2.31"), ("black", "dev", ""),
     }
-    env = "dependencies:\n  - numpy=1.26\n  - pip\n  - pip:\n      - fastapi>=0.100\n"
+    env = "dependencies:\n  - numpy=1.26\n  - scipy>=1.10\n  - pip\n  - pip:\n      - fastapi>=0.100\n"
     deps, _ = parse_manifest("environment.yml", env)
-    assert {(d.name, d.spec) for d in deps} == {("numpy", "=1.26"), ("fastapi", ">=0.100")}
+    assert {(d.name, d.spec) for d in deps} == {
+        ("numpy", "=1.26"), ("scipy", ">=1.10"), ("fastapi", ">=0.100"),
+    }
 
 
 def test_lock_pins():
@@ -95,3 +98,54 @@ def test_lock_pins():
     assert parse_lock_pins("uv.lock", uv) == {"requests": "2.32.0"}
     pipf = '{"default": {"requests": {"version": "==2.31.0"}}, "develop": {}}'
     assert parse_lock_pins("Pipfile.lock", pipf) == {"requests": "2.31.0"}
+
+
+def test_requirements_kind_word_boundary():
+    deps, _ = parse_manifest("requirements-docker.txt", "requests\n")
+    assert deps[0].kind == "runtime"
+    deps, _ = parse_manifest("requirements-latest.txt", "requests\n")
+    assert deps[0].kind == "runtime"
+    deps, _ = parse_manifest("requirements-dev.txt", "requests\n")
+    assert deps[0].kind == "dev"
+
+
+def test_malformed_manifests_are_partial():
+    assert parse_manifest("pyproject.toml", "not [ valid toml") == ([], True)
+    assert parse_manifest("Pipfile", "not [ valid toml") == ([], True)
+    assert parse_manifest("setup.cfg", "[options\nbroken") == ([], True)
+    assert parse_manifest("environment.yml", "dependencies: [unclosed") == ([], True)
+
+
+def test_malformed_lock_files_return_empty():
+    assert parse_lock_pins("poetry.lock", "not [ valid toml") == {}
+    assert parse_lock_pins("uv.lock", "not [ valid toml") == {}
+    assert parse_lock_pins("Pipfile.lock", "not valid json") == {}
+
+
+def test_poetry_inline_table_dep():
+    text = textwrap.dedent("""\
+        [tool.poetry.dependencies]
+        python = "^3.10"
+        requests = {version = "^2.28", extras = ["socks"]}
+    """)
+    deps, partial = parse_manifest("pyproject.toml", text)
+    assert not partial
+    assert deps == [RawDep("requests", "^2.28", "runtime", ("socks",))]
+
+
+def test_pipfile_inline_table_extras():
+    text = '[packages]\nrequests = {version = "*", extras = ["security"]}\n'
+    deps, _ = parse_manifest("Pipfile", text)
+    assert deps == [RawDep("requests", "", "runtime", ("security",))]
+
+
+def test_direct_ref_and_line_continuation():
+    assert parse_requirement_line("mylib @ git+https://x/y.git") == RawDep("mylib", "", "runtime", ())
+    assert parse_requirement_line("pkg==1.4.2 \\") == RawDep("pkg", "==1.4.2", "runtime", ())
+
+
+def test_parse_requirement_refs():
+    text = "requests\n-r base.txt\n-c constraints/prod.txt\npytest\n"
+    assert parse_requirement_refs(text) == ["base.txt", "constraints/prod.txt"]
+    long_form = "--requirement base.txt\n--constraint constraints/prod.txt\n"
+    assert parse_requirement_refs(long_form) == ["base.txt", "constraints/prod.txt"]

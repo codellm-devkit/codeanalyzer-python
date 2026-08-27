@@ -5,7 +5,7 @@ import configparser
 import json
 import re
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 if sys.version_info >= (3, 11):
@@ -36,17 +36,38 @@ _REQ_LINE = re.compile(
 def parse_requirement_line(line: str, kind: str = "runtime") -> Optional[RawDep]:
     """One PEP 508-ish requirement line -> RawDep (None for options/paths/URLs)."""
     line = line.split("#", 1)[0].strip()
-    if not line or line.startswith(("-", "--")) or "://" in line or line.startswith((".", "/")):
+    if not line or line.startswith(("-", "--")) or line.startswith((".", "/")):
+        return None
+    if " @ " in line:
+        line = line.split(" @ ", 1)[0].strip()  # direct ref (PEP 508): keep the name, drop the URL
+    elif "://" in line:
         return None
     m = _REQ_LINE.match(line)
     if not m:
         return None
     extras = tuple(e.strip() for e in (m.group("extras") or "").split(",") if e.strip())
-    return RawDep(normalize_name(m.group("name")), m.group("spec").strip().rstrip(","), kind, extras)
+    spec = m.group("spec").strip().rstrip(",")
+    if spec.endswith("\\"):
+        spec = spec[:-1].rstrip()  # pip-compile --generate-hashes line continuation
+    return RawDep(normalize_name(m.group("name")), spec, kind, extras)
+
+
+_REF_LINE = re.compile(r"^(?:-r|--requirement|-c|--constraint)\s+(\S+)")
+
+
+def parse_requirement_refs(text: str) -> List[str]:
+    """-r/--requirement/-c/--constraint targets from a requirements file, in order."""
+    out = []
+    for line in text.splitlines():
+        line = line.split("#", 1)[0].strip()
+        m = _REF_LINE.match(line)
+        if m:
+            out.append(m.group(1))
+    return out
 
 
 def _kind_for_requirements(basename: str) -> str:
-    return "dev" if re.search(r"(dev|test|lint|doc)", basename, re.I) else "runtime"
+    return "dev" if re.search(r"\b(dev|test|lint|doc)\b", basename, re.I) else "runtime"
 
 
 def _parse_requirements(basename: str, text: str) -> List[RawDep]:
@@ -57,6 +78,13 @@ def _parse_requirements(basename: str, text: str) -> List[RawDep]:
         if dep:
             out.append(dep)
     return out
+
+
+def _spec_and_extras(spec) -> Tuple[str, Tuple[str, ...]]:
+    """Poetry/Pipfile dep spec (bare string or {version, extras} inline table) -> (version, extras)."""
+    if isinstance(spec, dict):
+        return spec.get("version", "") or "", tuple(spec.get("extras", []) or [])
+    return (spec if isinstance(spec, str) else ""), ()
 
 
 def _parse_pyproject(text: str) -> List[RawDep]:
@@ -80,13 +108,16 @@ def _parse_pyproject(text: str) -> List[RawDep]:
     for name, spec in (poetry.get("dependencies") or {}).items():
         if normalize_name(name) == "python":
             continue
-        out.append(RawDep(normalize_name(name), spec if isinstance(spec, str) else "", "runtime"))
+        v, ex = _spec_and_extras(spec)
+        out.append(RawDep(normalize_name(name), v, "runtime", ex))
     for gname, group in (poetry.get("group") or {}).items():
         kind = "dev" if gname == "dev" else "optional"
         for name, spec in (group.get("dependencies") or {}).items():
-            out.append(RawDep(normalize_name(name), spec if isinstance(spec, str) else "", kind))
+            v, ex = _spec_and_extras(spec)
+            out.append(RawDep(normalize_name(name), v, kind, ex))
     for name, spec in (poetry.get("dev-dependencies") or {}).items():  # legacy poetry
-        out.append(RawDep(normalize_name(name), spec if isinstance(spec, str) else "", "dev"))
+        v, ex = _spec_and_extras(spec)
+        out.append(RawDep(normalize_name(name), v, "dev", ex))
     return out
 
 
@@ -152,8 +183,8 @@ def _parse_pipfile(text: str) -> List[RawDep]:
     out: List[RawDep] = []
     for section, kind in (("packages", "runtime"), ("dev-packages", "dev")):
         for name, spec in (data.get(section) or {}).items():
-            s = spec if isinstance(spec, str) else (spec.get("version", "") if isinstance(spec, dict) else "")
-            out.append(RawDep(normalize_name(name), "" if s == "*" else s, kind))
+            v, ex = _spec_and_extras(spec)
+            out.append(RawDep(normalize_name(name), "" if v == "*" else v, kind, ex))
     return out
 
 
@@ -162,10 +193,9 @@ def _parse_environment_yml(text: str) -> List[RawDep]:
     out: List[RawDep] = []
     for item in data.get("dependencies") or []:
         if isinstance(item, str):
-            name, _, spec = item.partition("=")
-            if normalize_name(name) in ("pip", "python"):
-                continue
-            out.append(RawDep(normalize_name(name), f"={spec}" if spec else ""))
+            d = parse_requirement_line(item)
+            if d and d.name not in ("pip", "python"):
+                out.append(d)
         elif isinstance(item, dict):
             for req in item.get("pip") or []:
                 d = parse_requirement_line(req)
