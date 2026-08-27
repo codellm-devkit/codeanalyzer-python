@@ -16,19 +16,23 @@ def test_discovers_known_shapes(tmp_path):
     _mk(tmp_path, "requirements-dev.txt", "pytest\n")
     _mk(tmp_path, "deploy/docker-compose.yml")
     _mk(tmp_path, "Dockerfile", "FROM python:3.12\n")
+    _mk(tmp_path, "svc/Dockerfile", "FROM alpine:latest\n")
     _mk(tmp_path, ".github/workflows/ci.yml")
+    _mk(tmp_path, "k8s/deploy.yaml")
     _mk(tmp_path, "src/app.py", "x = 1\n")          # code: never an artifact
     _mk(tmp_path, "notes.md", "hi\n")               # unmatched: no node
     arts = discover_artifacts(tmp_path, "myapp")
     assert sorted(arts) == [
         ".github/workflows/ci.yml", "Dockerfile", "deploy/docker-compose.yml",
-        "pyproject.toml", "requirements-dev.txt",
+        "k8s/deploy.yaml", "pyproject.toml", "requirements-dev.txt", "svc/Dockerfile",
     ]
     py = arts["pyproject.toml"]
     assert py.id == "can://artifact/myapp/pyproject.toml"
     assert py.format == "toml" and "dependency-manifest" in py.roles
     assert arts["Dockerfile"].roles == ["container-image"]
+    assert arts["svc/Dockerfile"].roles == ["container-image"]
     assert arts["deploy/docker-compose.yml"].roles == ["service-topology"]
+    assert arts["k8s/deploy.yaml"].roles == ["service-topology"]
     assert arts[".github/workflows/ci.yml"].roles == ["ci"]
 
 
@@ -46,6 +50,6 @@ def test_source_hash_and_ignores(tmp_path):
 
 
 def test_unreadable_binary_is_skipped(tmp_path):
-    (tmp_path / "settings.json").write_bytes(b"\xff\xfe\x00bad")
+    (tmp_path / "pyproject.toml").write_bytes(b"\xff\xfe\x00bad")
     arts = discover_artifacts(tmp_path, "a")
     assert arts == {}
