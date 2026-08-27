@@ -18,9 +18,13 @@ def test_full_surface(tmp_path):
     arts = app.artifacts
     assert {"pyproject.toml", "requirements-dev.txt", "setup.py", "uv.lock",
             "environment.yml", "Dockerfile", "docker-compose.yml",
-            ".github/workflows/ci.yml"} <= set(arts)
+            ".github/workflows/ci.yml", "data.csv", "logo.png"} <= set(arts)
     assert arts["setup.py"].extraction == "partial"      # computed install_requires
     assert arts["pyproject.toml"].extraction == "full"
+    # never-drop inventory (#157 follow-up): unmatched files are captured too.
+    assert arts["data.csv"].format == "text" and arts["data.csv"].roles == ["unknown"]
+    assert arts["logo.png"].format == "binary" and arts["logo.png"].roles == ["unknown"]
+    assert arts["logo.png"].source == "" and arts["logo.png"].sha256 != ""
     deps = {d.name: d for d in app.dependencies}
     assert deps["requests"].locked_version == "2.32.3"
     assert deps["requests"].prov == ["declared", "lockfile"]

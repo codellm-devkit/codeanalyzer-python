@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to the existing `:PyExternal` ghosts. New flag: `--resolve-installed`.
   Lockfile-only (transitive) pins are emitted as `direct: false` dependency
   records attributed to the lock artifact (#152 reconciliation).
+- Artifact discovery never drops a file: every non-`.py` file is now
+  inventoried, matched or not (unmatched decodable files as `text`/`unknown`,
+  anything not UTF-8 decodable as `binary` with empty `source`). New
+  `PyArtifact.text_truncated` field plus `--artifact-text/--no-artifact-text`
+  and `--artifact-text-max-bytes` flags control verbatim `source` capture;
+  `sha256`/`size_bytes` always reflect the full file regardless (#157).
 
 ## [1.2.0] - 2026-08-26
 

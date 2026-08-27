@@ -67,7 +67,28 @@ def _classify(rel_posix: str) -> Tuple[str, List[str]] | None:
     return None
 
 
-def discover_artifacts(project_dir: Path, app_name: str) -> Dict[str, PyArtifact]:
+def _capture_source(
+    raw: bytes, text: str, capture_text: bool, text_max_bytes: int
+) -> Tuple[str, bool]:
+    """Decide ``(source, text_truncated)`` for a decodable file.
+
+    Slices ``raw`` (not ``text``) for the cap, so it is a true byte cap even
+    when it lands inside a multi-byte character -- ``errors="ignore"`` drops
+    the dangling partial char at the cut, so this never raises."""
+    if not capture_text:
+        return "", False
+    if len(raw) <= text_max_bytes:
+        return text, False
+    return raw[:text_max_bytes].decode("utf-8", errors="ignore"), True
+
+
+def discover_artifacts(
+    project_dir: Path,
+    app_name: str,
+    *,
+    capture_text: bool = True,
+    text_max_bytes: int = 262144,
+) -> Dict[str, PyArtifact]:
     """Walk the project and return every file as an artifact, sorted by path.
 
     Never-drop inventory (issue #157 follow-up): a rule-matched file keeps its
@@ -77,7 +98,12 @@ def discover_artifacts(project_dir: Path, app_name: str) -> Dict[str, PyArtifact
     too, keeping the rule's roles. The one exclusion is a `.py` file no RULES
     entry names: the symbol table already owns it. ``setup.py`` is the
     deliberate exception -- it IS rule-matched (a dependency-manifest), so it
-    is captured like any other manifest despite the `.py` suffix."""
+    is captured like any other manifest despite the `.py` suffix.
+
+    ``capture_text=False`` empties ``source`` everywhere (inventory otherwise
+    identical); a decodable file over ``text_max_bytes`` gets a truncated
+    ``source`` and ``text_truncated=True``. ``sha256``/``size_bytes`` always
+    reflect the full file regardless of either knob."""
     out: Dict[str, PyArtifact] = {}
     for path in sorted(project_dir.rglob("*")):
         if not path.is_file():
@@ -110,10 +136,15 @@ def discover_artifacts(project_dir: Path, app_name: str) -> Dict[str, PyArtifact
         if not decodable:
             fmt = "binary"
 
+        if decodable:
+            source, text_truncated = _capture_source(raw, text, capture_text, text_max_bytes)
+        else:
+            source, text_truncated = "", False
+
         out[rel_posix] = PyArtifact(
             id=artifact_id(app_name, rel_posix), path=rel_posix, format=fmt,
             roles=list(roles), size_bytes=len(raw),
             sha256=hashlib.sha256(raw).hexdigest(),
-            source=text if decodable else "",
+            source=source, text_truncated=text_truncated,
         )
     return out

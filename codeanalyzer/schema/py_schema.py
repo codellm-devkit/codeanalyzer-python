@@ -472,20 +472,21 @@ class PyExternalSymbol(BaseModel):
 
 @builder
 class PyArtifact(BaseModel):
-    """A recognized non-code file (config, manifest, CI, container spec).
-
-    Captured broadly (node + verbatim ``source``); *meaning* is extracted
-    narrowly — only ``dependency-manifest`` roles feed ``dependencies`` today.
-    ``id`` is language-neutral (``can://artifact/<app>/<path>``)."""
+    """Any non-`.py` project file (config, manifest, CI, container spec, or
+    plain data/binary) -- never dropped from the walk. Captured broadly (node
+    + verbatim ``source``); *meaning* is extracted narrowly -- only
+    ``dependency-manifest`` roles feed ``dependencies`` today. ``id`` is
+    language-neutral (``can://artifact/<app>/<path>``)."""
 
     id: str = ""
     kind: str = "artifact"
     path: str  # repo-relative POSIX path (also the map key)
-    format: str  # toml|yaml|json|ini|requirements|dockerfile|text
+    format: str  # toml|yaml|json|ini|requirements|dockerfile|text|binary
     roles: List[str] = []
     size_bytes: int = 0
-    sha256: str = ""
-    source: str = ""  # verbatim, unbounded by decision (spec §3)
+    sha256: str = ""  # always the full file's hash, even when source is truncated/empty
+    source: str = ""  # verbatim by default; "" for binary or when capture is disabled
+    text_truncated: bool = False  # True when `source` is a prefix, not the full file
     extraction: str = "none"  # none|partial|full
 
 

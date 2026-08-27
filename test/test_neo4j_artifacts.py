@@ -5,6 +5,7 @@ from codeanalyzer.neo4j.schema import NODE_LABELS, REL_TYPES
 def test_catalog_has_neutral_vocabulary():
     labels = {n.label: n for n in NODE_LABELS}
     assert labels["Artifact"].key == "id" and labels["Package"].key == "id"
+    assert labels["Artifact"].properties["text_truncated"] == "boolean"
     rels = {r.type for r in REL_TYPES}
     assert {"HAS_ARTIFACT", "DECLARES_DEPENDENCY", "LOCKS",
             "PY_PROVIDES", "PY_UNRESOLVED_IMPORT"} <= rels
@@ -28,6 +29,11 @@ def test_rows_projected(tmp_path):
     nodes = {(n.labels[0], n.value) for n in rows.nodes}
     assert ("Artifact", "can://artifact/p/pyproject.toml") in nodes
     assert ("Package", "pkg:pypi/requests") in nodes
+    pyproject_node = next(
+        n for n in rows.nodes
+        if n.labels[0] == "Artifact" and n.value == "can://artifact/p/pyproject.toml"
+    )
+    assert pyproject_node.props["text_truncated"] is False
     rel_types = {e.type for e in rows.edges}
     assert {"HAS_ARTIFACT", "DECLARES_DEPENDENCY", "PY_PROVIDES"} <= rel_types
 

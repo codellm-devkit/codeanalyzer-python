@@ -1,8 +1,9 @@
 """Non-code artifact capture and dependency extraction (spec 2026-08-27).
 
-Capture is broad (every rule-matched config-shaped file becomes a
-:class:`~codeanalyzer.schema.py_schema.PyArtifact`); extraction is narrow
-(only dependency manifests are parsed for meaning in this unit)."""
+Capture never drops a file (every non-`.py` file becomes a
+:class:`~codeanalyzer.schema.py_schema.PyArtifact`, rule-matched or not,
+text or binary -- issue #157 follow-up); extraction is narrow (only
+dependency manifests are parsed for meaning in this unit)."""
 
 from codeanalyzer.artifacts.dependencies import build_dependency_view
 from codeanalyzer.artifacts.discovery import discover_artifacts

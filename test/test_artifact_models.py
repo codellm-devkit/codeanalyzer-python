@@ -33,6 +33,7 @@ def test_models_round_trip():
     back = model_validate_json(PyApplication, model_dump_json(app))
     assert back.artifacts["pyproject.toml"].kind == "artifact"
     assert back.artifacts["pyproject.toml"].extraction == "none"
+    assert back.artifacts["pyproject.toml"].text_truncated is False
     assert back.dependencies[0].locked_version is None
     assert back.unresolved_imports[0].bound_to == "pyyaml"
 
