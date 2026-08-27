@@ -342,7 +342,7 @@ def _project_artifacts(b: RowBuilder, app: PyApplication, app_name: str, app_ref
             "DECLARES_DEPENDENCY",
             NodeRef("Artifact", "id", d.declared_in),
             pkg_ref,
-            prune({"spec": d.spec, "kind": d.kind, "extras": d.extras, "prov": d.prov}),
+            prune({"spec": d.spec, "kind": d.kind, "extras": d.extras, "prov": d.prov, "direct": d.direct}),
             key=d.kind,
         )
         if d.locked_version:

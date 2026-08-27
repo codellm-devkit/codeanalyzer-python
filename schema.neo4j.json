@@ -403,6 +403,7 @@
         "kind": "string",
         "extras": "string[]",
         "prov": "string[]",
+        "direct": "boolean",
         "_k": "string"
       }
     },

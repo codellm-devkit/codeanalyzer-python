@@ -159,3 +159,22 @@ def test_local_package_top_level_not_falsely_unresolved(tmp_path):
     }
     _, unresolved = build_dependency_view({}, mods, tmp_path, None, False)
     assert "odoo" not in {u.module for u in unresolved}
+
+
+def test_lock_only_transitive_dep_emitted_indirect(tmp_path):
+    (tmp_path / "pyproject.toml").write_text('[project]\ndependencies = ["requests>=2.31"]\n')
+    (tmp_path / "uv.lock").write_text(
+        '[[package]]\nname = "requests"\nversion = "2.32.3"\n'
+        '[[package]]\nname = "urllib3"\nversion = "2.2.1"\n'
+    )
+    from codeanalyzer.artifacts.discovery import discover_artifacts
+    from codeanalyzer.artifacts.dependencies import build_dependency_view
+    arts = discover_artifacts(tmp_path, "app")
+    deps, _ = build_dependency_view(arts, {}, tmp_path, None, False)
+    by = {d.name: d for d in deps}
+    assert by["requests"].direct is True and by["requests"].locked_version == "2.32.3"
+    u = by["urllib3"]
+    assert u.direct is False
+    assert u.prov == ["lockfile"] and u.locked_version == "2.2.1"
+    assert u.declared_in == arts["uv.lock"].id
+    assert u.spec == ""

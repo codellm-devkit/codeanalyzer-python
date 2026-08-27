@@ -498,6 +498,9 @@ class PyDependency(BaseModel):
     kind: str = "runtime"  # runtime|dev|optional|build
     extras: List[str] = []
     declared_in: str = ""  # PyArtifact id
+    # False for lockfile-only (transitive) dependencies -- pinned in a lock
+    # with no manifest declaration (#152 reconciliation).
+    direct: bool = True
     locked_version: Optional[str] = None
     provides_imports: List[str] = []
     prov: List[str] = []  # declared|lockfile|installed-metadata|heuristic
