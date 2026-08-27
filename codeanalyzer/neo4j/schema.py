@@ -201,6 +201,20 @@ NODE_LABELS: List[NodeLabel] = [
             "_module": "string",
         },
     ),
+    # Neutral artifact/dependency subgraph (spec 2026-08-27, Task 6). No `Py`
+    # prefix -- deliberate: `Artifact`/`Package` are cross-language merge
+    # targets, so a sibling-language analyzer over the same repo lands on the
+    # same nodes instead of a per-language duplicate. `PY_PROVIDES` /
+    # `PY_UNRESOLVED_IMPORT` stay PY_-namespaced (this analyzer's own claim
+    # about what an import resolves to) and target `:PyExternal`.
+    NodeLabel("Artifact", "Artifact", "id", {
+        "id": "string", "path": "string", "format": "string",
+        "roles": "string[]", "size_bytes": "integer", "sha256": "string",
+        "source": "string", "extraction": "string",
+    }),
+    NodeLabel("Package", "Package", "id", {
+        "id": "string", "ecosystem": "string", "name": "string",
+    }),
 ]
 
 _DECL_TARGETS = ["PyClass", "PyCallable"]
@@ -250,6 +264,14 @@ REL_TYPES: List[RelType] = [
     RelType("PY_PARAM_IN", ["PyBodyNode"], ["PyBodyNode"], {"var": "string"}),
     RelType("PY_PARAM_OUT", ["PyBodyNode"], ["PyBodyNode"], {"var": "string"}),
     RelType("PY_SUMMARY", ["PyBodyNode"], ["PyBodyNode"]),
+    # Neutral artifact/dependency subgraph (Task 6).
+    RelType("HAS_ARTIFACT", ["PyApplication"], ["Artifact"]),
+    RelType("DECLARES_DEPENDENCY", ["Artifact"], ["Package"], {
+        "spec": "string", "kind": "string", "extras": "string[]", "prov": "string[]",
+    }),
+    RelType("LOCKS", ["Artifact"], ["Package"], {"version": "string"}),
+    RelType("PY_PROVIDES", ["Package"], ["PyExternal"]),
+    RelType("PY_UNRESOLVED_IMPORT", ["PyApplication"], ["PyExternal"], {"prov": "string[]"}),
 ]
 
 

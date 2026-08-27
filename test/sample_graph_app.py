@@ -5,7 +5,8 @@ decorators + call sites + local variables, module variables, imports, a call
 graph with a resolved edge and a ghost edge, each callable's CPG
 ``body``/``cfg``/``cdg``/``ddg`` (level 3), and — new at level 4 — the
 interprocedural ``param_in``/``param_out``/``summary`` param-passing overlay plus
-the points-to ``ddg`` delta.
+the points-to ``ddg`` delta. Also carries the artifact/dependency subgraph
+(Task 6): a manifest + lock artifact and a locked, import-providing dependency.
 
 The symbol table is built from a real (temporary) source file so
 ``build_function_pdgs`` can recover each callable's AST; ``assign_ids`` +
@@ -37,9 +38,12 @@ from codeanalyzer.dataflow.scalpel_oracle import make_alias_oracle
 from codeanalyzer.dataflow.syntactic import SyntacticOracle
 from codeanalyzer.schema import PyApplication, PyExternalSymbol
 from codeanalyzer.schema.assign_ids import assign_ids
+from codeanalyzer.schema.ids import artifact_id
 from codeanalyzer.schema.l1_body import populate_l1_body
 from codeanalyzer.schema.l2_callees import backfill_callees
-from codeanalyzer.schema.py_schema import PyCallEdge
+from codeanalyzer.schema.py_schema import (
+    PyArtifact, PyCallEdge, PyDependency, PyImportBinding,
+)
 from codeanalyzer.semantic_analysis.call_graph import (
     iter_callables_in_symbol_table,
 )
@@ -141,6 +145,38 @@ def make_sample_app() -> Tuple[PyApplication, Dict[str, str]]:
             weight=2,
             prov=["defuse", "jedi"],
         ),
+    ]
+
+    # Artifact/dependency subgraph (Task 6): a manifest + a lock artifact, one
+    # locked runtime dependency it declares (provides an import), and one
+    # import nothing declared -- exercises every Artifact/Package label and
+    # HAS_ARTIFACT/DECLARES_DEPENDENCY/LOCKS/PY_PROVIDES/PY_UNRESOLVED_IMPORT
+    # relationship in the catalog (guarded by
+    # test_all_catalog_node_kinds_and_relationships_are_exercised).
+    manifest_id = artifact_id("sample-app", "pyproject.toml")
+    lock_id = artifact_id("sample-app", "poetry.lock")
+    app.artifacts = {
+        "pyproject.toml": PyArtifact(
+            id=manifest_id, path="pyproject.toml", format="toml",
+            roles=["dependency-manifest", "tool-config"], size_bytes=42,
+            sha256="a" * 64, source="[project]\ndependencies = [\"acme\"]\n",
+            extraction="full",
+        ),
+        "poetry.lock": PyArtifact(
+            id=lock_id, path="poetry.lock", format="toml",
+            roles=["dependency-manifest"], size_bytes=7, sha256="b" * 64,
+            source="", extraction="full",
+        ),
+    }
+    app.dependencies = [
+        PyDependency(
+            name="acme", spec=">=1.0", kind="runtime", extras=[],
+            declared_in=manifest_id, locked_version="1.2.3",
+            provides_imports=["acme"], prov=["declared", "lockfile"],
+        ),
+    ]
+    app.unresolved_imports = [
+        PyImportBinding(module="colorama", prov=["heuristic"]),
     ]
 
     # Identity + L1 bodies, then the intraprocedural (syntactic) L3 overlay.

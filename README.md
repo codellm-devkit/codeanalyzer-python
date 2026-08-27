@@ -454,9 +454,13 @@ binary format).
 
 ### Neo4j graph
 
-`--emit neo4j` projects the same schema v2.0.0 analysis into a labeled property graph. Every node
-label is `Py`-prefixed and every relationship type is `PY_`-prefixed (e.g. `:PyClass`, `PY_CALLS`)
-so multiple language analyzers can share one database without label or relationship-type collisions.
+`--emit neo4j` projects the same schema v2.0.0 analysis into a labeled property graph. Every
+Python-specific node label is `Py`-prefixed and every Python-specific relationship type is
+`PY_`-prefixed (e.g. `:PyClass`, `PY_CALLS`) so multiple language analyzers can share one database
+without label or relationship-type collisions. The one deliberate exception is the language-neutral
+`Artifact`/`Package` subgraph (non-code files and third-party dependencies) — those nodes carry no
+`Py` prefix, since they are meant as cross-language merge targets: a sibling-language analyzer over
+the same repo should land on the same `Artifact`/`Package` nodes, not a per-language duplicate.
 Declarations are keyed by their **`can://` id** under a shared `:PySymbol` label; calls, imports,
 inheritance, decorators, and call sites are relationships. At `-a 3`/`-a 4` the projection gains the
 **CPG overlay** — `:PyBodyNode` nodes (statements, and at level 4 the parameter vertices) wired by

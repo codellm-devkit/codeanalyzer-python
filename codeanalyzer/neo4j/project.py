@@ -47,6 +47,7 @@ from codeanalyzer.schema import (
     PyModule,
     PyVariableDeclaration,
 )
+from codeanalyzer.schema.ids import application_id, purl_pypi
 from codeanalyzer.schema.py_schema import PyDecorator
 
 
@@ -99,6 +100,10 @@ def project(app: PyApplication, app_name: str, sig_to_id: dict,
     # Level-3 CPG overlay: each callable's v2 body/cfg/cdg/ddg. Idempotent under
     # MERGE — a no-op when no callable carries L3 fields (levels 1/2).
     _project_program_graphs(b, app, externals, sig_to_id)
+
+    # Neutral artifact/dependency subgraph (Task 6). L1 data — always present,
+    # full-depth-always regardless of -a.
+    _project_artifacts(b, app, app_name, app_ref)
 
     return b.finish()
 
@@ -245,6 +250,102 @@ def _project_program_graphs(
             "PY_PARAM_OUT",
             NodeRef("PyBodyNode", "id", e.src),
             NodeRef("PyBodyNode", "id", e.dst),
+        )
+
+
+# ----------------------------------------------------------------------------------------------
+# Artifact / dependency subgraph (spec 2026-08-27, Task 6)
+# ----------------------------------------------------------------------------------------------
+
+_LOCK_BASENAMES = ("poetry.lock", "uv.lock", "Pipfile.lock")
+
+
+def _import_ghost(b: RowBuilder, app_can_id: str, name: str) -> NodeRef:
+    """A ``:PyExternal`` ghost for a bare imported module name (``PY_PROVIDES``'s
+    ``provides_imports`` entries, ``PY_UNRESOLVED_IMPORT``'s ``module``).
+
+    ``app.external_symbols`` only homes call-graph endpoints (``_home_external_
+    symbols`` walks ``app.call_graph``), so a module that is imported but never
+    called — the overwhelmingly common case for ``provides_imports`` and the
+    *only* case for an unresolved import — has no existing ghost to MERGE onto.
+    This builds one with the same id shape ``_call_endpoint``/``_home_external_
+    symbols`` use for a dot-less (no ``.`` in the signature) call target:
+    ``<app can:// id>/@external/<name>``, ``module=None``. Same two-label
+    ``["PySymbol", "PyExternal"]`` idiom as ``_call_endpoint`` -- the schema
+    declares :PyExternal's merge label as PySymbol, and RowBuilder MERGEs by
+    ``(labels[0], value)``, so if a call to that same bare name is ever
+    projected too, both rows collapse onto this one node — correctly, since
+    they name the same real-world symbol."""
+    return b.node(
+        ["PySymbol", "PyExternal"], "id", f"{app_can_id}/@external/{name}", {"name": name}
+    )
+
+
+def _project_artifacts(b: RowBuilder, app: PyApplication, app_name: str, app_ref: NodeRef) -> None:
+    """Non-code artifacts, declared dependencies and undeclared imports (Tasks
+    1-5) -- neutral ``Artifact``/``Package`` nodes with no ``Py`` prefix
+    (deliberate: cross-language merge targets, unlike everything else this
+    module projects). Always emitted regardless of ``-a`` -- this section is
+    L1 data, identical at every analysis level (mirrors ``analysis.json``)."""
+    app_can_id = application_id(app_name)
+
+    for path in sorted(app.artifacts or {}):
+        art = app.artifacts[path]
+        art_ref = b.node(
+            ["Artifact"],
+            "id",
+            art.id,
+            prune(
+                {
+                    "path": art.path,
+                    "format": art.format,
+                    "roles": art.roles,
+                    "size_bytes": art.size_bytes,
+                    "sha256": art.sha256,
+                    "source": art.source,
+                    "extraction": art.extraction,
+                }
+            ),
+        )
+        b.edge("HAS_ARTIFACT", app_ref, art_ref)
+
+    # Every lock artifact present LOCKS every dependency it pinned. The pins
+    # from all lock files are already merged into one `locked_version` per
+    # dependency upstream (Task 5 `build_dependency_view`) -- there is no
+    # per-lock-file attribution to split on, so (like the JSON projection) a
+    # dependency locked with N lock artifacts present gets N LOCKS edges.
+    lock_ids = [
+        app.artifacts[p].id
+        for p in sorted(app.artifacts or {})
+        if p.rsplit("/", 1)[-1] in _LOCK_BASENAMES
+    ]
+
+    for d in app.dependencies or []:
+        pkg_id = purl_pypi(d.name)
+        pkg_ref = b.node(["Package"], "id", pkg_id, {"ecosystem": "pypi", "name": d.name})
+        b.edge(
+            "DECLARES_DEPENDENCY",
+            NodeRef("Artifact", "id", d.declared_in),
+            pkg_ref,
+            prune({"spec": d.spec, "kind": d.kind, "extras": d.extras, "prov": d.prov}),
+        )
+        if d.locked_version:
+            for lock_id in lock_ids:
+                b.edge(
+                    "LOCKS",
+                    NodeRef("Artifact", "id", lock_id),
+                    pkg_ref,
+                    {"version": d.locked_version},
+                )
+        for top in d.provides_imports:
+            b.edge("PY_PROVIDES", pkg_ref, _import_ghost(b, app_can_id, top))
+
+    for u in app.unresolved_imports or []:
+        b.edge(
+            "PY_UNRESOLVED_IMPORT",
+            app_ref,
+            _import_ghost(b, app_can_id, u.module),
+            prune({"prov": u.prov}),
         )
 
 
