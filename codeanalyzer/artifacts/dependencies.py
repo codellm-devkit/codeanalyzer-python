@@ -130,16 +130,28 @@ def build_dependency_view(
             real_kind = _kind_for_requirements(resolved.rsplit("/", 1)[-1])
             _emit(raw_ref, art.id, kind_override=real_kind)
 
-    # 2. Lock backfill (locked_version + prov "lockfile"); locks never create records.
+    # 2. Lock backfill (locked_version + prov "lockfile"). A pin with no
+    # manifest declaration is a *transitive* dependency: emitted with
+    # direct=False, attributed to the lock artifact (#152 reconciliation).
     pins: Dict[str, str] = {}
+    pin_lock_artifact: Dict[str, str] = {}
     for path in sorted(artifacts):
         if path.rsplit("/", 1)[-1] in _LOCK_BASENAMES:
-            pins.update(parse_lock_pins(path, artifacts[path].source))
+            lock_pins = parse_lock_pins(path, artifacts[path].source)
+            pins.update(lock_pins)
+            for name in lock_pins:
+                pin_lock_artifact[name] = artifacts[path].id
             artifacts[path].extraction = "full"
     for d in deps:
         if d.name in pins:
             d.locked_version = pins[d.name]
             d.prov = sorted(set(d.prov) | {"lockfile"})
+    declared_names = {d.name for d in deps}
+    for name in sorted(set(pins) - declared_names):
+        deps.append(PyDependency(
+            name=name, kind="runtime", declared_in=pin_lock_artifact[name],
+            direct=False, locked_version=pins[name], prov=["lockfile"],
+        ))
 
     # 3. Import universe from the symbol table (top-level segments only).
     # `module_name` is `py_file.stem` -- the leaf filename only (e.g. "api"

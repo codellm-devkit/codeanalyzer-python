@@ -271,7 +271,8 @@ REL_TYPES: List[RelType] = [
     # optional extra) -- same endpoint pair, so without the discriminant the
     # plain MERGE collapses the two declarations into one row.
     RelType("DECLARES_DEPENDENCY", ["Artifact"], ["Package"], {
-        "spec": "string", "kind": "string", "extras": "string[]", "prov": "string[]", "_k": "string",
+        "spec": "string", "kind": "string", "extras": "string[]", "prov": "string[]",
+        "direct": "boolean", "_k": "string",
     }),
     RelType("LOCKS", ["Artifact"], ["Package"], {"version": "string"}),
     RelType("PY_PROVIDES", ["Package"], ["PyExternal"]),

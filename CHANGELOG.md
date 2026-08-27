@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   imports (`application.unresolved_imports`) at every analysis level (#157).
   Neo4j gains language-neutral `:Artifact`/`:Package` nodes (purl ids) joined
   to the existing `:PyExternal` ghosts. New flag: `--resolve-installed`.
+  Lockfile-only (transitive) pins are emitted as `direct: false` dependency
+  records attributed to the lock artifact (#152 reconciliation).
 
 ## [1.2.0] - 2026-08-26
 
