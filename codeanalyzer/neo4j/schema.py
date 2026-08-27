@@ -210,7 +210,7 @@ NODE_LABELS: List[NodeLabel] = [
     NodeLabel("Artifact", "Artifact", "id", {
         "id": "string", "path": "string", "format": "string",
         "roles": "string[]", "size_bytes": "integer", "sha256": "string",
-        "source": "string", "extraction": "string",
+        "source": "string", "text_truncated": "boolean", "extraction": "string",
     }),
     NodeLabel("Package", "Package", "id", {
         "id": "string", "ecosystem": "string", "name": "string",

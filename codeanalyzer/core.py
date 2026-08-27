@@ -652,7 +652,11 @@ class Codeanalyzer:
         # (spec 2026-08-27). Deterministic by default; venv probing is opt-in.
         from codeanalyzer.artifacts import build_dependency_view, discover_artifacts
 
-        app.artifacts = discover_artifacts(self.project_dir, app_name)
+        app.artifacts = discover_artifacts(
+            self.project_dir, app_name,
+            capture_text=self.options.artifact_text,
+            text_max_bytes=self.options.artifact_text_max_bytes,
+        )
         app.dependencies, app.unresolved_imports = build_dependency_view(
             app.artifacts,
             app.symbol_table,
