@@ -133,13 +133,10 @@ def discover_artifacts(
             # is the one deterministic content-sniff refinement.
             if decodable and "." not in name and text.startswith("#!"):
                 roles = ["script"]
-        if not decodable:
-            fmt = "binary"
-
         if decodable:
             source, text_truncated = _capture_source(raw, text, capture_text, text_max_bytes)
         else:
-            source, text_truncated = "", False
+            fmt, source, text_truncated = "binary", "", False
 
         out[rel_posix] = PyArtifact(
             id=artifact_id(app_name, rel_posix), path=rel_posix, format=fmt,
