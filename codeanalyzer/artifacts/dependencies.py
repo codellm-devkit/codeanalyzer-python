@@ -107,14 +107,21 @@ def build_dependency_view(
         art.extraction = "partial" if partial else "full"
         _emit(raw, art.id)
 
-        # 1b. -r/-c refs: a target already discovered is parsed on its own
-        # above; a target discovery missed (e.g. base.txt, no rule matches)
-        # is chased here and attributed to the referring artifact.
+        # 1b. -r/-c refs: a target that is itself a dependency-manifest is
+        # parsed on its own above; a target with no RULES match for that role
+        # (e.g. base.txt -- never-drop inventory still captures it, just not
+        # as a manifest) is chased here and attributed to the referring
+        # artifact. Gate on the role, not mere presence in `artifacts`: since
+        # #157 every file is discovered, so presence alone no longer implies
+        # "already parsed as a manifest above".
         if not _is_requirements_format(path):
             continue
         for ref in parse_requirement_refs(art.source):
             resolved = _resolve_ref(path, ref)
-            if resolved is None or resolved in artifacts:
+            if resolved is None:
+                continue
+            target_art = artifacts.get(resolved)
+            if target_art is not None and "dependency-manifest" in target_art.roles:
                 continue
             target = project_dir / resolved
             if not target.is_file():

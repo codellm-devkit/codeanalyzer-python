@@ -80,7 +80,8 @@ def test_requirement_refs_chased(tmp_path):
     )
     (tmp_path / "reqs" / "base.txt").write_text("flask>=2\n")
     arts = discover_artifacts(tmp_path, "app")
-    assert "reqs/base.txt" not in arts  # unmatched by discovery rules
+    # never-drop inventory (#157): captured, but not independently a manifest.
+    assert arts["reqs/base.txt"].roles == ["unknown"]
     deps, _ = build_dependency_view(arts, {}, tmp_path, None, False)
     manifest_id = arts["reqs/requirements.txt"].id
     by = {d.name: d for d in deps}
@@ -94,7 +95,8 @@ def test_requirement_ref_chased_kind_from_real_basename(tmp_path):
     (tmp_path / "reqs" / "requirements.txt").write_text("-r dev.txt\n")
     (tmp_path / "reqs" / "dev.txt").write_text("mypy\n")
     arts = discover_artifacts(tmp_path, "app")
-    assert "reqs/dev.txt" not in arts  # unmatched by discovery rules
+    # never-drop inventory (#157): captured, but not independently a manifest.
+    assert arts["reqs/dev.txt"].roles == ["unknown"]
     deps, _ = build_dependency_view(arts, {}, tmp_path, None, False)
     mypy = next(d for d in deps if d.name == "mypy")
     assert mypy.kind == "dev"  # from dev.txt's real basename, not the forced "requirements.txt"
