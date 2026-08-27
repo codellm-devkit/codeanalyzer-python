@@ -193,6 +193,14 @@ def main(
             "imports against the ambient Python environment instead.",
         ),
     ] = False,
+    resolve_installed: Annotated[
+        bool,
+        typer.Option(
+            "--resolve-installed",
+            help="Additionally bind imports via the project venv's installed metadata "
+            "(*.dist-info); output becomes machine-dependent (prov: installed-metadata).",
+        ),
+    ] = False,
     file_name: Annotated[
         Optional[Path],
         typer.Option(
@@ -303,6 +311,7 @@ def main(
         rebuild_analysis=rebuild_analysis,
         skip_tests=skip_tests,
         no_venv=no_venv,
+        resolve_installed=resolve_installed,
         file_name=file_name,
         cache_dir=cache_dir,
         clear_cache=clear_cache,

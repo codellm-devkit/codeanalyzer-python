@@ -233,6 +233,12 @@ $ canpy --help
 │                                                                    ambient Python environment    │
 │                                                                    instead.                      │
 │                                                                    [default: venv]               │
+│ --resolve-installed                                                Additionally bind imports via │
+│                                                                    the project venv's installed  │
+│                                                                    metadata (*.dist-info);       │
+│                                                                    output becomes                │
+│                                                                    machine-dependent (prov:      │
+│                                                                    installed-metadata).          │
 │ --file-name                                 <path>                 Analyze only the specified    │
 │                                                                    file (relative to input       │
 │                                                                    directory).                   │

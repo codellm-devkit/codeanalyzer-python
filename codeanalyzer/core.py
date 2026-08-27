@@ -648,6 +648,19 @@ class Codeanalyzer:
 
         detect_entrypoints(app, self.project_dir, self.options.entrypoint_rules)
 
+        # Artifacts + dependencies: L1 data, every level, never varies with -a
+        # (spec 2026-08-27). Deterministic by default; venv probing is opt-in.
+        from codeanalyzer.artifacts import build_dependency_view, discover_artifacts
+
+        app.artifacts = discover_artifacts(self.project_dir, app_name)
+        app.dependencies, app.unresolved_imports = build_dependency_view(
+            app.artifacts,
+            app.symbol_table,
+            self.project_dir,
+            self.virtualenv if self.options.resolve_installed else None,
+            self.options.resolve_installed,
+        )
+
         # L3: intraprocedural dataflow (CFG/CDG/DDG) emitted onto the v2 tree.
         if self.analysis_level >= 3:
             from codeanalyzer.dataflow.builder import (
