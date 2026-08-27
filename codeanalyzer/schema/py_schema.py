@@ -471,6 +471,48 @@ class PyExternalSymbol(BaseModel):
 
 
 @builder
+class PyArtifact(BaseModel):
+    """A recognized non-code file (config, manifest, CI, container spec).
+
+    Captured broadly (node + verbatim ``source``); *meaning* is extracted
+    narrowly — only ``dependency-manifest`` roles feed ``dependencies`` today.
+    ``id`` is language-neutral (``can://artifact/<app>/<path>``)."""
+
+    id: str = ""
+    kind: str = "artifact"
+    path: str  # repo-relative POSIX path (also the map key)
+    format: str  # toml|yaml|json|ini|requirements|dockerfile|text
+    roles: List[str] = []
+    size_bytes: int = 0
+    sha256: str = ""
+    source: str = ""  # verbatim, unbounded by decision (spec §3)
+    extraction: str = "none"  # none|partial|full
+
+
+@builder
+class PyDependency(BaseModel):
+    """One declared third-party dependency, evidence-tagged via ``prov``."""
+
+    name: str  # PEP 503 normalized
+    spec: str = ""
+    kind: str = "runtime"  # runtime|dev|optional|build
+    extras: List[str] = []
+    declared_in: str = ""  # PyArtifact id
+    locked_version: Optional[str] = None
+    provides_imports: List[str] = []
+    prov: List[str] = []  # declared|lockfile|installed-metadata|heuristic
+
+
+@builder
+class PyImportBinding(BaseModel):
+    """A top-level import no declared dependency accounts for."""
+
+    module: str
+    bound_to: Optional[str] = None  # best-effort distribution name
+    prov: List[str] = []
+
+
+@builder
 class PyRepositoryInfo(BaseModel):
     """Where the analyzed source came from: git provenance captured at analysis time."""
 
@@ -502,6 +544,11 @@ class PyApplication(BaseModel):
     # builtin members), keyed by signature. Populated by the analyzer so every
     # backend (JSON and Neo4j) shares one authoritative external-symbol set.
     external_symbols: Dict[str, PyExternalSymbol] = {}
+    # Non-code artifacts, declared dependencies, and undeclared imports
+    # (spec 2026-08-27). L1 data: identical at every analysis level.
+    artifacts: Dict[str, PyArtifact] = {}
+    dependencies: List[PyDependency] = []
+    unresolved_imports: List[PyImportBinding] = []
     # Coverage/failure record for the entrypoint pass; see PyEntrypointReport (#27).
     entrypoint_report: PyEntrypointReport = PyEntrypointReport()
     # Git provenance of the analyzed checkout, captured at analysis time.

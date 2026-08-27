@@ -21,3 +21,17 @@ def callable_sig_segment(name: str, param_names: List[str]) -> str:
 
 def ordinal_id(callable_id: str, tag: str) -> str:
     return f"{callable_id}@{tag}"
+
+
+def artifact_id(app_name: str, rel_path: str) -> str:
+    """Language-neutral artifact id: ``can://artifact/<app>/<rel-path>``.
+
+    The first segment is a namespace (a language for code nodes, the literal
+    ``artifact`` for files), so sibling analyzers over the same repo emit the
+    same id for the same file."""
+    return f"can://artifact/{app_name}/{rel_path}"
+
+
+def purl_pypi(name: str) -> str:
+    """Package URL for a (PEP 503 normalized) PyPI distribution name."""
+    return f"pkg:pypi/{name}"
