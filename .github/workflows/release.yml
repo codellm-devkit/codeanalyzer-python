@@ -114,12 +114,14 @@ jobs:
 
       # Platform-independent, version-locked release assets published alongside the
       # wheels/sdist: the Neo4j schema contract (so a consumer can validate
-      # producer/consumer compatibility without installing the package) and the
-      # cargo-dist-style install script.
+      # producer/consumer compatibility without installing the package), the
+      # same contract's DDL as runnable Cypher, and the cargo-dist-style
+      # install script.
       - name: Stage release assets (Neo4j schema + installer script)
         run: |
           mkdir -p release-assets
           uv run canpy --emit schema > release-assets/schema.json
+          uv run python -c "from codeanalyzer.neo4j.schema import uniqueness_constraints; print('\n'.join(uniqueness_constraints()))" > release-assets/schema.cypher
           cp packaging/install/canpy-installer.sh release-assets/canpy-installer.sh
           ls -lh release-assets
 
