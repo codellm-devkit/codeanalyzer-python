@@ -1,4 +1,6 @@
-"""Task 2: rule-matched files become PyArtifact nodes; nothing else does."""
+"""Task 2: every file becomes a PyArtifact node except `.py` files and ignored
+dirs (never-drop inventory, issue #157 follow-up). Rule-matched files keep
+their format/roles; unmatched files fall back to text/unknown (or binary)."""
 import hashlib
 from pathlib import Path
 from codeanalyzer.artifacts.discovery import discover_artifacts
@@ -21,10 +23,10 @@ def test_discovers_known_shapes(tmp_path):
     _mk(tmp_path, "k8s/deploy.yaml")
     _mk(tmp_path, "src/app.py", "x = 1\n")          # code: never an artifact
     _mk(tmp_path, "notes.md", "hi\n")               # *.md -> docs
-    _mk(tmp_path, "data.bin", "hi\n")               # unmatched extension: no node
+    _mk(tmp_path, "data.bin", "hi\n")               # unmatched, decodable: text/unknown
     arts = discover_artifacts(tmp_path, "myapp")
     assert sorted(arts) == [
-        ".github/workflows/ci.yml", "Dockerfile", "deploy/docker-compose.yml",
+        ".github/workflows/ci.yml", "Dockerfile", "data.bin", "deploy/docker-compose.yml",
         "k8s/deploy.yaml", "notes.md", "pyproject.toml", "requirements-dev.txt",
         "svc/Dockerfile",
     ]
@@ -37,6 +39,7 @@ def test_discovers_known_shapes(tmp_path):
     assert arts["deploy/docker-compose.yml"].roles == ["service-topology"]
     assert arts["k8s/deploy.yaml"].roles == ["service-topology"]
     assert arts[".github/workflows/ci.yml"].roles == ["ci"]
+    assert arts["data.bin"].format == "text" and arts["data.bin"].roles == ["unknown"]
 
 
 def test_source_hash_and_ignores(tmp_path):
@@ -52,10 +55,19 @@ def test_source_hash_and_ignores(tmp_path):
     assert a.size_bytes == len(b"content-here\n")
 
 
-def test_unreadable_binary_is_skipped(tmp_path):
-    (tmp_path / "pyproject.toml").write_bytes(b"\xff\xfe\x00bad")
+def test_matched_non_utf8_file_becomes_binary_artifact(tmp_path):
+    """Rule-matched (pyproject.toml) but not UTF-8 decodable: never dropped --
+    format downgrades to binary, the rule's roles survive, source is empty."""
+    raw = b"\xff\xfe\x00bad"
+    (tmp_path / "pyproject.toml").write_bytes(raw)
     arts = discover_artifacts(tmp_path, "a")
-    assert arts == {}
+    assert list(arts) == ["pyproject.toml"]
+    a = arts["pyproject.toml"]
+    assert a.format == "binary"
+    assert a.roles == ["dependency-manifest", "tool-config"]
+    assert a.source == ""
+    assert a.sha256 == hashlib.sha256(raw).hexdigest()
+    assert a.size_bytes == len(raw)
 
 
 def test_ignores_own_codeanalyzer_venv(tmp_path):
@@ -98,20 +110,64 @@ def test_discovers_packaging_docs_legal_files(tmp_path):
 
 def test_extensionless_shebang_script_is_captured(tmp_path):
     """odoo-bin-style entrypoint: no extension, so no RULES glob can name it --
-    the one content-sniff fallback: dotless basename + shebang."""
+    the shebang fallback refines its roles to ["script"]."""
     _mk(tmp_path, "odoo-bin", "#!/usr/bin/env python3\nimport sys\n")
     arts = discover_artifacts(tmp_path, "a")
     assert list(arts) == ["odoo-bin"]
     assert arts["odoo-bin"].format == "text" and arts["odoo-bin"].roles == ["script"]
 
 
-def test_extensionless_binary_is_skipped(tmp_path):
-    (tmp_path / "odoo-bin").write_bytes(b"\xff\xfe\x00#!bad")
+def test_extensionless_binary_captured_as_binary_artifact(tmp_path):
+    raw = b"\xff\xfe\x00#!bad"
+    (tmp_path / "odoo-bin").write_bytes(raw)
     arts = discover_artifacts(tmp_path, "a")
-    assert arts == {}
+    assert list(arts) == ["odoo-bin"]
+    a = arts["odoo-bin"]
+    assert a.format == "binary" and a.roles == ["unknown"] and a.source == ""
+    assert a.sha256 == hashlib.sha256(raw).hexdigest()
 
 
-def test_extensionless_text_without_shebang_is_skipped(tmp_path):
+def test_extensionless_text_without_shebang_captured_as_unknown(tmp_path):
     _mk(tmp_path, "README", "just some notes, no shebang\n")
     arts = discover_artifacts(tmp_path, "a")
-    assert arts == {}
+    assert list(arts) == ["README"]
+    assert arts["README"].format == "text" and arts["README"].roles == ["unknown"]
+    assert arts["README"].source == "just some notes, no shebang\n"
+
+
+def test_unmatched_text_file_captured_as_unknown(tmp_path):
+    """No RULES glob names *.csv: still captured, never dropped."""
+    _mk(tmp_path, "data.csv", "a,b\n1,2\n")
+    arts = discover_artifacts(tmp_path, "a")
+    assert list(arts) == ["data.csv"]
+    assert arts["data.csv"].format == "text"
+    assert arts["data.csv"].roles == ["unknown"]
+    assert arts["data.csv"].source == "a,b\n1,2\n"
+
+
+def test_unmatched_binary_file_captured_with_empty_source(tmp_path):
+    raw = b"\x89PNG\r\n\x1a\n\x00\x01\x02\x03"
+    (tmp_path / "logo.png").write_bytes(raw)
+    arts = discover_artifacts(tmp_path, "a")
+    assert list(arts) == ["logo.png"]
+    a = arts["logo.png"]
+    assert a.format == "binary"
+    assert a.roles == ["unknown"]
+    assert a.source == ""
+    assert a.sha256 == hashlib.sha256(raw).hexdigest()
+    assert a.size_bytes == len(raw)
+
+
+def test_py_files_never_become_artifacts(tmp_path):
+    """`.py` is the symbol table's domain -- an unmatched `.py` file never
+    becomes an artifact (unlike every other unmatched extension). `setup.py`
+    is the deliberate, pre-existing exception: it is rule-matched (as a
+    dependency-manifest) despite the `.py` suffix, so "rule-matched: as
+    today" still applies to it -- only the *unmatched* fallback excludes
+    `.py`."""
+    _mk(tmp_path, "src/app.py", "x = 1\n")
+    _mk(tmp_path, "pkg/__init__.py", "")
+    _mk(tmp_path, "setup.py", "from setuptools import setup\n")
+    arts = discover_artifacts(tmp_path, "a")
+    assert "src/app.py" not in arts and "pkg/__init__.py" not in arts
+    assert "setup.py" in arts and arts["setup.py"].roles == ["dependency-manifest"]

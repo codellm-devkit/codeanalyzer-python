@@ -68,7 +68,16 @@ def _classify(rel_posix: str) -> Tuple[str, List[str]] | None:
 
 
 def discover_artifacts(project_dir: Path, app_name: str) -> Dict[str, PyArtifact]:
-    """Walk the project and return rule-matched files as artifacts, sorted by path."""
+    """Walk the project and return every file as an artifact, sorted by path.
+
+    Never-drop inventory (issue #157 follow-up): a rule-matched file keeps its
+    RULES format/roles; everything else falls back to ``text``/``["unknown"]``
+    (``source`` captured), or ``binary``/empty ``source`` when it is not UTF-8
+    decodable -- rule-matched but undecodable files downgrade to ``binary``
+    too, keeping the rule's roles. The one exclusion is a `.py` file no RULES
+    entry names: the symbol table already owns it. ``setup.py`` is the
+    deliberate exception -- it IS rule-matched (a dependency-manifest), so it
+    is captured like any other manifest despite the `.py` suffix."""
     out: Dict[str, PyArtifact] = {}
     for path in sorted(project_dir.rglob("*")):
         if not path.is_file():
@@ -77,27 +86,34 @@ def discover_artifacts(project_dir: Path, app_name: str) -> Dict[str, PyArtifact
         if any(part in _IGNORED_DIRS for part in rel.parts):
             continue
         rel_posix = rel.as_posix()
+        name = rel_posix.rsplit("/", 1)[-1]
         hit = _classify(rel_posix)
-        if hit is None:
-            # Extensionless shebang script (e.g. odoo-bin): no RULES glob can
-            # name these (nothing to match on but the shebang itself), so this
-            # is the one deterministic content-sniff fallback. Cheap dotless
-            # check first, so non-candidate files never pay for a read.
-            if "." in rel_posix.rsplit("/", 1)[-1]:
-                continue
-            fmt, roles = "text", ["script"]
-        else:
-            fmt, roles = hit
+        if hit is None and name.endswith(".py"):
+            continue  # symbol table's domain (setup.py is rule-matched above)
+
         raw = path.read_bytes()
         try:
             text = raw.decode("utf-8")
+            decodable = True
         except UnicodeDecodeError:
-            continue  # text-only by spec; binaries never become artifacts
-        if hit is None and not text.startswith("#!"):
-            continue
+            text, decodable = "", False
+
+        if hit is not None:
+            fmt, roles = hit
+        else:
+            fmt, roles = "text", ["unknown"]
+            # Extensionless shebang script (e.g. odoo-bin): no RULES glob can
+            # name these (nothing to match on but the shebang itself), so this
+            # is the one deterministic content-sniff refinement.
+            if decodable and "." not in name and text.startswith("#!"):
+                roles = ["script"]
+        if not decodable:
+            fmt = "binary"
+
         out[rel_posix] = PyArtifact(
             id=artifact_id(app_name, rel_posix), path=rel_posix, format=fmt,
             roles=list(roles), size_bytes=len(raw),
-            sha256=hashlib.sha256(raw).hexdigest(), source=text,
+            sha256=hashlib.sha256(raw).hexdigest(),
+            source=text if decodable else "",
         )
     return out
