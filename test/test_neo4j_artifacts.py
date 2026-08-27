@@ -30,3 +30,40 @@ def test_rows_projected(tmp_path):
     assert ("Package", "pkg:pypi/requests") in nodes
     rel_types = {e.type for e in rows.edges}
     assert {"HAS_ARTIFACT", "DECLARES_DEPENDENCY", "PY_PROVIDES"} <= rel_types
+
+
+def test_locks_and_provides_dedup_across_multi_manifest_declarations(tmp_path):
+    """A package declared in 2+ manifests yields one PyDependency record per
+    manifest (Task 5's `build_dependency_view`), so DECLARES_DEPENDENCY --
+    correctly -- fires once per manifest. LOCKS/PY_PROVIDES are per-PACKAGE
+    facts, not per-declaration, and must not duplicate just because the
+    package happens to be declared twice."""
+    proj = tmp_path / "p"
+    proj.mkdir()
+    (proj / "requirements.txt").write_text("requests==2.31.0\n")
+    (proj / "requirements-dev.txt").write_text("requests==2.31.0\n")
+    (proj / "poetry.lock").write_text('[[package]]\nname = "requests"\nversion = "2.31.0"\n')
+    (proj / "app.py").write_text("import requests\n")
+    from codeanalyzer.core import Codeanalyzer
+    from codeanalyzer.options import AnalysisOptions
+    app = Codeanalyzer(AnalysisOptions(
+        input=proj, analysis_level=2, no_venv=True, cache_dir=tmp_path / "c",
+    )).analyze().application
+    assert len(app.dependencies) == 2, "fixture must produce two declarations of one package"
+
+    from codeanalyzer.neo4j.project import project
+    from codeanalyzer.schema.assign_ids import assign_ids
+    rows = project(app, "p", assign_ids(app, "p"))
+
+    locks = [e for e in rows.edges if e.type == "LOCKS"]
+    provides = [e for e in rows.edges if e.type == "PY_PROVIDES"]
+    declares = [e for e in rows.edges if e.type == "DECLARES_DEPENDENCY"]
+
+    assert len(locks) == 1, f"expected exactly one LOCKS row, got {len(locks)}"
+    assert locks[0].from_ref.value == "can://artifact/p/poetry.lock"
+    assert locks[0].to_ref.value == "pkg:pypi/requests"
+
+    assert len(provides) == 1, f"expected exactly one PY_PROVIDES row, got {len(provides)}"
+    assert provides[0].from_ref.value == "pkg:pypi/requests"
+
+    assert len(declares) == 2, "one DECLARES_DEPENDENCY row per declaring manifest"

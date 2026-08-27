@@ -320,6 +320,17 @@ def _project_artifacts(b: RowBuilder, app: PyApplication, app_name: str, app_ref
         if p.rsplit("/", 1)[-1] in _LOCK_BASENAMES
     ]
 
+    # app.dependencies has one PyDependency per DECLARING MANIFEST, so a
+    # package declared in 2+ manifests (e.g. requirements.txt +
+    # requirements-dev.txt both listing "requests") walks this loop once per
+    # manifest. DECLARES_DEPENDENCY is correctly one row per declaration (its
+    # `from_ref` is the manifest, so those rows are already distinct) -- but
+    # LOCKS/PY_PROVIDES/PY_UNRESOLVED_IMPORT are per-PACKAGE facts, and
+    # RowBuilder.edge() is append-only (unlike node(), it does not MERGE-dedup)
+    # -- so without a guard they'd be emitted once per declaring manifest
+    # instead of once, violating GraphRows' documented deduped-bag contract.
+    seen: set = set()
+
     for d in app.dependencies or []:
         pkg_id = purl_pypi(d.name)
         pkg_ref = b.node(["Package"], "id", pkg_id, {"ecosystem": "pypi", "name": d.name})
@@ -331,22 +342,28 @@ def _project_artifacts(b: RowBuilder, app: PyApplication, app_name: str, app_ref
         )
         if d.locked_version:
             for lock_id in lock_ids:
-                b.edge(
-                    "LOCKS",
-                    NodeRef("Artifact", "id", lock_id),
-                    pkg_ref,
-                    {"version": d.locked_version},
-                )
+                key = ("LOCKS", lock_id, pkg_id)
+                if key not in seen:
+                    seen.add(key)
+                    b.edge(
+                        "LOCKS",
+                        NodeRef("Artifact", "id", lock_id),
+                        pkg_ref,
+                        {"version": d.locked_version},
+                    )
         for top in d.provides_imports:
-            b.edge("PY_PROVIDES", pkg_ref, _import_ghost(b, app_can_id, top))
+            ghost_ref = _import_ghost(b, app_can_id, top)
+            key = ("PY_PROVIDES", pkg_id, ghost_ref.value)
+            if key not in seen:
+                seen.add(key)
+                b.edge("PY_PROVIDES", pkg_ref, ghost_ref)
 
     for u in app.unresolved_imports or []:
-        b.edge(
-            "PY_UNRESOLVED_IMPORT",
-            app_ref,
-            _import_ghost(b, app_can_id, u.module),
-            prune({"prov": u.prov}),
-        )
+        ghost_ref = _import_ghost(b, app_can_id, u.module)
+        key = ("PY_UNRESOLVED_IMPORT", app_ref.value, ghost_ref.value)
+        if key not in seen:
+            seen.add(key)
+            b.edge("PY_UNRESOLVED_IMPORT", app_ref, ghost_ref, prune({"prov": u.prov}))
 
 
 def _sym(can_id: str) -> NodeRef:
