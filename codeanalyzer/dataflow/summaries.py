@@ -199,19 +199,42 @@ def solve_function(
 def compute_summaries(
     infos: Dict[str, FunctionInfo],
     call_edges: List[Tuple[str, str]],
+    *,
+    solutions: Optional[Dict[str, Tuple[Dict[int, object], List[DDGEdge]]]] = None,
 ) -> Dict[str, FunctionSummary]:
     """Bottom-up composition over the SCC condensation DAG, monotone fixpoint
-    within each SCC."""
+    within each SCC.
+
+    A **singleton SCC with no self-edge** is solved exactly once: the
+    condensation is processed bottom-up, so every callee summary it reads is
+    already final and a second pass could only recompute the same answer to
+    observe that nothing changed. Genuinely recursive SCCs (several members,
+    or one member calling itself) still iterate to fixpoint.
+
+    When *solutions* is supplied it receives each signature's converged
+    ``(facts, ddg)`` — the by-products of the final solve, which
+    :func:`~codeanalyzer.dataflow.sdg.assemble_sdg` would otherwise recompute
+    from scratch. They are the same values that a fresh solve against the
+    final summaries produces, because a converged pass is by definition one
+    in which no member's summary changed (#155).
+    """
     order = strongly_connected_components(sorted(infos), call_edges)
+    self_calls = {src for src, dst in call_edges if src == dst}
     summaries: Dict[str, FunctionSummary] = {}
     for scc in order:
         members = [s for s in scc if s in infos]
-        changed = True
-        while changed:
+        if not members:
+            continue
+        recursive = len(members) > 1 or members[0] in self_calls
+        while True:
             changed = False
             for sig in members:
-                new, _, _ = solve_function(infos[sig], summaries)
+                new, facts, ddg = solve_function(infos[sig], summaries)
+                if solutions is not None:
+                    solutions[sig] = (facts, ddg)
                 if summaries.get(sig) != new:
                     summaries[sig] = new
                     changed = True
+            if not (recursive and changed):
+                break
     return summaries

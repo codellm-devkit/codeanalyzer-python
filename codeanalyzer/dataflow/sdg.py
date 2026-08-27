@@ -386,8 +386,18 @@ def assemble_sdg(
     infos: Dict[str, FunctionInfo],
     summaries: Dict[str, FunctionSummary],
     k: int,
+    *,
+    solutions: Optional[Dict[str, Tuple[Dict[int, object], List[object]]]] = None,
 ) -> ProgramGraphsIR:
-    """Stitch every function's PDG into the whole-program SDG."""
+    """Stitch every function's PDG into the whole-program SDG.
+
+    *solutions* optionally carries the converged ``(facts, ddg)`` that
+    :func:`~codeanalyzer.dataflow.summaries.compute_summaries` already
+    derived, sparing a second identical solve per function (#155). Omit it and
+    every function is re-solved, which is the historical behaviour and the
+    right posture whenever *summaries* did not come from an immediately
+    preceding run over these same *infos*.
+    """
     ir = ProgramGraphsIR(k_limit=k)
 
     # Pass 1: solve each function against the final summaries and lay out its
@@ -396,7 +406,12 @@ def assemble_sdg(
     formal_ids: Dict[str, Dict[str, int]] = {}
     for sig in sorted(infos):
         info = infos[sig]
-        summary, facts, ddg = solve_function(info, summaries)
+        cached = solutions.get(sig) if solutions is not None else None
+        if cached is None:
+            summary, facts, ddg = solve_function(info, summaries)
+        else:
+            facts, ddg = cached
+            summary = summaries[sig]
         asm = _FunctionAssembler(info, summary, facts, ddg)
         asm.build_formals()
         assemblers[sig] = asm
