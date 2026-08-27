@@ -47,7 +47,7 @@
 | `PY_PARAM_OUT` | callee `formal_out` → caller `actual_out` | var | L4 |
 | `PY_SUMMARY` | `actual_in` → `actual_out` (same callsite) | — | L4 transitive shortcut |
 | `HAS_ARTIFACT` | application → artifact | — | L1 |
-| `DECLARES_DEPENDENCY` | artifact → package | spec, kind, extras[], prov[], `_k` | one edge per kind (runtime/dev/optional/build) |
+| `DECLARES_DEPENDENCY` | artifact → package | spec, kind, extras[], prov[], direct, `_k` | one edge per kind; `direct: false` = lockfile-only transitive |
 | `LOCKS` | lock artifact → package | version | locks never create packages alone |
 | `PY_PROVIDES` | package → external (module-level ghost) | — | joins dependencies into the call graph |
 | `PY_UNRESOLVED_IMPORT` | application → external (module-level ghost) | prov[] | undeclared-import hygiene |

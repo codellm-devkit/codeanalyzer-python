@@ -185,10 +185,15 @@ RETURN m.id, count(DISTINCT ret) AS returns,
 
 ```cypher
 // SBOM: every declared package, spec, pin, and declaring manifest
+// (d.direct = false rows are lockfile-only transitive pins)
 MATCH (f:Artifact)-[d:DECLARES_DEPENDENCY]->(p:Package)
 OPTIONAL MATCH (lf:Artifact)-[l:LOCKS]->(p)
-RETURN p.name, d.kind, d.spec, l.version AS locked, f.path AS declared_in, d.prov
+RETURN p.name, d.kind, d.spec, d.direct, l.version AS locked, f.path AS declared_in, d.prov
 ORDER BY p.name
+
+// direct dependencies only (drop transitives)
+MATCH (:Artifact)-[d:DECLARES_DEPENDENCY {direct: true}]->(p:Package)
+RETURN DISTINCT p.name
 
 // undeclared imports (dependency hygiene)
 MATCH (a:PyApplication)-[u:PY_UNRESOLVED_IMPORT]->(e:PyExternal)
