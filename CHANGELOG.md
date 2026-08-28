@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The release workflow now also stages `schema.cypher` (the same Neo4j
   schema contract as runnable, `;`-terminated Cypher DDL -- uniqueness
   constraints plus indexes) as a GitHub Release asset alongside `schema.json`.
+- Configuration keys extracted as first-class `ConfigKey` nodes from six v1
+  formats (`.env`, `yaml`, `json`, `toml`, `ini`, `properties`), with
+  reference recognition and `DEFINES_CONFIG` Neo4j projection; namespace
+  discriminators per format (#152).
 
 ## [1.2.0] - 2026-08-26
 

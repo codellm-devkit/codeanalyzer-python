@@ -33,6 +33,8 @@ RULES: List[Tuple[str, str, List[str]]] = [
     ("kind/*.yaml", "yaml", ["service-topology"]),
     ("Chart.yaml", "yaml", ["service-topology"]),
     ("values.yaml", "yaml", ["service-topology"]),
+    ("config/*.yml", "yaml", ["tool-config"]),
+    ("config/*.yaml", "yaml", ["tool-config"]),
     ("*.tf", "text", ["iac"]),
     (".github/workflows/*.yml", "yaml", ["ci"]),
     (".github/workflows/*.yaml", "yaml", ["ci"]),

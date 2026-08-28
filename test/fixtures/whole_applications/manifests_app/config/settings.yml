@@ -1,0 +1,18 @@
+server:
+  host: localhost
+  port: 8080
+  timeouts:
+    connect: 30
+    read: 60
+database:
+  primary:
+    url: postgresql://db.example.com/prod
+    pool_size: 10
+  replicas:
+    - url: postgresql://replica1.example.com/prod
+    - url: postgresql://replica2.example.com/prod
+logging:
+  level: DEBUG
+  handlers:
+    - console
+    - file

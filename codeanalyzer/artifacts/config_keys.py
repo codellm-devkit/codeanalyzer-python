@@ -224,7 +224,7 @@ _NAMESPACE_PARSERS: Dict[str, Callable[[str, List[str]], List[_Entry]]] = {
 _REF_TEMPLATE = re.compile(r'\$\{\{[^}]*\}\}')
 _REF_BRACED = re.compile(r'\$\{[A-Za-z_][A-Za-z0-9_]*\}')
 _REF_BARE = re.compile(r'\$[A-Za-z_][A-Za-z0-9_]*')
-_REF_PERCENT = re.compile(r'%\([A-Za-z_][A-Za-z0-9_]*\)s')
+_REF_PERCENT = re.compile(r'%\([A-Za-z_][A-Za-z0-9_.]*\)s')
 
 
 def _find_references(text: str) -> List[str]:

@@ -70,9 +70,9 @@ asset inherits it); conformance fixture grows a config-bearing artifact.
   test dirs are signal; decision recorded here rather than silently
   diverging from #152.
 
-## Deferred: config_use
+## Next unit in this train: config_use (#162)
 
-`PY_USES_CONFIG` (body node → ConfigKey) needs `PyCallArgument.value`
+`config_use` is a standard feature of the artifact layer landing next: `PY_USES_CONFIG` (body node → ConfigKey) needs `PyCallArgument.value`
 (#152's own boundary). ConfigKey ids minted here are its resolution target.
 
 ## Caveats
