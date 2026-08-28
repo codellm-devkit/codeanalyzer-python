@@ -69,3 +69,45 @@ def test_artifact_text_options_thread_through_core(tmp_path):
     )).analyze().application
     assert no_text.artifacts["notes.md"].source == ""
     assert no_text.artifacts["notes.md"].text_truncated is False
+
+
+def test_config_keys_present_and_identical_across_levels(tmp_path):
+    """Task 3: config-key extraction is wired into core.analyze() beside
+    build_dependency_view -- L1 data, identical at every analysis level."""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "pyproject.toml").write_text(
+        '[project]\ndependencies = ["requests"]\n\n[tool.demo]\nkey = "val"\n'
+    )
+    (proj / "app.py").write_text("import requests\n")
+    a1 = _run(tmp_path, proj, 1)
+    a2 = _run(tmp_path, proj, 2)
+    d1 = json.loads(model_dump_json(a1))
+    d2 = json.loads(model_dump_json(a2))
+    keys1 = d1["artifacts"]["pyproject.toml"]["config_keys"]
+    keys2 = d2["artifacts"]["pyproject.toml"]["config_keys"]
+    assert keys1 == keys2
+    assert keys1, "expected non-empty config_keys on pyproject.toml"
+    assert {k["key"] for k in keys1} >= {"tool.demo.key"}
+
+
+def test_config_key_eligibility_and_partial_on_parse_failure(tmp_path):
+    """Namespace-eligibility: env-family by basename regardless of format
+    (.env is format="text"), a non-eligible format never even attempts
+    extraction (config_keys stays []), and a parse failure never drops the
+    artifact -- it downgrades extraction to "partial" instead."""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / ".env").write_text("SECRET=${TOKEN}\n")
+    (proj / "notes.md").write_text("just docs, not config\n")
+    (proj / "broken.toml").write_text("key = [unterminated\n")
+    app = _run(tmp_path, proj, 1)
+
+    env_keys = {k.key: k for k in app.artifacts[".env"].config_keys}
+    assert env_keys["SECRET"].namespace == "env"
+    assert env_keys["SECRET"].references == ["${TOKEN}"]
+
+    assert app.artifacts["notes.md"].config_keys == []
+
+    assert app.artifacts["broken.toml"].config_keys == []
+    assert app.artifacts["broken.toml"].extraction == "partial"

@@ -243,3 +243,23 @@ def test_dependency_manifest_still_empty_source_with_capture_text_false(tmp_path
     arts = discover_artifacts(tmp_path, "a", capture_text=False, text_max_bytes=16)
     art = arts["pyproject.toml"]
     assert art.source == "" and art.text_truncated is False
+
+
+def test_discovers_terraform_flaskenv_properties_and_generic_ini(tmp_path):
+    """Task 3 riders (#152): *.tf -> new role iac; .flaskenv joins the env
+    basename family; *.properties is a new format; a generic *.ini rule
+    (placed after the specific tox.ini rule) makes non-tox ini files
+    namespace-eligible for config-key extraction too."""
+    _mk(tmp_path, "main.tf", 'resource "x" "y" {}\n')
+    _mk(tmp_path, ".flaskenv", "FLASK_ENV=production\n")
+    _mk(tmp_path, "app.properties", "key=value\n")
+    _mk(tmp_path, "mypy.ini", "[mypy]\nstrict = true\n")
+    _mk(tmp_path, "tox.ini", "[tox]\nenvlist = py312\n")
+    arts = discover_artifacts(tmp_path, "a")
+    assert arts["main.tf"].format == "text" and arts["main.tf"].roles == ["iac"]
+    assert arts[".flaskenv"].format == "text" and arts[".flaskenv"].roles == ["env"]
+    assert arts["app.properties"].format == "properties"
+    assert arts["app.properties"].roles == ["tool-config"]
+    assert arts["mypy.ini"].format == "ini" and arts["mypy.ini"].roles == ["tool-config"]
+    # tox.ini keeps matching its own specific (pre-existing) rule, unshadowed.
+    assert arts["tox.ini"].format == "ini" and arts["tox.ini"].roles == ["tool-config"]

@@ -498,7 +498,7 @@ class PyArtifact(BaseModel):
     id: str = ""
     kind: str = "artifact"
     path: str  # repo-relative POSIX path (also the map key)
-    format: str  # toml|yaml|json|ini|requirements|dockerfile|text|binary
+    format: str  # toml|yaml|json|ini|properties|requirements|dockerfile|text|binary
     roles: List[str] = []
     size_bytes: int = 0
     sha256: str = ""  # always the full file's hash, even when source is truncated/empty
@@ -513,6 +513,7 @@ class PyDependency(BaseModel):
     """One declared third-party dependency, evidence-tagged via ``prov``."""
 
     name: str  # PEP 503 normalized
+    ecosystem: str = "pypi"  # SDK symmetry with purl (#152 rider); the only ecosystem this analyzer emits
     spec: str = ""
     kind: str = "runtime"  # runtime|dev|optional|build
     extras: List[str] = []

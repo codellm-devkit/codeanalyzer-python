@@ -1,7 +1,7 @@
 """Task 2: config-key flatteners with reference recognition."""
 import textwrap
 
-from codeanalyzer.artifacts.config_keys import extract_config_keys
+from codeanalyzer.artifacts.config_keys import extract_config_keys, is_config_eligible
 from codeanalyzer.schema.ids import artifact_id, config_key_id
 from codeanalyzer.schema.py_schema import PyArtifact
 
@@ -285,3 +285,30 @@ def test_malformed_input_never_raises_signals_failure():
         art = _artifact(path, fmt)
         keys, ok = extract_config_keys(art, text, True)
         assert keys == [] and ok is False, f"{fmt} should signal failure, not raise"
+
+
+# --- is_config_eligible: Task 3's core.py wiring uses this to skip a disk
+# read + extraction attempt on artifacts that can never yield config keys ---
+
+def test_is_config_eligible_env_family_regardless_of_format():
+    # .env/.env.*/.flaskenv are format="text" on disk (discovery.py) -- still
+    # eligible via the basename rule, independent of the declared format.
+    for name in (".env", ".env.production", ".flaskenv"):
+        assert is_config_eligible(_artifact(name, "text")) is True
+
+
+def test_is_config_eligible_by_namespace_bearing_format():
+    for fmt in ("yaml", "json", "toml", "ini", "properties"):
+        assert is_config_eligible(_artifact(f"config.{fmt}", fmt)) is True
+
+
+def test_is_config_eligible_false_for_other_formats():
+    for fmt in ("text", "dockerfile", "requirements"):
+        assert is_config_eligible(_artifact("misc", fmt)) is False
+
+
+def test_is_config_eligible_false_for_binary_even_if_env_basename():
+    # A rule-matched-but-undecodable file downgrades to format="binary"
+    # regardless of basename (discovery.py) -- never eligible, there is no
+    # decodable text to flatten.
+    assert is_config_eligible(_artifact(".env", "binary")) is False

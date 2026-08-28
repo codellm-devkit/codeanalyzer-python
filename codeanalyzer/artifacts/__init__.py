@@ -5,7 +5,11 @@ Capture never drops a file (every non-`.py` file becomes a
 text or binary -- issue #157 follow-up); extraction is narrow (only
 dependency manifests are parsed for meaning in this unit)."""
 
+from codeanalyzer.artifacts.config_keys import extract_config_keys, is_config_eligible
 from codeanalyzer.artifacts.dependencies import build_dependency_view
 from codeanalyzer.artifacts.discovery import discover_artifacts
 
-__all__ = ["discover_artifacts", "build_dependency_view"]
+__all__ = [
+    "discover_artifacts", "build_dependency_view",
+    "extract_config_keys", "is_config_eligible",
+]

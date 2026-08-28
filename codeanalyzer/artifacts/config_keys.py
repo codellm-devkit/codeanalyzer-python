@@ -261,6 +261,25 @@ def _stringify(value: object) -> str:
 
 # --- public API -----------------------------------------------------------
 
+def is_config_eligible(artifact: PyArtifact) -> bool:
+    """Whether `artifact` is worth extracting config keys from: an env-family
+    basename (`.env`/`.env.*`/`.flaskenv`, regardless of declared format), or
+    a namespace-bearing format (yaml/json/toml/ini/properties). A binary
+    artifact is never eligible -- there is no decodable text to flatten, and
+    a rule-matched-but-undecodable file downgrades to `format="binary"`
+    regardless of its basename (see discovery.py), so the binary check wins
+    even over an env-family name.
+
+    Callers (core.py's wiring) use this to skip the on-disk read + parse
+    attempt entirely on artifacts that can never yield config keys, rather
+    than relying on `extract_config_keys`'s own not-applicable `([], True)`
+    return after already having paid for the read."""
+    if artifact.format == "binary":
+        return False
+    basename = artifact.path.rsplit("/", 1)[-1]
+    return _is_env_family(basename) or artifact.format in _NAMESPACE_PARSERS
+
+
 def extract_config_keys(
     artifact: PyArtifact, full_text: str, capture_value: bool,
 ) -> Tuple[List[PyConfigKey], bool]:
