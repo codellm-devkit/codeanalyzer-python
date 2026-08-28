@@ -215,6 +215,16 @@ NODE_LABELS: List[NodeLabel] = [
     NodeLabel("Package", "Package", "id", {
         "id": "string", "ecosystem": "string", "name": "string",
     }),
+    # A configuration key flattened out of a config-bearing Artifact (#152).
+    # Neutral vocabulary like Artifact/Package -- a yaml/env/ini key is not a
+    # Python concept. `value` is omitted (not null) when the source model's
+    # value is None (--no-artifact-text, or a namespace with no value at that
+    # path); `references` is always present, possibly empty.
+    NodeLabel("ConfigKey", "ConfigKey", "id", {
+        "id": "string", "key": "string", "namespace": "string",
+        "value": "string", "references": "string[]",
+        **_SPAN,
+    }),
 ]
 
 _DECL_TARGETS = ["PyClass", "PyCallable"]
@@ -266,6 +276,10 @@ REL_TYPES: List[RelType] = [
     RelType("PY_SUMMARY", ["PyBodyNode"], ["PyBodyNode"]),
     # Neutral artifact/dependency subgraph (Task 6).
     RelType("HAS_ARTIFACT", ["PyApplication"], ["Artifact"]),
+    # A config key nests under exactly one owning artifact (its id is
+    # `<artifact-id>@key/<dotted.key>`) -- a plain containment edge, no
+    # per-edge properties or discriminant needed (#152).
+    RelType("DEFINES_CONFIG", ["Artifact"], ["ConfigKey"]),
     # ``_k`` (merges per ``kind``): the same manifest may declare one package
     # twice under different kinds (e.g. a runtime dep re-listed under an
     # optional extra) -- same endpoint pair, so without the discriminant the

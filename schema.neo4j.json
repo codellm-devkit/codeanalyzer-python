@@ -177,6 +177,20 @@
         "ecosystem": "string",
         "name": "string"
       }
+    },
+    {
+      "label": "ConfigKey",
+      "merge_label": "ConfigKey",
+      "key": "id",
+      "properties": {
+        "id": "string",
+        "key": "string",
+        "namespace": "string",
+        "value": "string",
+        "references": "string[]",
+        "start_line": "integer",
+        "end_line": "integer"
+      }
     }
   ],
   "relationship_types": [
@@ -392,6 +406,16 @@
       "properties": {}
     },
     {
+      "type": "DEFINES_CONFIG",
+      "from": [
+        "Artifact"
+      ],
+      "to": [
+        "ConfigKey"
+      ],
+      "properties": {}
+    },
+    {
       "type": "DECLARES_DEPENDENCY",
       "from": [
         "Artifact"
@@ -453,7 +477,8 @@
     "CREATE CONSTRAINT pyvariable_id IF NOT EXISTS FOR (x:PyVariable) REQUIRE x.id IS UNIQUE",
     "CREATE CONSTRAINT pybodynode_id IF NOT EXISTS FOR (x:PyBodyNode) REQUIRE x.id IS UNIQUE",
     "CREATE CONSTRAINT artifact_id IF NOT EXISTS FOR (x:Artifact) REQUIRE x.id IS UNIQUE",
-    "CREATE CONSTRAINT package_id IF NOT EXISTS FOR (x:Package) REQUIRE x.id IS UNIQUE"
+    "CREATE CONSTRAINT package_id IF NOT EXISTS FOR (x:Package) REQUIRE x.id IS UNIQUE",
+    "CREATE CONSTRAINT configkey_id IF NOT EXISTS FOR (x:ConfigKey) REQUIRE x.id IS UNIQUE"
   ],
   "indexes": [
     "CREATE INDEX py_callable_name IF NOT EXISTS FOR (c:PyCallable) ON (c.name)",

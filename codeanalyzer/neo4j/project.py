@@ -310,6 +310,26 @@ def _project_artifacts(b: RowBuilder, app: PyApplication, app_name: str, app_ref
         )
         b.edge("HAS_ARTIFACT", app_ref, art_ref)
 
+        # Config keys flattened out of this artifact (#152) -- sorted by key
+        # for deterministic row order, matching the JSON side's L1 determinism.
+        for ck in sorted(art.config_keys or [], key=lambda k: k.key):
+            ck_ref = b.node(
+                ["ConfigKey"],
+                "id",
+                ck.id,
+                prune(
+                    {
+                        "key": ck.key,
+                        "namespace": ck.namespace,
+                        "value": ck.value,
+                        "references": list(ck.references or []),
+                        "start_line": ck.span.start[0] if ck.span else None,
+                        "end_line": ck.span.end[0] if ck.span else None,
+                    }
+                ),
+            )
+            b.edge("DEFINES_CONFIG", art_ref, ck_ref)
+
     # Every lock artifact present LOCKS every dependency it pinned. The pins
     # from all lock files are already merged into one `locked_version` per
     # dependency upstream (Task 5 `build_dependency_view`) -- there is no
