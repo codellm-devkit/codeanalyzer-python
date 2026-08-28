@@ -117,6 +117,27 @@ def test_env_quoting_comments_export():
     assert "APP_NAME" in text[app_name.span.bytes[0]:app_name.span.bytes[1]]
 
 
+def test_env_quoted_value_with_trailing_comment():
+    art = _artifact(".env", "text")
+    keys, ok = extract_config_keys(art, 'SECRET="abc123"  # rotate quarterly\n', True)
+    assert ok is True
+    assert _by_key(keys)["SECRET"].value == "abc123"
+
+
+def test_env_unquoted_value_with_trailing_comment():
+    art = _artifact(".env", "text")
+    keys, ok = extract_config_keys(art, "FOO=bar # c\n", True)
+    assert ok is True
+    assert _by_key(keys)["FOO"].value == "bar"
+
+
+def test_env_hash_inside_quotes_is_preserved():
+    art = _artifact(".env", "text")
+    keys, ok = extract_config_keys(art, 'URL="http://x#frag"\n', True)
+    assert ok is True
+    assert _by_key(keys)["URL"].value == "http://x#frag"
+
+
 def test_env_family_basename_dispatch_regardless_of_format():
     for path in (".env", ".env.local", ".flaskenv"):
         art = _artifact(path, "text")
@@ -176,6 +197,27 @@ def test_ini_interpolation_preserved_raw_and_reference_recognized():
     assert by["paths.here"].span.start[0] == 3
 
 
+def test_ini_default_only_emits_default_prefixed_keys():
+    art = _artifact("tox.ini", "ini")
+    keys, ok = extract_config_keys(art, "[DEFAULT]\ntimeout = 30\n", True)
+    assert ok is True
+    assert _by_key(keys)["DEFAULT.timeout"].value == "30"
+
+
+def test_ini_default_and_section_both_emit_duplicated_key():
+    # configparser inherits every DEFAULT key into each real section, so a
+    # key defined only in DEFAULT deliberately shows up twice: once as
+    # DEFAULT.<key>, once per inheriting section as <section>.<key>.
+    text = "[DEFAULT]\ntimeout = 30\n\n[server]\nhost = 0.0.0.0\n"
+    art = _artifact("tox.ini", "ini")
+    keys, ok = extract_config_keys(art, text, True)
+    assert ok is True
+    by = _by_key(keys)
+    assert by["DEFAULT.timeout"].value == "30"
+    assert by["server.timeout"].value == "30"
+    assert by["server.host"].value == "0.0.0.0"
+
+
 # --- references: all three syntaxes, order of appearance, dedupe -----------
 
 def test_references_all_three_syntaxes_order_and_dedupe():
@@ -205,6 +247,21 @@ def test_capture_value_false_hides_value_only():
     # everything else identical.
     assert a.id == b.id and a.key == b.key and a.namespace == b.namespace
     assert a.span == b.span and a.references == b.references
+
+
+# --- duplicate dotted key: last-wins coalescing -----------------------------
+
+def test_literal_dotted_key_collides_with_nesting_last_wins():
+    # A literal top-level key "a.b" and a nested a -> {b: ...} both flatten
+    # to the same dotted path "a.b" -- indistinguishable once flattened, so
+    # they coalesce into one record (last occurrence in the file wins).
+    text = "a.b: 1\na:\n  b: 2\n"
+    art = _artifact("config.yaml", "yaml")
+    keys, ok = extract_config_keys(art, text, True)
+    assert ok is True
+    matches = [k for k in keys if k.key == "a.b"]
+    assert len(matches) == 1
+    assert matches[0].value == "2"
 
 
 # --- dispatch: unsupported format -> ([], True) -----------------------------

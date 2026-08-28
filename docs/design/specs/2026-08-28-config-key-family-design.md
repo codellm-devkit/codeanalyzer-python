@@ -83,6 +83,10 @@ asset inherits it); conformance fixture grows a config-bearing artifact.
   cross-artifact joins are the consumer's query (see analyses.md examples).
 - env-family files are `format: "text"` with role `env`; namespace `env` is
   keyed off the basename rule, not the format.
+- Literal dotted keys are indistinguishable from nesting once flattened into
+  a dotted-path id (a top-level key literally named `"a.b"` and a nested
+  `a: {b: ...}` both flatten to `a.b`); colliding forms coalesce last-wins
+  by design, same as a plain duplicate key within one format.
 
 ## Definition of done
 

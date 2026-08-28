@@ -99,10 +99,20 @@ def _parse_toml(text: str, lines: List[str]) -> List[_Entry]:
 _ENV_LINE = re.compile(r'^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$')
 
 
-def _strip_quotes(value: str) -> str:
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
-        return value[1:-1]
-    return value
+def _env_value(raw: str) -> str:
+    """The text after `KEY=` on one line -> the value. A quoted value ends
+    at its MATCHING closing quote -- anything after that (including a `#`)
+    is trailing comment and is discarded, so a `#` INSIDE the quotes (e.g. a
+    URL fragment) is never reached by comment-stripping. An unquoted value
+    ends at the first unescaped `" #"` (whitespace then `#`); a bare `#`
+    stuck directly to a token (no preceding whitespace) is not a comment
+    marker and stays in the value."""
+    raw = raw.strip()
+    if raw and raw[0] in "'\"":
+        quote = raw[0]
+        end = raw.find(quote, 1)
+        return raw[1:end] if end != -1 else raw[1:]
+    return re.split(r"\s#", raw, maxsplit=1)[0].strip()
 
 
 def _is_env_family(basename: str) -> bool:
@@ -118,7 +128,7 @@ def _parse_env(text: str, lines: List[str]) -> List[_Entry]:
         m = _ENV_LINE.match(stripped)
         if not m:
             continue
-        key, value = m.group(1), _strip_quotes(m.group(2).strip())
+        key, value = m.group(1), _env_value(m.group(2))
         out.append((key, value, _line_span(text, lines, lineno)))
     return out
 
@@ -180,6 +190,21 @@ def _parse_ini(text: str, lines: List[str]) -> List[_Entry]:
     cp.read_string(text)
     line_map = _ini_line_map(lines)
     out: List[_Entry] = []
+    # DEFAULT's own keys, unconditionally: `cp.sections()` never includes
+    # "DEFAULT" (configparser convention), so a file with only a [DEFAULT]
+    # section would otherwise yield zero keys. `cp.items(section, ...)`
+    # below ALSO re-inherits every DEFAULT key into each real section
+    # (configparser's fallback-lookup semantics) -- so a key defined only in
+    # DEFAULT deliberately appears twice: once as `DEFAULT.<key>` and again
+    # as `<section>.<key>` per inheriting section. Both are real, distinct
+    # facts (the key is DEFINED in DEFAULT; the section's own resolved
+    # value equals it), so both stay -- this is intended duplication, not a
+    # bug (see docs/design/specs/2026-08-28-config-key-family-design.md
+    # Caveats).
+    for key, value in cp.defaults().items():
+        lineno = line_map.get(("DEFAULT", key))
+        span = _line_span(text, lines, lineno) if lineno else None
+        out.append((f"DEFAULT.{key}", value, span))
     for section in cp.sections():
         for key, value in cp.items(section, raw=True):
             lineno = line_map.get((section, key)) or line_map.get(("DEFAULT", key))
