@@ -471,6 +471,23 @@ class PyExternalSymbol(BaseModel):
 
 
 @builder
+class PyConfigKey(BaseModel):
+    """A configuration key flattened out of a config-bearing ``PyArtifact``
+    (#152). Graph vocabulary stays neutral (label ``ConfigKey``, edge
+    ``DEFINES_CONFIG``) -- the ``Py`` prefix here is only the ``PyArtifact``
+    naming precedent, not a Python-specific claim. L1 data, identical at
+    every analysis level; nested under the owning artifact, containment
+    mirrors ``DEFINES_CONFIG``."""
+
+    id: str = ""  # <artifact-id>@key/<dotted.key>
+    key: str  # dotted path; numeric segments for arrays, e.g. "services.web.ports.0"
+    namespace: str  # env|yaml|json|toml|ini|properties
+    value: Optional[str] = None  # populated only when options.artifact_text is on
+    span: Optional[Span] = None  # into the artifact's source; best-effort for yaml/json/toml
+    references: List[str] = []  # raw recognized tokens, order of appearance, deduplicated
+
+
+@builder
 class PyArtifact(BaseModel):
     """Any non-`.py` project file (config, manifest, CI, container spec, or
     plain data/binary) -- never dropped from the walk. Captured broadly (node
@@ -488,6 +505,7 @@ class PyArtifact(BaseModel):
     source: str = ""  # verbatim by default; "" for binary or when capture is disabled
     text_truncated: bool = False  # True when `source` is a prefix, not the full file
     extraction: str = "none"  # none|partial|full
+    config_keys: List[PyConfigKey] = []  # flattened config keys (#152); [] when not namespace-eligible
 
 
 @builder
