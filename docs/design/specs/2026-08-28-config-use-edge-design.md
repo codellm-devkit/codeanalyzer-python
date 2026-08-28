@@ -26,7 +26,11 @@ standard feature of the layer.
    **JSON-encoded** (`'"DB_HOST"'`, `'3'`, `'true'`, `'null'`); non-constant
    arguments stay `None`. L1 body data, additive, emitted for every call
    argument. Decoding rule documented on the field: `json.loads` yields the
-   Python constant (str/int/float/bool/None).
+   Python constant (str/int/float/bool/None). `PyCallArgument.name:
+   Optional[str]` ships alongside `value` — the bare identifier of an
+   `ast.Name` argument (`None` otherwise), added because the dataflow tier
+   has no other join point back to the variable's own definitions
+   (controller ruling; amends this decision).
 2. **Detection is level-graded, all in scope** (per the amended #162):
    - **Literal tier** (`-a 2`+, `prov: ["literal"]`): the call node's callee
      resolves to a detector-listed external and the key argument is a string

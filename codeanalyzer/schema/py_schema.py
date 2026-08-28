@@ -306,6 +306,17 @@ class PyCallArgument(BaseModel):
 
     ast_kind: str
     inferred_type: Optional[str] = None
+    # Literal capture (#162): populated only for an `ast.Constant` argument
+    # whose value is str/int/float/bool/None, JSON-encoded (`json.dumps`) --
+    # decode with `json.loads` to recover the Python constant. `None` for
+    # every non-constant argument (and for a Constant of another type, e.g.
+    # bytes/complex/Ellipsis).
+    value: Optional[str] = None
+    # Bare-identifier capture (#162): the `id` of an `ast.Name` argument
+    # (e.g. `f(KEY)` -> `"KEY"`) -- ships alongside `value` as the dataflow
+    # tier's join point back to the variable's own definitions. `None` for
+    # every other argument shape.
+    name: Optional[str] = None
 
 
 # BodyNode.arguments forward-references PyCallArgument (defined later);

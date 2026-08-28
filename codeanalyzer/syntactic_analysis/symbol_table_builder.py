@@ -1,5 +1,6 @@
 import ast
 import hashlib
+import json
 import os
 import tokenize
 from ast import AST, ClassDef
@@ -786,6 +787,16 @@ class SymbolTableBuilder:
                 PyCallArgument(
                     ast_kind=type(arg).__name__,
                     inferred_type=self._infer_type(script, arg.lineno, arg.col_offset),
+                    # Literal/name capture (#162): value JSON-encoded for a
+                    # Constant of a JSON-safe type; name for a bare Name --
+                    # never both, per the AST shapes involved.
+                    value=(
+                        json.dumps(arg.value)
+                        if isinstance(arg, ast.Constant)
+                        and isinstance(arg.value, (str, int, float, bool, type(None)))
+                        else None
+                    ),
+                    name=arg.id if isinstance(arg, ast.Name) else None,
                 )
                 for arg in node.args
             ]
