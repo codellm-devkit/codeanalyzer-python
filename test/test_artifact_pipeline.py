@@ -111,3 +111,32 @@ def test_config_key_eligibility_and_partial_on_parse_failure(tmp_path):
 
     assert app.artifacts["broken.toml"].config_keys == []
     assert app.artifacts["broken.toml"].extraction == "partial"
+
+
+def test_config_key_success_upgrades_none_to_full_on_non_manifest(tmp_path):
+    """Review fix (HIGH): a clean config-key parse on a non-manifest artifact
+    (extraction still "none" -- build_dependency_view never touched it)
+    upgrades extraction to "full", not just left at "none"."""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "values.yaml").write_text("replicas: 3\n")
+    app = _run(tmp_path, proj, 1)
+    art = app.artifacts["values.yaml"]
+    assert art.extraction == "full"
+    assert art.config_keys and art.config_keys[0].key == "replicas"
+
+
+def test_config_key_success_does_not_clear_existing_partial(tmp_path):
+    """Review fix (HIGH), other half: a Pipfile with `packages` written as a
+    TOML array (not a table) breaks the Pipfile-specific dependency parser
+    (AttributeError on `.items()` -> partial=True) but is still perfectly
+    valid, flattenable TOML -- config-key extraction on the same text
+    succeeds. That unrelated success must not clear the dependency parse's
+    "partial" already recorded on the artifact."""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "Pipfile").write_text('packages = ["requests"]\n')
+    app = _run(tmp_path, proj, 1)
+    art = app.artifacts["Pipfile"]
+    assert art.extraction == "partial"  # from the broken dependency parse
+    assert art.config_keys and art.config_keys[0].key == "packages.0"  # still extracted

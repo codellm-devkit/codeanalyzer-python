@@ -85,7 +85,11 @@ def _full_text(project_dir: Path, path: str, art: PyArtifact) -> str:
     (both payload-size controls on the JSON/Neo4j payload, not extraction
     controls). Read the real file fresh instead; fall back to ``art.source``
     only if it is gone (e.g. a synthetic artifact in a unit test, or the file
-    vanished mid-run)."""
+    vanished mid-run).
+
+    Mirrored (not imported -- this name is module-private) by
+    ``core._artifact_full_text`` for the same reason on config-key
+    extraction (#152); keep the two in sync if this logic changes."""
     try:
         return (project_dir / path).read_bytes().decode("utf-8")
     except (OSError, UnicodeDecodeError):
