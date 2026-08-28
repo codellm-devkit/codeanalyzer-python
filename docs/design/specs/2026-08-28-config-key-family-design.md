@@ -87,6 +87,13 @@ asset inherits it); conformance fixture grows a config-bearing artifact.
   a dotted-path id (a top-level key literally named `"a.b"` and a nested
   `a: {b: ...}` both flatten to `a.b`); colliding forms coalesce last-wins
   by design, same as a plain duplicate key within one format.
+- Strict configparser: a duplicate option within a single ini section causes
+  configparser to raise ConfigParserError, downgrading the entire file to
+  zero keys and extraction `"partial"` (unlike env/properties which use
+  last-wins semantics).
+- Empty collections (yaml/json/toml arrays or objects with no elements) yield
+  no ConfigKey entries — a `logging.handlers: []` contributes no keys to the
+  flattened result.
 
 ## Definition of done
 
