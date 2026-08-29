@@ -29,6 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   formats (`.env`, `yaml`, `json`, `toml`, `ini`, `properties`), with
   reference recognition and `DEFINES_CONFIG` Neo4j projection; namespace
   discriminators per format (#152).
+- `PY_USES_CONFIG` edges from call sites to the `ConfigKey` they read,
+  resolved in three deterministic tiers: literal keys at `-a 2`, single-literal
+  def-use chains at `-a 3`, interprocedural parameter-passing chains at `-a 4`.
+  Unresolved reads (non-literal keys, undefined keys) emitted in
+  `application.config_reads_unresolved` with reasons; `PY_READS_CONFIG_UNRESOLVED`
+  Neo4j projection (#162).
 
 ## [1.2.0] - 2026-08-26
 

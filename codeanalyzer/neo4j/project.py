@@ -435,6 +435,7 @@ def _project_config_uses(
             app_ref,
             ghost_ref,
             prune({"key": r.key, "reason": r.reason, "prov": list(r.prov) if r.prov else None}),
+            # _k=(key,reason) does not per-site discriminate the non-literal bucket (accepted prop-list ceiling).
             key=f"{r.key or ''}|{r.reason}",
         )
 
