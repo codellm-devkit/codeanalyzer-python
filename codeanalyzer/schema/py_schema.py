@@ -492,7 +492,7 @@ class PyConfigKey(BaseModel):
 
     id: str = ""  # <artifact-id>@key/<dotted.key>
     key: str  # dotted path; numeric segments for arrays, e.g. "services.web.ports.0"
-    namespace: str  # env|yaml|json|toml|ini|properties
+    namespace: str  # env|yaml|json|toml|ini|properties|dockerfile
     value: Optional[str] = None  # populated only when options.artifact_text is on
     span: Optional[Span] = None  # into the artifact's source; best-effort for yaml/json/toml
     references: List[str] = []  # raw recognized tokens, order of appearance, deduplicated

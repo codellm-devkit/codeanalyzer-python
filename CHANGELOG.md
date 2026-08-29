@@ -35,6 +35,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Unresolved reads (non-literal keys, undefined keys) emitted in
   `application.config_reads_unresolved` with reasons; `PY_READS_CONFIG_UNRESOLVED`
   Neo4j projection (#162).
+- Deployment-env config-key namespaces: Dockerfile `ENV`/`ARG` directives
+  (multi-key, legacy space form, backslash continuations, quoted values) and
+  compose/k8s `environment`/`env` shapes are now extracted too. `ENV` and
+  compose/k8s `environment`/`env` entries mint namespace `env`, so
+  `os.environ`/`os.getenv` reads resolve against deployment-declared
+  variables; Dockerfile `ARG` mints its own `dockerfile` namespace
+  (build-time only, not env-detector-bindable). Compose/k8s recognition
+  dual-mints alongside the plain `yaml` dotted-path keys, by design (#165).
 
 ## [1.2.0] - 2026-08-26
 

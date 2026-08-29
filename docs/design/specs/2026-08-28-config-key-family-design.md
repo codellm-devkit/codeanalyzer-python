@@ -25,10 +25,18 @@ reading a key) is the recorded follow-up.
    references are always extracted — `--no-artifact-text` drops values and
    source together, so the secret off-switch actually switches everything off.
 3. **V1 formats**: `env` (`.env`, `.env.*`, `.flaskenv`), `yaml`, `json`,
-   `toml`, `ini`, `properties`. Extraction is format-driven over existing
-   artifacts (pyproject.toml gets keys too; overlap with dependency records is
-   harmless). `references[]` v1 recognizes three syntaxes, recorded as raw
-   tokens: `${VAR}`/`$VAR`, `%(name)s`, `${{ ... }}`.
+   `toml`, `ini`, `properties`, `dockerfile`. Extraction is format-driven over
+   existing artifacts (pyproject.toml gets keys too; overlap with dependency
+   records is harmless). `references[]` v1 recognizes three syntaxes, recorded
+   as raw tokens: `${VAR}`/`$VAR`, `%(name)s`, `${{ ... }}`. Deployment-env
+   namespaces (issue #165, a later extension of this same machinery): a
+   `dockerfile`-format artifact's `ENV` directives mint namespace `env` (so
+   `os.environ`/`os.getenv` reads bind to them) while its `ARG` directives
+   mint namespace `dockerfile` (build-time only, not env-detector-bindable);
+   a `yaml`-format artifact
+   additionally dual-mints namespace `env` keys for recognized compose
+   (`services.*.environment`) and k8s (`...env[].name`/`.value`) shapes,
+   alongside the plain dotted-path `yaml` mint of the same leaves.
 4. **Placement: nested.** `PyArtifact.config_keys: List[PyConfigKey]` —
    containment mirrors `DEFINES_CONFIG`; L1 data, identical at every level.
 5. **Overlay posture.** Parse failure never drops the artifact node; it sets
@@ -43,7 +51,7 @@ reading a key) is the recorded follow-up.
 | --- | --- | --- |
 | `id` | str | `<artifact-id>@key/<dotted.key>` |
 | `key` | str | dotted path; numeric segments for arrays (`services.web.ports.0`) |
-| `namespace` | str | `env` \| `yaml` \| `json` \| `toml` \| `ini` \| `properties` |
+| `namespace` | str | `env` \| `yaml` \| `json` \| `toml` \| `ini` \| `properties` \| `dockerfile` |
 | `value` | Optional[str] | only when text capture on |
 | `span` | Span | into the artifact's source |
 | `references` | List[str] | raw recognized tokens |
