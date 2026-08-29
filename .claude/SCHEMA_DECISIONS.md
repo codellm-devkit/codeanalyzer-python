@@ -329,3 +329,30 @@ rels `HAS_ARTIFACT` (PyApplication→Artifact), `DECLARES_DEPENDENCY`
 - Always projected regardless of `-a` — this section is L1 data, identical at
   every analysis level (mirrors `analysis.json`), consistent with Neo4j's
   existing full-depth-always posture for `--emit neo4j`.
+
+## 2026-08-27 — Artifacts, dependencies, and the `can://artifact/` namespace
+
+Design: `docs/design/specs/2026-08-27-artifacts-and-dependencies-design.md`.
+
+Schema v2 gains non-code coverage: `application.artifacts` (sibling map,
+`symbol_table` stays code-only), `application.dependencies`, and
+`application.unresolved_imports`. All three are L1 data — emitted identically
+at every level, like entrypoints.
+
+- **Artifact ids are language-neutral**: `can://artifact/<app>/<path>`. The
+  first `can://` segment is now a namespace — a language for code nodes, the
+  literal `artifact` for files — so sibling analyzers over the same repo emit
+  the same artifact id (one node in a merged graph). Precondition: `<app>`
+  must agree (`--app-name` pinned for joint analysis).
+- **Dependency `prov` vocabulary** (coined once, parity clause applies):
+  `declared`, `lockfile`, `installed-metadata`, `heuristic`. Deterministic
+  default reads repo files only; `installed-metadata` requires the new
+  `--resolve-installed` flag.
+- **Neo4j**: neutral labels `:Artifact` / `:Package` (no `Py` prefix, shared
+  MERGE targets across analyzers); `:Package.id` is a purl (`pkg:pypi/<name>`).
+  `PY_PROVIDES` joins packages to existing-or-minted module-level `:PyExternal` ghosts, wiring
+  dependencies into the call graph. New edges: `HAS_ARTIFACT`,
+  `DECLARES_DEPENDENCY`, `LOCKS`, `PY_PROVIDES`, `PY_UNRESOLVED_IMPORT`.
+- Capture broad (config files as nodes with `roles`), extract narrow
+  (dependency manifests only this unit). Lock files backfill
+  `locked_version`, never create records; transitive packages out of scope.

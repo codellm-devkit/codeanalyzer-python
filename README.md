@@ -582,6 +582,56 @@ runtime (Docker or Podman) and is enabled with an environment variable:
 RUN_CONTAINER_TESTS=1 uv run pytest test/test_neo4j_bolt.py -s
 ```
 
+## Graph query cookbook
+
+Example Cypher over the projected graph (`--emit neo4j`, then load `graph.cypher` or push via Bolt).
+
+```cypher
+// who calls this function? (direct callers)
+MATCH (c:PyCallable)-[:PY_CALLS]->(t:PyCallable {name: "process_payment"})
+RETURN c.id
+
+// every callable that reaches a given library, via the external ghosts
+MATCH (c:PyCallable)-[:PY_CALLS]->(e:PyExternal)
+WHERE e.id CONTAINS "/@external/requests/"
+RETURN DISTINCT c.id
+
+// entrypoints and the frameworks that invoke them
+MATCH (m:PyCallable {is_entrypoint: true})
+RETURN m.id, m.entrypoint_frameworks
+
+// data dependences into one statement (level 3+)
+MATCH (s:PyBodyNode {id: $stmt})<-[d:PY_DDG]-(src:PyBodyNode)
+RETURN src.id, d.var, d.prov
+
+// interprocedural flow through a parameter (level 4)
+MATCH (a:PyBodyNode)-[:PY_PARAM_IN]->(f:PyBodyNode)
+WHERE f.id STARTS WITH "can://python/myapp/src/api.py"
+RETURN a.id, f.id
+```
+
+Artifact and dependency queries (1.3.0+):
+
+```cypher
+// all container/orchestration configs in the app
+MATCH (a:PyApplication)-[:HAS_ARTIFACT]->(f:Artifact)
+WHERE any(r IN f.roles WHERE r IN ["service-topology", "container-image"])
+RETURN f.id, f.format
+
+// every callable that reaches code from a declared package
+MATCH (c:PyCallable)-[:PY_CALLS]->(:PyExternal)<-[:PY_PROVIDES]-(p:Package {id: "pkg:pypi/requests"})
+RETURN c.id
+
+// undeclared imports (dependency hygiene)
+MATCH (a:PyApplication)-[u:PY_UNRESOLVED_IMPORT]->(e:PyExternal)
+WHERE NOT (e)<-[:PY_PROVIDES]-(:Package)
+RETURN e.id, u.prov
+
+// which lock file pins this package, and to what
+MATCH (f:Artifact)-[l:LOCKS]->(p:Package {id: "pkg:pypi/numpy"})
+RETURN f.id, l.version
+```
+
 ## License
 
 Apache 2.0 — see [LICENSE](./LICENSE).
