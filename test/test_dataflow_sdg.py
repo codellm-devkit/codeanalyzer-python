@@ -9,6 +9,8 @@ Contract assertions (dataflow-graphs § verification gates):
   transitive flow; the module-global write/read pair is stitched across
   files; closure captures bind at the definition site.
 """
+import copy
+
 import pytest
 
 from pathlib import Path
@@ -210,7 +212,7 @@ def test_sdg_survives_when_jedi_side_channel_is_dark(fixture_app):
     site's callee_signature to simulate the side channel going fully dark --
     the deterministic body-callee path must carry the graph alone.
     """
-    app = fixture_app.model_copy(deep=True)
+    app = copy.deepcopy(fixture_app)  # version-neutral; .model_copy is pydantic v2-only
     for c in _callable_index(app).values():
         for cs in c.call_sites or []:
             cs.callee_signature = None
