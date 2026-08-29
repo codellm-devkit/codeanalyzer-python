@@ -150,10 +150,13 @@ def _parse_rule(raw: Dict, origin: Path) -> Rule:
         raise ConfigUseRulesError(
             f"{origin}: rule {raw['id']!r} `namespaces` must be a non-empty list of strings"
         )
+    kwarg = raw.get("kwarg")
+    if kwarg is not None and not isinstance(kwarg, str):
+        raise ConfigUseRulesError(f"{origin}: rule {raw['id']!r} `kwarg` must be a string")
     return Rule(
         id=raw["id"], module=raw["module"], callable=raw["callable"],
         key_arg=int(raw["key_arg"]), namespaces=tuple(namespaces),
-        kwarg=raw.get("kwarg"),
+        kwarg=kwarg,
     )
 
 
