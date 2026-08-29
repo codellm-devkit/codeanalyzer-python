@@ -1,0 +1,58 @@
+version: 1
+
+# Shipped config-use detector table (#162), spec §3. Each rule identifies a
+# call whose resolved callee is `module.callable` (matched prefix-aware on
+# `module` -- see config_use.py's module docstring for why) and which
+# argument position carries the key. No user-extension flag yet (matches
+# the artifact rules posture).
+#
+# `os.environ.__getitem__` (the `os.environ["X"]` subscript form) is
+# deliberately absent: verified empirically that a subscript never lowers
+# to a call body node, so there is no call this rule could ever match
+# (config_use.py's module docstring has the finding).
+rules:
+  - id: os.getenv
+    module: os
+    callable: getenv
+    key_arg: 0
+    namespaces: [env]
+
+  - id: os.environ.get
+    module: os.environ
+    callable: get
+    key_arg: 0
+    namespaces: [env]
+
+  - id: dotenv.get_key
+    module: dotenv
+    callable: get_key
+    key_arg: 1
+    namespaces: [env]
+
+  - id: configparser.get
+    module: configparser
+    callable: get
+    key_arg: 1
+    kwarg: option
+    namespaces: [ini, properties]
+
+  - id: configparser.getint
+    module: configparser
+    callable: getint
+    key_arg: 1
+    kwarg: option
+    namespaces: [ini, properties]
+
+  - id: configparser.getfloat
+    module: configparser
+    callable: getfloat
+    key_arg: 1
+    kwarg: option
+    namespaces: [ini, properties]
+
+  - id: configparser.getboolean
+    module: configparser
+    callable: getboolean
+    key_arg: 1
+    kwarg: option
+    namespaces: [ini, properties]

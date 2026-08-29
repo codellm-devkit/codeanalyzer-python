@@ -704,6 +704,16 @@ class Codeanalyzer:
             elif art.extraction == "none":
                 art.extraction = "full"
 
+        # config_use (#162): literal tier. Needs callees resolved (backfill_
+        # callees above, gated the same >= 2) and config_keys just extracted
+        # above, so this runs after both rather than immediately following
+        # the callee backfill call itself.
+        if self.analysis_level >= 2:
+            from codeanalyzer.artifacts import detect_config_reads, resolve_uses
+
+            reads = detect_config_reads(app)
+            app.config_uses, app.config_reads_unresolved = resolve_uses(reads, app)
+
         # L3: intraprocedural dataflow (CFG/CDG/DDG) emitted onto the v2 tree.
         if self.analysis_level >= 3:
             from codeanalyzer.dataflow.builder import (
