@@ -87,7 +87,12 @@ standard feature of the layer.
 `PyCallArgument.value` emitted at L1 (body build). Edges: literal tier
 computed in the L2 block (needs resolved callees); dataflow-intra in the L3
 block (needs DDG); interproc in the L4 block (needs param_in). Monotonicity
-gate extended to `config_uses`.
+gate extended to `config_uses`. `config_reads_unresolved` is not itself
+monotonic -- it deliberately shrinks as levels rise (a record a higher tier
+resolves migrates into `config_uses` and drops out of the unresolved list);
+the monotonicity contract binds the edge set, and the unresolved list is
+its complement, in the same sanctioned-refinement family as `callee:
+null→id`.
 
 ## Caveats
 

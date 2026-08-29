@@ -333,7 +333,11 @@ def _assign_literal(source: str, def_node: Optional[BodyNode]) -> Optional[str]:
     """The str constant a single reaching def closes on, or `None` if
     `def_node` isn't exactly a single-target `Name = <str Constant>` Assign
     (a formal-parameter binding has no span; a `for`-header or multi-target
-    assign fails to parse/shape-match -- both correctly never close)."""
+    assign fails to parse/shape-match -- both correctly never close).
+    Also rejected by design, not just incidentally: `ast.AnnAssign`
+    (`KEY: str = "X"`), `ast.AugAssign` (`KEY += "X"`), and tuple-unpack
+    (`KEY, other = ...`) -- none is a plain single-target `Name = <str
+    Constant>` Assign."""
     if def_node is None or def_node.span is None:
         return None
     lo, hi = def_node.span.bytes
