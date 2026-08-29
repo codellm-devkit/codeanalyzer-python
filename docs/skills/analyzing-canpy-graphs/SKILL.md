@@ -1,62 +1,60 @@
 ---
 name: analyzing-canpy-graphs
-description: Use when querying codeanalyzer-python (canpy) output — analysis.json or the Neo4j projection — for call-graph, dataflow, taint, entrypoint, exit-point, or slicing questions, or when writing Cypher/JSON traversals over schema v2.
+description: Use when querying the canpy (codeanalyzer-python) Neo4j graph — call-graph, dataflow, taint, slicing, entrypoint, exit-point, inheritance, dependency/SBOM, or configuration questions, or when writing any Cypher over schema v2's projection.
 ---
 
-# Analyzing canpy graphs (schema v2)
+# Analyzing canpy graphs (schema v2, Neo4j projection)
 
-One additive tree + typed edge overlays, two projections: `analysis.json` and Neo4j.
-Vocabulary is fixed — **never guess a label, property, or key shape**; it is all in
-[references/vocabulary.md](references/vocabulary.md). Query recipes (entrypoints, taint,
-exit points, slicing, both projections) are in [references/recipes.md](references/recipes.md).
+One additive tree + typed edge overlays, projected as a property graph
+(`--emit neo4j` → `graph.cypher` snapshot or live Bolt push). Vocabulary is
+fixed — **never guess a label, property, or key** — it is all in
+[references/vocabulary.md](references/vocabulary.md). The exhaustive analysis
+catalogue (structure, calls, entrypoints, inheritance, imports, CFG/CDG/DDG,
+slicing, taint, dependencies/artifacts, health metrics) is
+[references/analyses.md](references/analyses.md); every recipe states its
+minimum `-a` level.
 
 ## What exists at which level
 
 | `-a` | tree | edges |
 | --- | --- | --- |
-| 1 | callables + `call` body nodes (`callee: null`) + entrypoints | — |
-| 2 | `callee` backfilled | `call_graph` / `PY_CALLS` (prov `jedi`/`defuse`) |
-| 3 | full `body`, `@entry`/`@exit` | `cfg`, `cdg`, `ddg` (prov `ssa`, `reaching-defs`) |
-| 4 | `formal_in/out`, `actual_in/out` vertices | `param_in`, `param_out`, `summary`, ddg widened with prov `points-to` |
+| 1 | callables + `call` body nodes + entrypoints + artifacts/dependencies | `HAS_ARTIFACT`, `DECLARES_DEPENDENCY`, `LOCKS`, `PY_PROVIDES`, `PY_UNRESOLVED_IMPORT` |
+| 2 | `callee` resolved | `PY_CALLS` (prov `jedi`/`defuse`), `PY_RESOLVES_TO` |
+| 3 | full statement `body`, `@entry`/`@exit` | `PY_CFG_NEXT`, `PY_CDG`, `PY_DDG` (prov `ssa`, `reaching-defs`) |
+| 4 | `formal_in/out`, `actual_in/out` vertices | `PY_PARAM_IN`, `PY_PARAM_OUT`, `PY_SUMMARY`, ddg widened `points-to` |
 
-Entrypoints (`is_entrypoint`, `entrypoint_frameworks` on callables **and** classes) are
-L1 data — present at every level. Interprocedural anything needs `-a 4`.
+Artifacts, dependencies, unresolved imports, and entrypoints are **L1 data** —
+present and identical at every level. Anything interprocedural needs `-a 4`.
+Neo4j is always projected full-depth for the level analyzed.
 
 ## Identity in 20 seconds
 
-- **`can://` ids are opaque** — read fields, never delimiter-split.
-- **LOCAL ids** (body-map keys, intra-callable edge endpoints): `"line:col"`,
-  `"@entry"`, `"@exit"`, `"@formal_in:<i>"`, `"@formal_out"`,
-  `"<callsite-local>/actual_in:<i>"`, `"<callsite-local>/actual_out"`.
-- **GLOBAL ids** (Neo4j `PyBodyNode.id`, `param_in/out` endpoints): `"<callable-id>@<local>"`.
+- **`can://` ids are opaque** — match on properties, never delimiter-split ids.
+- `PyBodyNode.id` is the GLOBAL ordinal `"<callable-id>@<local>"`; locals are
+  `"line:col"`, `"@entry"`, `"@exit"`, `"@formal_in:<i>"`, `"@formal_out"`,
+  `"<callsite>/actual_in:<i>"`, `"<callsite>/actual_out"`.
+- `Artifact.id` is language-neutral (`can://artifact/<app>/<path>`);
+  `Package.id` is a purl (`pkg:pypi/<name>`) — cross-language merge keys.
 
-## The four traps (each observed in baseline testing)
+## The standing traps
 
-1. **Container key asymmetry.** `PyModule.types` and `PyClass.types` are keyed by the
-   **dotted signature** (`"src.flask.sessions.SessionMixin"`); `callables` / `functions`
-   are keyed by the **bare name** (`"permanent"`). Class signatures derive from the
-   module path — a repo with a `src/` layout has `src.`-prefixed signatures.
-2. **Span slicing is bytes, not str.** `span.bytes` are UTF-8 byte offsets:
-   `module.source.encode("utf-8")[lo:hi].decode("utf-8")`. A plain `source[lo:hi]`
-   is silently wrong after the first non-ASCII character in the file.
-3. **Bound your taint walks.** `-[:PY_DDG|…*1..]->` enumerates paths — exponential on
-   real corpora (odoo L4: 4.6M DDG edges). Use the bounded/frontier recipes in
-   references/recipes.md.
-4. **`PY_DDG` is one edge per `(var, prov)`** (internal `_k` discriminant), and ddg
-   `prov` at L4 mixes `ssa`/`reaching-defs`/`points-to` — filter on `prov` when you
-   need only the syntactic subset.
+1. **Bound every transitive walk.** Unbounded `*1..` enumerates paths —
+   exponential on real corpora (odoo L4: 4.6M `PY_DDG` edges). Use `*1..N`
+   with `DISTINCT`, or `shortestPath` for existence questions.
+2. **Discriminated edges.** `PY_DDG` merges per `(var, prov)` and
+   `PY_CFG_NEXT` per `kind`, `DECLARES_DEPENDENCY` per `kind` — via the
+   internal `_k` property. Endpoint-pair matching alone under-counts.
+3. **ddg `prov` mixes tiers at L4** (`ssa`/`reaching-defs`/`points-to`) —
+   filter when you need only the syntactic subset.
+4. **`:PyExternal` ghosts come in two grains**: member-level
+   (`…/@external/<module>/<name>`, call-graph targets) and module-level
+   (`…/@external/<module>`, dependency/import joins). Same label; join by the
+   `module` property when you need both.
+5. **Entrypoints live on properties** (`is_entrypoint`,
+   `entrypoint_frameworks`) of `PyCallable` AND `PyClass` — there is no
+   `:Entrypoint` label.
 
-## Exit points, defined
-
-Data leaves a callable through three channels; class-level = union over
-`PY_HAS_METHOD`:
-
-- **return channel** — `body` nodes with `kind: "return"` (L4: `@formal_out`).
-- **external calls** — `PY_CALLS` into `:PyExternal` / `callee` present in
-  `application.external_symbols`.
-- **caller-visible writes** — ddg edges whose `var` is rooted at `self.` or a
-  `global:` path; L4 `summary` edges expose the transitive in→out relation.
-
-Taint is **not a schema section** (provider/client boundary: sources/sinks are the
-SDK's job) — you compose it as reachability over `PY_DDG ∪ PY_PARAM_IN ∪
-PY_PARAM_OUT ∪ PY_SUMMARY`. Recipes file has the exact patterns.
+Taint is composed, not stored: reachability over
+`PY_DDG ∪ PY_PARAM_IN ∪ PY_PARAM_OUT ∪ PY_SUMMARY` (provider/client boundary —
+source/sink packs are the SDK's job). Exit points = returns + external calls +
+caller-visible writes; both have full recipes in analyses.md.
