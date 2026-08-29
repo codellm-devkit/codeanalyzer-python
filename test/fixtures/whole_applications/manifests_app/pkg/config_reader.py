@@ -1,4 +1,4 @@
-"""Config-use e2e fixture for all five detection shapes (#162 Task 5)."""
+"""Config-use e2e fixture for all six detection shapes (#162 Task 5, #165)."""
 import os
 
 
@@ -38,3 +38,9 @@ def get_config_multi_def(use_debug):
 # Should appear in config_reads_unresolved with reason: "undefined-key"
 def get_missing_config():
     return os.getenv("NOT_DEFINED_ANYWHERE")
+
+
+# Shape 6: Deployment-env, reads APP_MODE from the Dockerfile ENV directive
+# (#165). Direct literal, resolves at -a 2 like shape 1.
+def get_app_mode():
+    return os.getenv("APP_MODE")

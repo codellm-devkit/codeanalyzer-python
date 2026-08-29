@@ -1,3 +1,5 @@
 services:
   web:
     build: .
+    environment:
+      COMPOSE_ONLY_KEY: x
