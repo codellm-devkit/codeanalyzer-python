@@ -205,20 +205,26 @@ def test_config_keys_extraction_level(tmp_path):
     )).analyze().application
 
     # Config keys should be identical at both levels
-    for art_name in [".env", "config/settings.yml", "app.properties"]:
+    for art_name in [
+        ".env", "config/settings.yml", "app.properties",
+        "Dockerfile", "docker-compose.yml",  # deployment-env namespaces (#165)
+    ]:
         l1_keys = sorted([k.key for k in app_l1.artifacts[art_name].config_keys])
         l4_keys = sorted([k.key for k in app_l4.artifacts[art_name].config_keys])
         assert l1_keys == l4_keys
 
 
 def test_config_keys_extraction_full(tmp_path):
-    """Verify extraction='full' on the three config files."""
+    """Verify extraction='full' on the config files, including Dockerfile
+    (newly namespace-eligible as of #165 -- it was "none" before, since
+    `is_config_eligible` used to skip it outright)."""
     app = _app(tmp_path, "extraction_test")
 
-    # All three new config files should have extraction='full'
     assert app.artifacts[".env"].extraction == "full"
     assert app.artifacts["config/settings.yml"].extraction == "full"
     assert app.artifacts["app.properties"].extraction == "full"
+    assert app.artifacts["Dockerfile"].extraction == "full"
+    assert app.artifacts["docker-compose.yml"].extraction == "full"
 
 
 def _id_suffix(id_: str) -> str:
@@ -229,7 +235,8 @@ def _id_suffix(id_: str) -> str:
 
 
 def test_config_uses_full(tmp_path):
-    """Verify config-use edges at -a 4: all five fixture shapes (#162 Task 5).
+    """Verify config-use edges at -a 4: all six fixture shapes (#162 Task 5,
+    #165 shape 6).
 
     Exact-set assertions (the plan's "exact", not a `>=` lower bound): every
     `config_uses` edge as `(src-suffix, dst-key, prov)` and every
@@ -238,7 +245,8 @@ def test_config_uses_full(tmp_path):
     against the dataflow-tier fixes landed alongside this test -- none of
     those fixes' shapes (aliasing, conditional shadowing, module-scope
     callers) occur in this fixture, so the counts are unchanged from the
-    pre-fix reviewer probe: 3 resolved, 2 unresolved at -a 4).
+    pre-fix reviewer probe except for #165's own addition: 4 resolved, 2
+    unresolved at -a 4).
     """
     app = Codeanalyzer(AnalysisOptions(
         input=FIXTURE, analysis_level=4, no_venv=True, cache_dir=tmp_path / "config_uses",
@@ -250,11 +258,14 @@ def test_config_uses_full(tmp_path):
     #    (site is the read INSIDE _read_config, not get_secret_token's call)
     # 4. Multi-def unresolved: get_config_multi_def() -> unresolved (two defs)
     # 5. Undefined-key: get_missing_config() -> unresolved (key not in .env)
+    # 6. Deployment-env literal: get_app_mode() -> os.getenv("APP_MODE"),
+    #    binding to the Dockerfile `ENV APP_MODE=production` key (#165).
     uses = {(_id_suffix(e.src), _id_suffix(e.dst), tuple(e.prov)) for e in app.config_uses}
     assert uses == {
         ("get_database_url()@7:11", "DATABASE_URL", ("literal",)),
         ("get_api_key()@14:11", "API_KEY", ("dataflow",)),
         ("_read_config(name)@20:11", "SECRET_API_TOKEN", ("dataflow",)),
+        ("get_app_mode()@46:11", "APP_MODE", ("literal",)),
     }
 
     unresolved = {(_id_suffix(r.site), r.reason, r.key) for r in app.config_reads_unresolved}
@@ -262,6 +273,40 @@ def test_config_uses_full(tmp_path):
         ("get_config_multi_def(use_debug)@34:11", "non-literal", None),
         ("get_missing_config()@40:11", "undefined-key", "NOT_DEFINED_ANYWHERE"),
     }
+
+
+def test_config_uses_app_mode_resolves_at_l2(tmp_path):
+    """The deployment-env DoD, verified directly (#165): `get_app_mode()`'s
+    `os.getenv("APP_MODE")` binds to the Dockerfile `ENV APP_MODE=production`
+    key at `-a 2` already -- a direct literal, same tier as `DATABASE_URL`,
+    with no dataflow tier needed."""
+    app = Codeanalyzer(AnalysisOptions(
+        input=FIXTURE, analysis_level=2, no_venv=True, cache_dir=tmp_path / "app_mode_l2",
+    )).analyze().application
+    uses = {(_id_suffix(e.src), _id_suffix(e.dst), tuple(e.prov)) for e in app.config_uses}
+    assert ("get_app_mode()@46:11", "APP_MODE", ("literal",)) in uses
+
+
+def test_config_keys_deployment_env(tmp_path):
+    """Verify Dockerfile ENV/ARG and compose environment-map config keys,
+    and their dual-mint into namespace "env" alongside the plain namespace
+    "yaml" dotted path (#165)."""
+    app = _app(tmp_path, "deployment_env_test")
+
+    df_keys = {(k.key, k.namespace, k.value) for k in app.artifacts["Dockerfile"].config_keys}
+    assert df_keys == {
+        ("APP_MODE", "env", "production"),
+        ("BUILD_REV", "dockerfile", None),
+    }
+
+    compose_keys = {(k.key, k.namespace, k.value) for k in app.artifacts["docker-compose.yml"].config_keys}
+    assert compose_keys == {
+        ("services.web.build", "yaml", "."),
+        ("services.web.environment.COMPOSE_ONLY_KEY", "yaml", "x"),
+        ("COMPOSE_ONLY_KEY", "env", "x"),  # dual-mint alongside the dotted yaml key
+    }
+    by = {k.key: k for k in app.artifacts["docker-compose.yml"].config_keys}
+    assert by["COMPOSE_ONLY_KEY"].id != by["services.web.environment.COMPOSE_ONLY_KEY"].id
 
 
 def test_config_uses_tier_visibility(tmp_path):

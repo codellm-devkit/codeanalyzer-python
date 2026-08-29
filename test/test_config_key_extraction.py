@@ -218,6 +218,275 @@ def test_ini_default_and_section_both_emit_duplicated_key():
     assert by["server.host"].value == "0.0.0.0"
 
 
+# --- dockerfile: ENV/ARG forms, continuations, quoting (#165) --------------
+
+def test_dockerfile_env_single_and_multi_key():
+    text = textwrap.dedent("""\
+        FROM python:3.12-slim
+        ENV APP_MODE=production
+        ENV A=1 B=2
+        """)
+    art = _artifact("Dockerfile", "dockerfile")
+    keys, ok = extract_config_keys(art, text, True)
+    assert ok is True
+    by = _by_key(keys)
+    assert by["APP_MODE"].value == "production" and by["APP_MODE"].namespace == "env"
+    assert by["A"].value == "1" and by["B"].value == "2"
+    assert all(k.namespace == "env" for k in (by["APP_MODE"], by["A"], by["B"]))
+
+
+def test_dockerfile_env_legacy_space_form():
+    art = _artifact("Dockerfile", "dockerfile")
+    keys, ok = extract_config_keys(art, "ENV MY_NAME John Doe\n", True)
+    assert ok is True
+    assert _by_key(keys)["MY_NAME"].value == "John Doe"
+
+
+def test_dockerfile_env_legacy_space_form_keeps_quotes_verbatim():
+    # Real Docker does NO quote processing in the legacy form (moby's
+    # parseNameVal) -- unlike the key=value form, quotes stay in the value.
+    art = _artifact("Dockerfile", "dockerfile")
+    keys, ok = extract_config_keys(art, 'ENV MY_NAME "John Doe"\n', True)
+    assert ok is True
+    assert _by_key(keys)["MY_NAME"].value == '"John Doe"'
+
+
+def test_dockerfile_env_legacy_space_form_tab_separated():
+    art = _artifact("Dockerfile", "dockerfile")
+    keys, ok = extract_config_keys(art, "ENV MY_NAME\tJohn Doe\n", True)
+    assert ok is True
+    assert _by_key(keys)["MY_NAME"].value == "John Doe"
+
+
+def test_dockerfile_env_quoted_values_in_multi_key_form():
+    art = _artifact("Dockerfile", "dockerfile")
+    keys, ok = extract_config_keys(art, 'ENV GREETING="hello world" OTHER=2\n', True)
+    assert ok is True
+    by = _by_key(keys)
+    assert by["GREETING"].value == "hello world"
+    assert by["OTHER"].value == "2"
+
+
+def test_dockerfile_env_backslash_continuation():
+    text = "ENV A=1 \\\n    B=2 \\\n    C=3\n"
+    art = _artifact("Dockerfile", "dockerfile")
+    keys, ok = extract_config_keys(art, text, True)
+    assert ok is True
+    by = _by_key(keys)
+    assert by["A"].value == "1" and by["B"].value == "2" and by["C"].value == "3"
+
+
+def test_dockerfile_env_docker_docs_example_escaped_spaces_and_continuation():
+    # Docker's own ENV docs example: a quoted value, a backslash-escaped-
+    # space value, and a third key on a continuation line -- all three exact.
+    text = (
+        'ENV MY_NAME="John Doe" MY_DOG=Rex\\ The\\ Dog \\\n'
+        '    MY_CAT=fluffy\n'
+    )
+    art = _artifact("Dockerfile", "dockerfile")
+    keys, ok = extract_config_keys(art, text, True)
+    assert ok is True
+    by = _by_key(keys)
+    assert by["MY_NAME"].value == "John Doe"
+    assert by["MY_DOG"].value == "Rex The Dog"
+    assert by["MY_CAT"].value == "fluffy"
+
+
+def test_dockerfile_env_double_backslash_collapses_to_one():
+    art = _artifact("Dockerfile", "dockerfile")
+    keys, ok = extract_config_keys(art, "ENV PATTERN=a\\\\b\n", True)
+    assert ok is True
+    assert _by_key(keys)["PATTERN"].value == "a\\b"
+
+
+def test_dockerfile_arg_with_and_without_default():
+    text = "ARG BUILD_REV\nARG VERSION=1.0\n"
+    art = _artifact("Dockerfile", "dockerfile")
+    keys, ok = extract_config_keys(art, text, True)
+    assert ok is True
+    by = _by_key(keys)
+    assert by["BUILD_REV"].value is None and by["BUILD_REV"].namespace == "dockerfile"
+    assert by["VERSION"].value == "1.0" and by["VERSION"].namespace == "dockerfile"
+
+
+def test_dockerfile_arg_and_env_same_name_mint_distinct_ids():
+    # ARG-then-ENV-promotion is a common idiom (`ARG V=1` / `ENV V=$V`) --
+    # both namespaces key on the bare name, so this is the one shape where a
+    # naive id would collide; the "dockerfile" namespace disambiguates.
+    text = "ARG APP_VERSION=1.0\nENV APP_VERSION=$APP_VERSION\n"
+    art = _artifact("Dockerfile", "dockerfile")
+    keys, ok = extract_config_keys(art, text, True)
+    assert ok is True
+    matches = [k for k in keys if k.key == "APP_VERSION"]
+    assert len(matches) == 2
+    assert len({k.id for k in matches}) == 2
+    assert {k.namespace for k in matches} == {"env", "dockerfile"}
+    env_key = next(k for k in matches if k.namespace == "env")
+    assert env_key.value == "$APP_VERSION" and env_key.references == ["$APP_VERSION"]
+
+
+def test_dockerfile_comments_blank_and_other_directives_skipped():
+    text = "# a comment\n\nRUN pip install -e .\nENV OK=1\n"
+    art = _artifact("Dockerfile", "dockerfile")
+    keys, ok = extract_config_keys(art, text, True)
+    assert ok is True
+    assert [k.key for k in keys] == ["OK"]
+
+
+def test_dockerfile_directives_are_case_insensitive():
+    art = _artifact("Dockerfile", "dockerfile")
+    keys, ok = extract_config_keys(art, "env foo=bar\narg baz=qux\n", True)
+    assert ok is True
+    by = _by_key(keys)
+    assert by["foo"].value == "bar" and by["foo"].namespace == "env"
+    assert by["baz"].value == "qux" and by["baz"].namespace == "dockerfile"
+
+
+def test_dockerfile_with_no_env_or_arg_yields_empty():
+    art = _artifact("Dockerfile", "dockerfile")
+    keys, ok = extract_config_keys(art, "FROM python:3.12-slim\n", True)
+    assert keys == [] and ok is True
+
+
+def test_dockerfile_is_config_eligible():
+    assert is_config_eligible(_artifact("Dockerfile", "dockerfile")) is True
+
+
+# --- compose/k8s env recognition: dual-minted "env" namespace keys (#165) --
+
+def test_compose_environment_map_dual_mints_env_namespace():
+    text = textwrap.dedent("""\
+        services:
+          web:
+            build: .
+            environment:
+              APP_MODE: production
+        """)
+    art = _artifact("docker-compose.yml", "yaml")
+    keys, ok = extract_config_keys(art, text, True)
+    assert ok is True
+    by = _by_key(keys)
+    dotted, bare = by["services.web.environment.APP_MODE"], by["APP_MODE"]
+    assert dotted.namespace == "yaml" and dotted.value == "production"
+    assert bare.namespace == "env" and bare.value == "production"
+    assert dotted.id != bare.id  # dual-mint: distinct ids by construction
+
+
+def test_compose_environment_list_dual_mints_env_namespace():
+    text = textwrap.dedent("""\
+        services:
+          web:
+            environment:
+              - APP_MODE=production
+              - BARE_KEY
+        """)
+    art = _artifact("docker-compose.yml", "yaml")
+    keys, ok = extract_config_keys(art, text, True)
+    assert ok is True
+    by = _by_key(keys)
+    assert by["APP_MODE"].namespace == "env" and by["APP_MODE"].value == "production"
+    # a bare list entry ("no value here, inherit from the environment") has
+    # no leaf "=value" to stringify -- same "" a null stringifies to
+    # elsewhere in this module (no dockerfile-ARG-style None distinction was
+    # asked for here).
+    assert by["BARE_KEY"].namespace == "env" and by["BARE_KEY"].value == ""
+    # the plain yaml flatten still sees the list form under its own path.
+    assert by["services.web.environment.0"].namespace == "yaml"
+    assert by["services.web.environment.0"].value == "APP_MODE=production"
+
+
+def test_k8s_env_list_dual_mints_env_namespace_at_any_depth():
+    text = textwrap.dedent("""\
+        spec:
+          template:
+            spec:
+              containers:
+                - name: app
+                  env:
+                    - name: DATABASE_URL
+                      value: postgresql://x
+        """)
+    art = _artifact("k8s/deployment.yml", "yaml")
+    keys, ok = extract_config_keys(art, text, True)
+    assert ok is True
+    by = _by_key(keys)
+    assert by["DATABASE_URL"].namespace == "env"
+    assert by["DATABASE_URL"].value == "postgresql://x"
+    # still dual-minted under its own full dotted path too.
+    assert by["spec.template.spec.containers.0.env.0.name"].namespace == "yaml"
+
+
+def test_k8s_env_list_missing_value_sibling():
+    # a `valueFrom`-style entry (no literal "value:") -- missing sibling,
+    # same "" a null stringifies to elsewhere in this module.
+    text = textwrap.dedent("""\
+        containers:
+          - env:
+              - name: SECRET_REF
+        """)
+    art = _artifact("k8s/pod.yml", "yaml")
+    keys, ok = extract_config_keys(art, text, True)
+    assert ok is True
+    assert _by_key(keys)["SECRET_REF"].namespace == "env"
+    assert _by_key(keys)["SECRET_REF"].value == ""
+
+
+def test_env_recognition_scoped_to_yaml_only_not_json_or_toml():
+    # compose/k8s files are always yaml in this ecosystem -- the recognition
+    # pass is scoped to namespace=="yaml"; the identical shape in json is
+    # NOT dual-minted.
+    text = '{"services": {"web": {"environment": {"APP_MODE": "x"}}}}'
+    art = _artifact("compose.json", "json")
+    keys, ok = extract_config_keys(art, text, True)
+    assert ok is True
+    assert {k.key for k in keys} == {"services.web.environment.APP_MODE"}
+    assert all(k.namespace == "json" for k in keys)
+
+
+def test_yaml_top_level_key_and_env_dual_mint_same_name_no_id_collision():
+    # Reviewer-reported: a top-level yaml key sharing a name with a
+    # compose/k8s-recognized env var, in the SAME file, must not collide on
+    # id -- the "differs by construction" claim only holds for the RECOGNIZED
+    # shapes' own dotted paths, not for an unrelated top-level leaf.
+    text = textwrap.dedent("""\
+        COMPOSE_ONLY_KEY: top
+        services:
+          web:
+            environment:
+              COMPOSE_ONLY_KEY: nested
+        """)
+    art = _artifact("docker-compose.yml", "yaml")
+    keys, ok = extract_config_keys(art, text, True)
+    assert ok is True
+    matches = [k for k in keys if k.key == "COMPOSE_ONLY_KEY"]
+    assert len(matches) == 2
+    assert len({k.id for k in matches}) == 2
+    assert {k.namespace for k in matches} == {"yaml", "env"}
+    by_ns = {k.namespace: k for k in matches}
+    assert by_ns["yaml"].value == "top"
+    assert by_ns["env"].value == "nested"
+
+
+def test_compose_k8s_env_recognition_is_deterministic_and_sorted():
+    text = textwrap.dedent("""\
+        services:
+          web:
+            environment:
+              APP_MODE: production
+              OTHER: x
+          db:
+            environment:
+              - DB_KEY=1
+        """)
+    art = _artifact("docker-compose.yml", "yaml")
+    keys1, ok1 = extract_config_keys(art, text, True)
+    keys2, ok2 = extract_config_keys(art, text, True)
+    assert ok1 is True and ok2 is True
+    snap = lambda ks: [(k.id, k.key, k.namespace, k.value) for k in ks]
+    assert snap(keys1) == snap(keys2)
+    assert [k.key for k in keys1] == sorted(k.key for k in keys1)
+
+
 # --- references: all three syntaxes, order of appearance, dedupe -----------
 
 def test_references_all_three_syntaxes_order_and_dedupe():
@@ -267,8 +536,10 @@ def test_literal_dotted_key_collides_with_nesting_last_wins():
 # --- dispatch: unsupported format -> ([], True) -----------------------------
 
 def test_unsupported_format_returns_empty_ok():
-    art = _artifact("Dockerfile", "dockerfile")
-    keys, ok = extract_config_keys(art, "FROM python:3.12\n", True)
+    # "dockerfile" is namespace-eligible as of #165 (see the dedicated
+    # dockerfile section above) -- use a genuinely unsupported format here.
+    art = _artifact("requirements.txt", "requirements")
+    keys, ok = extract_config_keys(art, "requests==2.32.3\n", True)
     assert keys == [] and ok is True
 
 
@@ -303,7 +574,9 @@ def test_is_config_eligible_by_namespace_bearing_format():
 
 
 def test_is_config_eligible_false_for_other_formats():
-    for fmt in ("text", "dockerfile", "requirements"):
+    # "dockerfile" is namespace-eligible as of #165 -- see
+    # test_dockerfile_is_config_eligible above.
+    for fmt in ("text", "requirements"):
         assert is_config_eligible(_artifact("misc", fmt)) is False
 
 
