@@ -26,13 +26,19 @@ dotted-path shape at any nesting depth, not schema-anchored) shapes mint
 ADDITIONAL namespace-`env` keys keyed on the bare var name, alongside the
 normal namespace-`yaml` dotted-path ones -- dual-minting is intentional
 (so `os.environ`/`os.getenv` reads bind to compose/k8s-declared vars too),
-never deduped away. Ids never collide with the plain yaml mint: the env
-mint's key is always the bare var name while the yaml mint's key always
-carries the full dotted path, so the two differ by construction for every
-shape this pass recognizes. This pass is shape-based, not filename/role
-gated -- any yaml artifact whose content happens to match mints the extra
-keys, matching this module's general overlay posture (permissive, never a
-schema validator).
+never deduped away. The `key` FIELD is always the bare var name (matching
+`env` namespace's exact-match resolution semantics), but the `id` cannot
+reuse that bare name unqualified: a TOP-LEVEL yaml key sharing the same
+name as a recognized env var (e.g. a document with both a bare
+`COMPOSE_ONLY_KEY:` entry and a `services.web.environment.COMPOSE_ONLY_KEY`
+one) would otherwise collide with the plain yaml mint's own bare-key id --
+the yaml mint's key is USUALLY a longer dotted path that can't collide, but
+not always (a top-level leaf's dotted path IS just its bare name). Same fix
+as the dockerfile ARG case: the env-dual-mint's id is disambiguated with an
+internal `env.` prefix (`_build_keys`'s `id_key`), the `key` field itself
+unaffected. This pass is shape-based, not filename/role gated -- any yaml
+artifact whose content happens to match mints the extra keys, matching this
+module's general overlay posture (permissive, never a schema validator).
 
 Span precision differs by shape: env/properties/ini/dockerfile are
 line-oriented, so the parse itself knows the exact defining line. yaml/
@@ -231,18 +237,30 @@ def _join_continuations(lines: List[str], start_i: int) -> Tuple[str, int]:
 
 
 def _split_ws_respecting_quotes(s: str) -> List[str]:
-    """Whitespace-split `s`, except inside a matching `'`/`"` span (a quoted
-    value may contain spaces) -- quote characters stay IN the returned
-    tokens, stripped afterward by `_env_value` so there is one quote-
-    stripping implementation, not two."""
+    r"""Whitespace-split `s`, except inside a matching `'`/`"` span (a quoted
+    value may contain spaces) or right after an unquoted `\` -- a backslash
+    escapes the next character (`\ ` keeps a literal space in the token
+    instead of splitting there, `\\` collapses to one literal backslash),
+    mirroring Docker's own shell-style ENV splitting (moby's `Rex\ The\
+    Dog` example). A dangling trailing `\` with nothing to escape is kept
+    literally rather than raising -- a real trailing continuation backslash
+    is already stripped upstream by `_join_continuations`, so this is only
+    a defensive fallback. Quote characters stay IN the returned tokens,
+    stripped afterward by `_env_value` so there is one quote-stripping
+    implementation, not two."""
     tokens: List[str] = []
     buf: List[str] = []
     quote: Optional[str] = None
-    for ch in s:
+    i, n = 0, len(s)
+    while i < n:
+        ch = s[i]
         if quote:
             buf.append(ch)
             if ch == quote:
                 quote = None
+        elif ch == "\\":
+            i += 1
+            buf.append(s[i] if i < n else ch)
         elif ch in "'\"":
             quote = ch
             buf.append(ch)
@@ -252,6 +270,7 @@ def _split_ws_respecting_quotes(s: str) -> List[str]:
                 buf = []
         else:
             buf.append(ch)
+        i += 1
     if buf:
         tokens.append("".join(buf))
     return tokens
@@ -262,8 +281,12 @@ def _dockerfile_env_entries(text: str, lines: List[str]) -> List[_Entry]:
     `ENV a=1 b=2`, and the legacy single-key `ENV K v` space form (Docker's
     own disambiguation rule: the token right after `ENV` decides the form --
     a `=` in it means one-or-more `key=value` pairs; no `=` means the
-    legacy form, where the key is the first word and the REST of the line,
-    verbatim, is the value)."""
+    legacy form, where the key is the first word and the REST of the line
+    is the value). The legacy form's value is taken VERBATIM -- unlike the
+    `key=value` form, real Docker does no quote processing there at all
+    (moby's `parseNameVal`), so `ENV NAME "John Doe"` keeps its quotes; the
+    key/value separator is general whitespace (a tab is as legal as a
+    space), not a literal `" "`."""
     out: List[_Entry] = []
     i, n = 0, len(lines)
     while i < n:
@@ -282,9 +305,9 @@ def _dockerfile_env_entries(text: str, lines: List[str]) -> List[_Entry]:
                 if sep and _ENV_KEY_NAME.match(key):
                     out.append((key, _env_value(raw_val), span))
         else:
-            key, sep, raw_val = rest.partition(" ")
-            if sep and _ENV_KEY_NAME.match(key):
-                out.append((key, _env_value(raw_val.strip()), span))
+            parts = rest.split(None, 1)
+            if len(parts) == 2 and _ENV_KEY_NAME.match(parts[0]):
+                out.append((parts[0], parts[1], span))
         i += 1
     return out
 
@@ -454,10 +477,14 @@ def _build_keys(
     bool/None that needs that coercion.
 
     `id_key` remaps `dotted_key` for ID CONSTRUCTION only -- the `.key` FIELD
-    always stays the bare `dotted_key`. Used solely so a Dockerfile ARG's id
-    can't collide with an ENV of the same name minting the same bare-name id
-    in the "env" namespace (`ARG X` then `ENV X=$X` is a common promotion
-    idiom); every other namespace omits it, preserving today's id shape."""
+    always stays the bare `dotted_key`. Two call sites need it, both to keep
+    a bare-name mint from colliding with another mint that happens to use
+    the same bare name for its OWN id: a Dockerfile ARG's id (`ARG X` then
+    `ENV X=$X` is a common promotion idiom -- both would otherwise mint id
+    `.../@key/X`), and a yaml artifact's compose/k8s env-dual-mint id (a
+    top-level yaml key sharing a name with a recognized env var would
+    otherwise collide with the plain yaml mint's own bare-key id). Every
+    other namespace omits it, preserving today's id shape."""
     coalesced: Dict[str, Tuple[object, Optional[Span]]] = {}
     for dotted_key, value, span in entries:
         coalesced[dotted_key] = (value, span)
@@ -545,7 +572,10 @@ def extract_config_keys(
             ]
             keys = (
                 _build_keys(artifact.id, "yaml", _parse_yaml(full_text, lines), capture_value)
-                + _build_keys(artifact.id, "env", env_entries, capture_value)
+                + _build_keys(
+                    artifact.id, "env", env_entries, capture_value,
+                    id_key=lambda k: f"env.{k}",
+                )
             )
         else:
             parser = _NAMESPACE_PARSERS.get(artifact.format)

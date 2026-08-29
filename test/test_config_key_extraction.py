@@ -242,6 +242,22 @@ def test_dockerfile_env_legacy_space_form():
     assert _by_key(keys)["MY_NAME"].value == "John Doe"
 
 
+def test_dockerfile_env_legacy_space_form_keeps_quotes_verbatim():
+    # Real Docker does NO quote processing in the legacy form (moby's
+    # parseNameVal) -- unlike the key=value form, quotes stay in the value.
+    art = _artifact("Dockerfile", "dockerfile")
+    keys, ok = extract_config_keys(art, 'ENV MY_NAME "John Doe"\n', True)
+    assert ok is True
+    assert _by_key(keys)["MY_NAME"].value == '"John Doe"'
+
+
+def test_dockerfile_env_legacy_space_form_tab_separated():
+    art = _artifact("Dockerfile", "dockerfile")
+    keys, ok = extract_config_keys(art, "ENV MY_NAME\tJohn Doe\n", True)
+    assert ok is True
+    assert _by_key(keys)["MY_NAME"].value == "John Doe"
+
+
 def test_dockerfile_env_quoted_values_in_multi_key_form():
     art = _artifact("Dockerfile", "dockerfile")
     keys, ok = extract_config_keys(art, 'ENV GREETING="hello world" OTHER=2\n', True)
@@ -258,6 +274,29 @@ def test_dockerfile_env_backslash_continuation():
     assert ok is True
     by = _by_key(keys)
     assert by["A"].value == "1" and by["B"].value == "2" and by["C"].value == "3"
+
+
+def test_dockerfile_env_docker_docs_example_escaped_spaces_and_continuation():
+    # Docker's own ENV docs example: a quoted value, a backslash-escaped-
+    # space value, and a third key on a continuation line -- all three exact.
+    text = (
+        'ENV MY_NAME="John Doe" MY_DOG=Rex\\ The\\ Dog \\\n'
+        '    MY_CAT=fluffy\n'
+    )
+    art = _artifact("Dockerfile", "dockerfile")
+    keys, ok = extract_config_keys(art, text, True)
+    assert ok is True
+    by = _by_key(keys)
+    assert by["MY_NAME"].value == "John Doe"
+    assert by["MY_DOG"].value == "Rex The Dog"
+    assert by["MY_CAT"].value == "fluffy"
+
+
+def test_dockerfile_env_double_backslash_collapses_to_one():
+    art = _artifact("Dockerfile", "dockerfile")
+    keys, ok = extract_config_keys(art, "ENV PATTERN=a\\\\b\n", True)
+    assert ok is True
+    assert _by_key(keys)["PATTERN"].value == "a\\b"
 
 
 def test_dockerfile_arg_with_and_without_default():
@@ -402,6 +441,30 @@ def test_env_recognition_scoped_to_yaml_only_not_json_or_toml():
     assert ok is True
     assert {k.key for k in keys} == {"services.web.environment.APP_MODE"}
     assert all(k.namespace == "json" for k in keys)
+
+
+def test_yaml_top_level_key_and_env_dual_mint_same_name_no_id_collision():
+    # Reviewer-reported: a top-level yaml key sharing a name with a
+    # compose/k8s-recognized env var, in the SAME file, must not collide on
+    # id -- the "differs by construction" claim only holds for the RECOGNIZED
+    # shapes' own dotted paths, not for an unrelated top-level leaf.
+    text = textwrap.dedent("""\
+        COMPOSE_ONLY_KEY: top
+        services:
+          web:
+            environment:
+              COMPOSE_ONLY_KEY: nested
+        """)
+    art = _artifact("docker-compose.yml", "yaml")
+    keys, ok = extract_config_keys(art, text, True)
+    assert ok is True
+    matches = [k for k in keys if k.key == "COMPOSE_ONLY_KEY"]
+    assert len(matches) == 2
+    assert len({k.id for k in matches}) == 2
+    assert {k.namespace for k in matches} == {"yaml", "env"}
+    by_ns = {k.namespace: k for k in matches}
+    assert by_ns["yaml"].value == "top"
+    assert by_ns["env"].value == "nested"
 
 
 def test_compose_k8s_env_recognition_is_deterministic_and_sorted():
