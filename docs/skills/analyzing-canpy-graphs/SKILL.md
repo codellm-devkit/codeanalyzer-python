@@ -19,7 +19,7 @@ minimum `-a` level.
 | `-a` | tree | edges |
 | --- | --- | --- |
 | 1 | callables + `call` body nodes + entrypoints + artifacts/dependencies | `HAS_ARTIFACT`, `DECLARES_DEPENDENCY`, `LOCKS`, `PY_PROVIDES`, `PY_UNRESOLVED_IMPORT` |
-| 2 | `callee` resolved | `PY_CALLS` (prov `jedi`/`defuse`), `PY_RESOLVES_TO` |
+| 2 | `callee` resolved | `PY_CALLS` (prov `jedi`/`defuse`), `PY_RESOLVES_TO`, `PY_USES_CONFIG` (literal tier) + `PY_READS_CONFIG_UNRESOLVED` |
 | 3 | full statement `body`, `@entry`/`@exit` | `PY_CFG_NEXT`, `PY_CDG`, `PY_DDG` (prov `ssa`, `reaching-defs`) |
 | 4 | `formal_in/out`, `actual_in/out` vertices | `PY_PARAM_IN`, `PY_PARAM_OUT`, `PY_SUMMARY`, ddg widened `points-to` |
 
@@ -54,7 +54,9 @@ Neo4j is always projected full-depth for the level analyzed.
    `entrypoint_frameworks`) of `PyCallable` AND `PyClass` — there is no
    `:Entrypoint` label.
 
-Taint is composed, not stored: reachability over
+`PY_USES_CONFIG` widens with the analysis level (literal at `-a 2`, def-use
+closure at `-a 3`, cross-call closure at `-a 4`) and never guesses — unresolved
+reads carry a reason instead. Taint is composed, not stored: reachability over
 `PY_DDG ∪ PY_PARAM_IN ∪ PY_PARAM_OUT ∪ PY_SUMMARY` (provider/client boundary —
 source/sink packs are the SDK's job). Exit points = returns + external calls +
 caller-visible writes; both have full recipes in analyses.md.

@@ -51,7 +51,13 @@
 | `LOCKS` | lock artifact → package | version | locks never create packages alone |
 | `PY_PROVIDES` | package → external (module-level ghost) | — | joins dependencies into the call graph |
 | `PY_UNRESOLVED_IMPORT` | application → external (module-level ghost) | prov[] | undeclared-import hygiene |
+| `PY_USES_CONFIG` | body node → ConfigKey | prov[] | which statement reads which key; prov ⊆ {literal, dataflow}; superset-monotonic `-a 2 ⊆ 3 ⊆ 4` |
+| `PY_READS_CONFIG_UNRESOLVED` | application → external (callee ghost) | key, reason, prov[], `_k` | config reads that never resolved; reason ∈ {non-literal, undefined-key}; the unresolved list is the edge set's sanctioned complement (shrinks as levels rise) |
 
 All dataflow relationships are stored src→dst in the forward direction.
+
+Call arguments carry literal evidence: `PyCallArgument.value` (JSON-encoded
+constant — `json.loads` it) and `.name` (bare identifier) back the config_use
+tiers and are queryable via `PyBodyNode.arguments_json`.
 Dependency `prov` vocabulary: `declared`, `lockfile`, `installed-metadata`
 (only with `--resolve-installed`), `heuristic`.

@@ -224,7 +224,45 @@ MATCH (f:Artifact) WHERE f.source CONTAINS "POSTGRES_PASSWORD" RETURN f.path
 MATCH (p:Package) WHERE p.id STARTS WITH "pkg:" RETURN p.ecosystem, count(*)
 ```
 
-## 12. Health metrics (any level)
+## 12. Config-use bridge (L2 literal; L3/L4 widen)
+
+```cypher
+// which statements read which config keys, with tier evidence
+MATCH (s:PyBodyNode)-[u:PY_USES_CONFIG]->(k:ConfigKey)
+RETURN s.id, k.key, k.namespace, u.prov
+
+// blast radius of renaming a key: every reading statement + its callable
+MATCH (k:ConfigKey {key: "DB_HOST"})<-[:PY_USES_CONFIG]-(s:PyBodyNode)
+MATCH (c:PyCallable)-[:PY_HAS_BODY_NODE]->(s)
+RETURN c.id, s.start_line
+
+// the service's ambient-environment contract: reads nobody defines
+MATCH (:PyApplication)-[r:PY_READS_CONFIG_UNRESOLVED]->(callee:PyExternal)
+WHERE r.reason = "undefined-key"
+RETURN r.key, callee.module + "." + callee.name AS via, count(*) AS sites
+ORDER BY sites DESC
+
+// dynamic config reads needing human eyes (key statically unknown)
+MATCH (:PyApplication)-[r:PY_READS_CONFIG_UNRESOLVED]->(callee:PyExternal)
+WHERE r.reason = "non-literal"
+RETURN callee.module, count(*)
+
+// config-to-exit-point join: keys whose values look like backend URLs,
+// beside the external libraries the code exits through
+MATCH (a:Artifact)-[:DEFINES_CONFIG]->(k:ConfigKey)
+WHERE k.value =~ ".*(postgres|redis|amqp|https?)://.*"
+WITH collect({file: a.path, key: k.key}) AS declared_backends
+MATCH (c:PyCallable)-[:PY_CALLS]->(x:PyExternal)
+WHERE x.module IN ["psycopg2", "redis", "requests"]
+RETURN declared_backends, x.module, count(DISTINCT c)
+```
+
+Edges never guess: literal tier (`-a 2`) needs a string-literal key at a
+detector-listed call; dataflow tier (`-a 3` intra, `-a 4` interprocedural)
+resolves only chains closing over exactly one literal. Everything else lands
+in the unresolved rel with a reason.
+
+## 13. Health metrics (any level)
 
 ```cypher
 // external surface per module
