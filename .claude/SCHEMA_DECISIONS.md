@@ -329,3 +329,60 @@ rels `HAS_ARTIFACT` (PyApplication→Artifact), `DECLARES_DEPENDENCY`
 - Always projected regardless of `-a` — this section is L1 data, identical at
   every analysis level (mirrors `analysis.json`), consistent with Neo4j's
   existing full-depth-always posture for `--emit neo4j`.
+
+## 2026-08-28 — Config family: neutral `ConfigKey` + `PY_USES_CONFIG`/`PY_READS_CONFIG_UNRESOLVED` (issues #152, #162)
+
+Design: `docs/design/specs/2026-08-28-config-key-family-design.md` (definitions
+side) and `docs/design/specs/2026-08-28-config-use-edge-design.md` (the
+`config_use` edge, this entry's main subject).
+
+- **Neutral vocabulary, same rule as `Artifact`/`Package`.** A yaml/env/ini
+  key is not a Python concept: label `ConfigKey`, edge `DEFINES_CONFIG`
+  (Artifact→ConfigKey), no `Py` prefix. Supersedes #152's earlier
+  `PyConfigKey`/`PY_DEFINES_CONFIG` naming (reconciled before either landed —
+  no migration). The Python-specific claim arrives only at the edge that
+  reads a key: `PY_USES_CONFIG` (`PyBodyNode`→`ConfigKey`, prop `prov:
+  string[]`) — one call site reads one key per edge, so no `_k` discriminant
+  is needed there.
+- **`PY_READS_CONFIG_UNRESOLVED` mirrors `PY_UNRESOLVED_IMPORT`'s shape**:
+  `PyApplication`→`:PyExternal` ghost of the callee (`os.getenv`, …), props
+  `key`, `reason` (`"non-literal"` | `"undefined-key"`), `prov`. Unlike
+  `PY_USES_CONFIG`, this one DOES carry a `_k` discriminant on `(key,
+  reason)` — the same external callee legitimately reads several distinct
+  undeclared/dynamic keys across one codebase, and a plain endpoint-pair
+  MERGE would collapse those onto one relationship, silently dropping every
+  key but the last one `SET`.
+- **Tier/prov model.** Three tiers, one shared `prov` vocabulary of exactly
+  two values — `"literal"` and `"dataflow"` (no separate intra/interproc
+  tag): literal (`-a 2`+, the call's key argument is a string constant),
+  dataflow-intra (`-a 3`+, DDG single-literal closure over the read's own
+  callable — `prov:["literal","dataflow"]` once a dataflow tier has been
+  attempted, matching the DDG's own `ssa`/`points-to` provenance-widening
+  precedent), dataflow-interproc (`-a 4`, one hop through the caller's
+  argument values via `call_graph`, never `param_in` traversal — a
+  controller ruling, since `param_in` is a value-flow overlay and this
+  closure only needs "what literal did every caller pass"). A read resolved
+  at a lower tier is never recomputed, so `-a 2 ⊆ -a 3 ⊆ -a 4` holds by
+  construction, gated the same as the DDG's own `ssa ⊆ points-to` widening.
+- **Sanctioned unresolved-complement.** `config_reads_unresolved` is
+  deliberately NOT monotonic — it shrinks as levels rise, the mirror image of
+  `config_uses` growing: a record a higher tier resolves migrates out of the
+  unresolved list and into an edge. The monotonicity gate binds the edge
+  SET; the unresolved list is that set's complement over "every detector
+  hit," in the same sanctioned-refinement family as the L1→L2 `callee:
+  null→id` change and the L2→L3 `BodyNode.parent: null→value` refinement
+  (#115) — a level is allowed to convert an absence into a presence, never
+  the reverse.
+- **Only `prov:["ssa"]` DDG edges close a literal.** `c.ddg` at `-a 4`
+  also carries `points-to` (may-alias widening) and `reaching-defs` (SDG
+  port-routing, #115) edges; a bare local can only ever be rebound by its
+  own name, so consulting anything but `ssa` for this specific closure is
+  never sound-adding, only noise that can kill a resolution the L3 ssa-only
+  set found cleanly. Reviewer-probed regression fixture:
+  `obj.attr = KEY` before `os.getenv(KEY)` — an attribute-write may-aliases
+  the bare `KEY` name it copies from (an unsuffixed local's empty suffix is
+  oracle-compatible with any attribute path in both `TypeBasedAliasOracle`
+  and the wrapped-fallback path of `ScalpelAliasOracle`), producing a
+  `points-to` edge whose def is not a `Name = <str Constant>` shape and so
+  unfilterably kills the closure at `-a 4` while `-a 3` (ssa-only by
+  construction) resolves cleanly.

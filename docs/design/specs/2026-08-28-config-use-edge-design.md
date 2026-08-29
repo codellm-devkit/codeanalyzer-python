@@ -108,6 +108,10 @@ null→id`.
   belongs to at the read site is dynamic); suffix matching may over-match
   across sections — recorded, acceptable v1 (prov marks the tier, consumers
   can threshold).
+- Kwarg-passed keys (`cp.get(section, option="x")`) land in non-literal
+  unresolved: `BodyNode.arguments` only ever holds positional arguments
+  (`symbol_table_builder.py` walks `node.args`, never `node.keywords`), so a
+  kwarg-only call has no substrate to read the key from.
 
 ## Definition of done
 
