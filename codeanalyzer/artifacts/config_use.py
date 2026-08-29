@@ -371,6 +371,18 @@ def _reaching_literal(c: PyCallable, source: str, use_local_id: str, var: str) -
     span containment (the def's dst node's span contains the call's span)
     covers both that coincidence and the common case of a call nested in a
     `return`/assignment, without needing to special-case either shape.
+
+    Only `prov=["ssa"]` edges are consulted: at `-a 4`
+    `c.ddg` also carries `points-to` (may-alias widening) and `reaching-defs`
+    (SDG port-routing, #115) edges. An alias edge can connect this `var`'s
+    use to an unrelated attribute-write def -- `obj.attr = KEY` may-aliases
+    bare `KEY` itself, since an unsuffixed local's empty suffix is
+    oracle-compatible with any attribute path -- that is never a `Name =
+    <str Constant>` shape, so `_assign_literal` correctly refuses it; left
+    unfiltered, that refusal then kills a closure the ssa-only L3 set
+    resolved cleanly, breaking the `-a 3 ⊆ -a 4` monotonicity contract. A
+    bare local can only ever be rebound by its own name, so widening past
+    ssa here is never sound-adding, only noise.
     """
     use_node = c.body.get(use_local_id)
     if use_node is None or use_node.span is None:
@@ -379,7 +391,7 @@ def _reaching_literal(c: PyCallable, source: str, use_local_id: str, var: str) -
     literals: Set[str] = set()
     reached = False
     for edge in c.ddg:
-        if edge.var != var:
+        if edge.var != var or "ssa" not in (edge.prov or []):
             continue
         dst_node = c.body.get(edge.dst)
         if dst_node is None or dst_node.span is None:
@@ -426,22 +438,37 @@ def dataflow_intra_tier(reads: List[_Read], app: PyApplication) -> Tuple[List[Py
 
 def _call_sites_targeting(
     app: PyApplication, index: Dict[str, Tuple[PyCallable, str]], target_id: str,
-) -> List[Tuple[PyCallable, str, str, BodyNode]]:
+) -> Tuple[List[Tuple[PyCallable, str, str, BodyNode]], bool]:
     """Every `(caller, caller_source, local_id, call_node)` whose `callee`
     is `target_id` -- the call-graph join (which callables call it) narrowed
     to the actual call-site body nodes (which arguments they pass), sorted
-    for deterministic iteration."""
+    for deterministic iteration.
+
+    The second return value is completeness: False
+    when some `call_graph` caller of `target_id` can't be accounted for in
+    `sites` -- either it never resolves in `index` (a module-scope caller's
+    `src` is a `can://.../@external/<module>` id, #131 modeling --
+    `_index_callables` only ever holds declared callables) or it resolves
+    but contributes zero matching call-site body nodes. Either way, "every
+    site agrees" computed only over `sites` would silently speak for a
+    caller it never actually saw."""
     caller_ids = sorted({e.src for e in app.call_graph if e.dst == target_id})
     sites: List[Tuple[PyCallable, str, str, BodyNode]] = []
+    complete = True
     for caller_id in caller_ids:
         entry = index.get(caller_id)
         if entry is None:
+            complete = False
             continue
         caller, source = entry
+        seen_here = False
         for local_id, node in sorted((caller.body or {}).items()):
             if node.kind == "call" and node.callee == target_id:
                 sites.append((caller, source, local_id, node))
-    return sites
+                seen_here = True
+        if not seen_here:
+            complete = False
+    return sites, complete
 
 
 def _site_literal(
@@ -470,14 +497,53 @@ def _site_literal(
     return None
 
 
+_ENTRY_KINDS = {"entry", "formal_in"}  # a param's implicit binding, never a rebind
+
+
+def _locally_redefined(c: PyCallable, use_local_id: str, var: str) -> bool:
+    """True when some ssa DDG-reaching def of `var` at `use_local_id` is a
+    real statement -- not the callable's own implicit `@entry`/`@formal_in`
+    parameter binding.
+
+    An unshadowed parameter's only reaching def IS that implicit binding
+    (`access_paths.def_use_facts`: ENTRY defines every param as the
+    function's incoming state), so this is False for it -- the interproc
+    tier's caller-argument closure is safe. A parameter reassigned anywhere
+    on a path reaching the read -- even conditionally, even to a non-literal
+    value the intra tier can't close and so leaves `key_literal` at `None`
+    rather than "closed-but-undeclared" -- has at least one real statement
+    def here, and the caller's argument can no longer be assumed to be what
+    the read actually sees. Same span-containment reaching-def match
+    `_reaching_literal` uses, minus the literal-closing requirement."""
+    use_node = c.body.get(use_local_id)
+    if use_node is None or use_node.span is None:
+        return False
+    lo, hi = use_node.span.bytes
+    for edge in c.ddg:
+        if edge.var != var or "ssa" not in (edge.prov or []):
+            continue
+        dst_node = c.body.get(edge.dst)
+        if dst_node is None or dst_node.span is None:
+            continue
+        d_lo, d_hi = dst_node.span.bytes
+        if not (d_lo <= lo and hi <= d_hi):
+            continue
+        src_node = c.body.get(edge.src)
+        if src_node is not None and src_node.kind not in _ENTRY_KINDS:
+            return True
+    return False
+
+
 def dataflow_interproc_tier(
     reads: List[_Read], app: PyApplication,
 ) -> Tuple[List[PyConfigUseEdge], List[_Read]]:
     """L4 tier: a key that names a *parameter* of its enclosing callable
-    closes when every call site targeting that callable supplies the same
-    string literal (directly, or via one hop of caller-side intra closure)
-    -- call-graph + caller argument values only, never `param_in` traversal
-    (controller ruling)."""
+    closes when the parameter is never locally redefined (`_locally_
+    redefined`) and every call site targeting that callable -- ALL of
+    them, `_call_sites_targeting`'s completeness flag -- supplies the
+    same string literal (directly, or via one hop of caller-side intra
+    closure) -- call-graph + caller argument values only, never `param_in`
+    traversal (controller ruling)."""
     index = _index_callables(app)
     keys_by_namespace = _keys_by_namespace(app)
     edges: List[PyConfigUseEdge] = []
@@ -499,9 +565,14 @@ def dataflow_interproc_tier(
         if read.key_name not in param_names:
             unresolved.append(read)
             continue
+        if _locally_redefined(c, read.local_id, read.key_name):
+            # Locally rebound on some path through the callable's own body --
+            # a caller's argument is not provably what the read sees.
+            unresolved.append(read)
+            continue
         param_index = param_names.index(read.key_name)
-        sites = _call_sites_targeting(app, index, c.id)
-        if not sites:
+        sites, complete = _call_sites_targeting(app, index, c.id)
+        if not sites or not complete:
             unresolved.append(read)
             continue
         visited = {c.id}  # guards the direct self-recursive-call case

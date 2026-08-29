@@ -244,12 +244,66 @@ def test_shadowed_parameter_is_not_misattributed_to_caller_argument(tmp_path):
     assert read.key == "NOT_A_REAL_KEY"
 
 
+def test_conditionally_shadowed_param_is_not_misattributed_to_caller_argument(tmp_path):
+    """Regression: a parameter reassigned on only SOME paths, to a
+    non-literal value the intra tier can't close (`key_literal` stays
+    `None`, never "closed-but-undeclared") -- the existing shadow guard only
+    catches a shadow that closes on a literal. Before the fix, the interproc
+    tier had no way to see the local rebind and minted an edge straight from
+    the caller's literal, ignoring it. Must stay unresolved at every level."""
+    source = (
+        "import os\n\n"
+        "def read(key):\n"
+        "    if not key:\n"
+        "        key = str(len('x'))\n"
+        "    return os.getenv(key)\n\n"
+        "def caller():\n"
+        "    read('DB_HOST')\n"
+    )
+    files = {".env": "DB_HOST=example.com\n"}
+    for level in (2, 3, 4):
+        app = _app(tmp_path, f"shadow-cond-{level}", source, files, level=level)
+        assert app.config_uses == []
+        (read,) = app.config_reads_unresolved
+        assert read.reason == "non-literal"
+
+
+def test_module_scope_caller_with_different_literal_stays_unresolved(tmp_path):
+    """Regression: a module-scope call site (`call_graph` src is a
+    `can://.../@external/<module>` id, #131 modeling) never resolves in
+    `_index_callables`. Before the fix, `_call_sites_targeting` silently
+    dropped it, so the ONE caller the index could see (passing 'DB_HOST')
+    looked like unanimous agreement and the read resolved -- even though
+    the invisible module-scope call passes a different literal."""
+    source = (
+        "import os\n\n"
+        "def read(name):\n"
+        "    os.getenv(name)\n\n"
+        "def caller():\n"
+        "    read('DB_HOST')\n\n"
+        "read('OTHER_KEY')\n"
+    )
+    files = {".env": "DB_HOST=example.com\nOTHER_KEY=x\n"}
+    app = _app(tmp_path, "modscope", source, files, level=4)
+    assert app.config_uses == []
+    (read,) = app.config_reads_unresolved
+    assert read.reason == "non-literal"
+
+
 # --- monotonicity ------------------------------------------------------------
 
 def test_config_uses_monotonic_across_levels(tmp_path):
     """`-a 2` (literal only) subset `-a 3` (+intra) subset `-a 4`
     (+interproc) -- same additive contract as the DDG's `prov` widening
-    (CI-gate test, per the plan's Global Constraints)."""
+    (CI-gate test, per the plan's Global Constraints).
+
+    `read_alias` regression-tests a points-to alias edge (`obj.attr =
+    KEY` may-aliases bare `KEY`, since an unsuffixed local's empty suffix is
+    oracle-compatible with any attribute path) used to reach the read with a
+    non-closing def and kill a closure the L3 ssa-only set resolved cleanly
+    -- present at `-a 3`, silently absent at `-a 4`, breaking monotonicity.
+    Fixed by consulting only `prov=["ssa"]` reaching defs; this shape must
+    now resolve identically at both levels."""
     source = (
         "import os\n\n"
         "def read_literal():\n"
@@ -257,12 +311,16 @@ def test_config_uses_monotonic_across_levels(tmp_path):
         "def read_closed():\n"
         "    KEY = 'DB_PORT'\n"
         "    os.getenv(KEY)\n\n"
+        "def read_alias():\n"
+        "    KEY = 'DB_NAME'\n"
+        "    obj.attr = KEY\n"
+        "    os.getenv(KEY)\n\n"
         "def read_param(name):\n"
         "    os.getenv(name)\n\n"
         "def caller():\n"
         "    read_param('DB_USER')\n"
     )
-    files = {".env": "DB_HOST=example.com\nDB_PORT=5432\nDB_USER=admin\n"}
+    files = {".env": "DB_HOST=example.com\nDB_PORT=5432\nDB_USER=admin\nDB_NAME=mydb\n"}
     # One project dir shared across levels -- app_name (and so every `can://`
     # id) derives from the input dir name, so comparing edge sets across
     # separately-named `proj-mono-N` dirs would spuriously never intersect.
@@ -278,8 +336,8 @@ def test_config_uses_monotonic_across_levels(tmp_path):
     l2, l3, l4 = edge_set(2), edge_set(3), edge_set(4)
     assert l2 <= l3 <= l4
     assert len(l2) == 1
-    assert len(l3) == 2
-    assert len(l4) == 3
+    assert len(l3) == 3
+    assert len(l4) == 4
 
 
 # --- determinism -------------------------------------------------------------
