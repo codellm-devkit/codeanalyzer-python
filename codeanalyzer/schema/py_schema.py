@@ -306,6 +306,17 @@ class PyCallArgument(BaseModel):
 
     ast_kind: str
     inferred_type: Optional[str] = None
+    # Literal capture (#162): populated only for an `ast.Constant` argument
+    # whose value is str/int/float/bool/None, JSON-encoded (`json.dumps`) --
+    # decode with `json.loads` to recover the Python constant. `None` for
+    # every non-constant argument (and for a Constant of another type, e.g.
+    # bytes/complex/Ellipsis).
+    value: Optional[str] = None
+    # Bare-identifier capture (#162): the `id` of an `ast.Name` argument
+    # (e.g. `f(KEY)` -> `"KEY"`) -- ships alongside `value` as the dataflow
+    # tier's join point back to the variable's own definitions. `None` for
+    # every other argument shape.
+    name: Optional[str] = None
 
 
 # BodyNode.arguments forward-references PyCallArgument (defined later);
@@ -509,6 +520,39 @@ class PyArtifact(BaseModel):
 
 
 @builder
+class PyConfigUseEdge(BaseModel):
+    """One resolved config read (#162): a detector-matched call's key
+    argument closed on exactly one string literal that matches a declared
+    ``PyConfigKey``. ``src`` is the call's GLOBAL ordinal id
+    (``<callable-id>@<local-id>``); ``dst`` is the matched ``PyConfigKey.id``
+    -- application scope, mirroring ``param_in`` (endpoints span callables/
+    artifacts). Superset-monotonic across levels, same additive contract as
+    the DDG's ``prov`` widening: literal (``-a 2``+) subset of +dataflow
+    (``-a 3``/``-a 4``)."""
+
+    src: str
+    dst: str
+    prov: List[Literal["literal", "dataflow"]] = []
+
+
+@builder
+class PyConfigRead(BaseModel):
+    """A detector-matched call whose key did not close on exactly one string
+    literal -- first-class so a config read nobody can trace is as visible
+    as one that resolves (#162). ``key`` is the decoded literal text only
+    when it IS a literal but matches no declared ``PyConfigKey``
+    (``reason="undefined-key"``); ``None`` for a key that never closed on a
+    literal at all (``reason="non-literal"``). ``prov`` lists every tier
+    that was attempted before giving up."""
+
+    site: str  # GLOBAL ordinal id
+    callee: str  # external id (can://.../@external/<module>/<name>)
+    key: Optional[str] = None
+    reason: Literal["non-literal", "undefined-key"]
+    prov: List[Literal["literal", "dataflow"]] = []
+
+
+@builder
 class PyDependency(BaseModel):
     """One declared third-party dependency, evidence-tagged via ``prov``."""
 
@@ -579,6 +623,10 @@ class PyApplication(BaseModel):
     # Interprocedural parameter-passing edges (formal↔actual); populated at L4.
     param_in: List[ParamEdge] = []
     param_out: List[ParamEdge] = []
+    # config_use (#162): PY_USES_CONFIG edges + first-class unresolved reads.
+    # Literal tier from L2; dataflow tiers widen the set at L3/L4 (additive).
+    config_uses: List[PyConfigUseEdge] = []
+    config_reads_unresolved: List[PyConfigRead] = []
 
 
 @builder

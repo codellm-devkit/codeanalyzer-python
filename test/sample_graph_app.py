@@ -7,7 +7,11 @@ graph with a resolved edge and a ghost edge, each callable's CPG
 interprocedural ``param_in``/``param_out``/``summary`` param-passing overlay plus
 the points-to ``ddg`` delta. Also carries the artifact/dependency subgraph
 (Task 6): a manifest + lock artifact and a locked, import-providing dependency,
-plus the manifest's own flattened config keys (#152).
+plus the manifest's own flattened config keys (#152), and a hand-built
+``config_uses``/``config_reads_unresolved`` pair (#162 Task 4) addressing a
+real ``os.getenv`` call site in the sample source -- config_use's own
+detector/resolver pipeline is unit-tested elsewhere (test_config_use_*.py);
+this fixture only needs one authentic GLOBAL ordinal id per edge kind.
 
 The symbol table is built from a real (temporary) source file so
 ``build_function_pdgs`` can recover each callable's AST; ``assign_ids`` +
@@ -23,6 +27,7 @@ that ``assign_ids`` produced.
 """
 from __future__ import annotations
 
+import json
 import tempfile
 from pathlib import Path
 from typing import Dict, Tuple
@@ -44,7 +49,7 @@ from codeanalyzer.schema.ids import artifact_id
 from codeanalyzer.schema.l1_body import populate_l1_body
 from codeanalyzer.schema.l2_callees import backfill_callees
 from codeanalyzer.schema.py_schema import (
-    PyArtifact, PyCallEdge, PyDependency, PyImportBinding,
+    PyArtifact, PyCallEdge, PyConfigRead, PyConfigUseEdge, PyDependency, PyImportBinding,
 )
 from codeanalyzer.semantic_analysis.call_graph import (
     iter_callables_in_symbol_table,
@@ -95,6 +100,12 @@ def helper(flag):
 def build(x):
     y = x
     return y
+
+
+def read_config():
+    host = os.getenv("DB_HOST")
+    missing = os.getenv("MISSING")
+    return host, missing
 '''
 
 
@@ -200,6 +211,40 @@ def make_sample_app() -> Tuple[PyApplication, Dict[str, str]]:
     # their resolved `callee`. Without it PY_RESOLVES_TO never fires, since #120
     # sources that edge from the body node rather than from `call_sites[]`.
     backfill_callees(app, sig_to_id)
+
+    # config_use (#162 Task 4): PY_USES_CONFIG / PY_READS_CONFIG_UNRESOLVED
+    # exercise, guarded by
+    # test_all_catalog_node_kinds_and_relationships_are_exercised. Hand-built
+    # like call_graph/artifacts above -- addresses `read_config`'s two real
+    # `os.getenv` call sites (so the projector has authentic GLOBAL ordinal
+    # ids) against the manifest's own flattened config key from Task 6 above.
+    getenv_ext_id = "can://python/sample-app/@external/os/getenv"
+    app.external_symbols[getenv_ext_id] = PyExternalSymbol(
+        id=getenv_ext_id, name="getenv", module="os"
+    )
+    sig_to_id["os.getenv"] = getenv_ext_id
+    read_config_fn = app.symbol_table["service.py"].functions["read_config"]
+    db_host_key = next(
+        k for k, v in read_config_fn.body.items()
+        if v.kind == "call" and v.arguments and v.arguments[0].value == json.dumps("DB_HOST")
+    )
+    missing_key = next(
+        k for k, v in read_config_fn.body.items()
+        if v.kind == "call" and v.arguments and v.arguments[0].value == json.dumps("MISSING")
+    )
+    pyproject_key = app.artifacts["pyproject.toml"].config_keys[0]
+    app.config_uses = [
+        PyConfigUseEdge(
+            src=f"{read_config_fn.id}@{db_host_key}", dst=pyproject_key.id, prov=["literal"],
+        ),
+    ]
+    app.config_reads_unresolved = [
+        PyConfigRead(
+            site=f"{read_config_fn.id}@{missing_key}", callee=getenv_ext_id,
+            key="MISSING", reason="undefined-key", prov=["literal"],
+        ),
+    ]
+
     syntactic_infos, _func_asts = build_function_pdgs(
         app, k=3, oracle_factory=lambda c, fast: SyntacticOracle()
     )

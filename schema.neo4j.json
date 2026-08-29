@@ -465,6 +465,33 @@
       "properties": {
         "prov": "string[]"
       }
+    },
+    {
+      "type": "PY_USES_CONFIG",
+      "from": [
+        "PyBodyNode"
+      ],
+      "to": [
+        "ConfigKey"
+      ],
+      "properties": {
+        "prov": "string[]"
+      }
+    },
+    {
+      "type": "PY_READS_CONFIG_UNRESOLVED",
+      "from": [
+        "PyApplication"
+      ],
+      "to": [
+        "PyExternal"
+      ],
+      "properties": {
+        "key": "string",
+        "reason": "string",
+        "prov": "string[]",
+        "_k": "string"
+      }
     }
   ],
   "constraints": [

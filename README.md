@@ -493,8 +493,10 @@ Notable properties:
   (`can://python/<app>/<file>/<callable-sig>`); nodes below a callable use ordinal ids
   (`@entry`, `@exit`, `line:col`, `@formal_in:N`, `line:col/actual_in:N`).
 - **`source` lives once per module**; every node's text is the `module.source[span.bytes]` slice.
-- **Cross-function edges** — `call_graph`, `param_in`, `param_out` — live at **application** scope;
+- **Cross-function edges** — `call_graph`, `param_in`, `param_out`, `config_uses` — live at **application** scope;
   the intraprocedural `cfg`/`cdg`/`ddg` and the `summary` edges live **on the callable**.
+  `config_uses` resolve from call-site key arguments to `ConfigKey` nodes; unresolved reads
+  go to `config_reads_unresolved`.
 - **No dangling endpoints** — every `call_graph` `src`/`dst` joins the id space: declared
   callables by their tree id, imported/builtin targets by a `…/@external/<module>/<name>` id
   homed in `application.external_symbols`.

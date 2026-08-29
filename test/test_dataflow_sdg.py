@@ -13,7 +13,7 @@ import pytest
 
 from pathlib import Path
 
-from codeanalyzer.dataflow.builder import build_program_graphs
+from codeanalyzer.dataflow.builder import _callable_index, build_program_graphs
 from codeanalyzer.dataflow.sdg import CAPTURE_PREFIX, GLOBAL_PREFIX
 from codeanalyzer.options import AnalysisOptions
 from codeanalyzer.core import Codeanalyzer
@@ -23,9 +23,14 @@ FIXTURE = Path(__file__).parent / "fixtures" / "single_functionalities" / "dataf
 
 @pytest.fixture(scope="module")
 def fixture_app(tmp_path_factory):
+    """-a 2, not -a 1: build_program_graphs's callsite phase prefers each
+    site's L2-backfilled BodyNode.callee over Jedi's own callee_signature
+    side channel (builder.py), so it needs backfill_callees to have actually
+    run. -a 1-only SDG construction was never a real product path anyway --
+    core.py calls build_program_graphs at >=4 only, always past the L2 gate."""
     cache = tmp_path_factory.mktemp("dataflow-cache")
     options = AnalysisOptions(
-        input=FIXTURE, analysis_level=1, no_venv=True, cache_dir=cache
+        input=FIXTURE, analysis_level=2, no_venv=True, cache_dir=cache
     )
     with Codeanalyzer(options) as analyzer:
         return analyzer.analyze().application
@@ -185,3 +190,44 @@ def test_assembly_is_deterministic(fixture_app):
         assert [
             (p.id, p.kind, p.var) for p in a.functions[sig].param_nodes
         ] == [(p.id, p.kind, p.var) for p in b.functions[sig].param_nodes]
+
+
+# ------------------------------------------------------- Jedi side-channel gap
+
+
+def test_sdg_survives_when_jedi_side_channel_is_dark(fixture_app):
+    """Regression: build_program_graphs's callsite phase must not depend on
+    Jedi's callee_signature staying populated. Under cross-test parso/Jedi
+    cache pressure that side channel can silently degrade -- observed as the
+    SUMMARY/PARAM_OUT stitching below disappearing only in a full-suite run,
+    never standalone. builder.py now prefers each site's L2-backfilled
+    BodyNode.callee (Jedi filtered the same way, PLUS the defuse linker's
+    fallback -- l2_callees.py) and only falls through to callee_signature
+    when the body has no answer.
+
+    Deep-copies fixture_app (never mutates the shared module-scoped fixture,
+    which every other test in this file also reads) and strips every call
+    site's callee_signature to simulate the side channel going fully dark --
+    the deterministic body-callee path must carry the graph alone.
+    """
+    app = fixture_app.model_copy(deep=True)
+    for c in _callable_index(app).values():
+        for cs in c.call_sites or []:
+            cs.callee_signature = None
+
+    ir = build_program_graphs(app)
+
+    drive = _sig(ir, "drive")
+    summaries = [
+        e for e in ir.sdg_edges
+        if e.type == "SUMMARY" and e.source_sig == drive and e.target_sig == drive
+    ]
+    assert summaries, "no SUMMARY edge at drive's chain_a callsite with callee_signature dark"
+
+    bump = _sig(ir, "bump")
+    out_edges = [
+        e for e in ir.sdg_edges
+        if e.type == "PARAM_OUT" and e.source_sig == bump and e.target_sig == drive
+        and (e.var or "").startswith(GLOBAL_PREFIX)
+    ]
+    assert out_edges, "bump's global write does not reach drive with callee_signature dark"

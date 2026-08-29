@@ -353,6 +353,10 @@ def build_program_graphs(
     """
     class_idx = _class_index(app)
     callable_idx = _callable_index(app)
+    # Reverse of callable_idx: a callsite's already-L2-backfilled BodyNode.callee
+    # (a can:// id, folding in the defuse linker's resolution -- not just Jedi's
+    # own callee_signature side channel) resolved back to a dotted signature.
+    id_to_sig = {c.id: sig for sig, c in callable_idx.items()}
 
     infos, func_asts = build_function_pdgs(app, k, oracle_factory=oracle_factory)
 
@@ -373,7 +377,17 @@ def build_program_graphs(
                 calls_by_line.setdefault(call.lineno, (node.id, call))
 
         for site in pycallable.call_sites or []:
-            target = site.callee_signature
+            # Prefer the callsite's body-backfilled callee over Jedi's own
+            # callee_signature side channel: under cross-test parso/Jedi cache
+            # pressure that inference can silently degrade (full-suite-only
+            # loss of SDG summary/global stitching -- test_dataflow_sdg.py),
+            # while BodyNode.callee is the deterministic L2 path (Jedi filtered
+            # the same way, PLUS the defuse linker's fallback -- l2_callees.py).
+            # Only a resolved INTERNAL target counts (id_to_sig misses on an
+            # external/unresolved callee); falls through to callee_signature
+            # exactly as before whenever the body doesn't have an answer.
+            body_node = pycallable.body.get(f"{site.start_line}:{site.start_column}")
+            target = (id_to_sig.get(body_node.callee) if body_node else None) or site.callee_signature
             if not target:
                 continue
             if target in class_idx and target not in infos:

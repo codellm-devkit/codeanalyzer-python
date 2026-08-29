@@ -219,3 +219,93 @@ def test_config_keys_extraction_full(tmp_path):
     assert app.artifacts[".env"].extraction == "full"
     assert app.artifacts["config/settings.yml"].extraction == "full"
     assert app.artifacts["app.properties"].extraction == "full"
+
+
+def _id_suffix(id_: str) -> str:
+    """The trailing `<callable-sig>@<local-id>` (or `@key/<name>`) segment of
+    a `can://` id -- past the app-name-qualified prefix every assertion
+    below would otherwise have to repeat verbatim."""
+    return id_.rsplit("/", 1)[-1]
+
+
+def test_config_uses_full(tmp_path):
+    """Verify config-use edges at -a 4: all five fixture shapes (#162 Task 5).
+
+    Exact-set assertions (the plan's "exact", not a `>=` lower bound): every
+    `config_uses` edge as `(src-suffix, dst-key, prov)` and every
+    `config_reads_unresolved` record as `(site-suffix, reason, key)`, pinned
+    to ground truth read directly off this fixture (empirically re-verified
+    against the dataflow-tier fixes landed alongside this test -- none of
+    those fixes' shapes (aliasing, conditional shadowing, module-scope
+    callers) occur in this fixture, so the counts are unchanged from the
+    pre-fix reviewer probe: 3 resolved, 2 unresolved at -a 4).
+    """
+    app = Codeanalyzer(AnalysisOptions(
+        input=FIXTURE, analysis_level=4, no_venv=True, cache_dir=tmp_path / "config_uses",
+    )).analyze().application
+
+    # 1. Direct literal: get_database_url() -> os.getenv("DATABASE_URL")
+    # 2. Variable-closing: get_api_key() -> os.getenv(key_name="API_KEY")
+    # 3. Param-passed: get_secret_token() -> _read_config("SECRET_API_TOKEN")
+    #    (site is the read INSIDE _read_config, not get_secret_token's call)
+    # 4. Multi-def unresolved: get_config_multi_def() -> unresolved (two defs)
+    # 5. Undefined-key: get_missing_config() -> unresolved (key not in .env)
+    uses = {(_id_suffix(e.src), _id_suffix(e.dst), tuple(e.prov)) for e in app.config_uses}
+    assert uses == {
+        ("get_database_url()@7:11", "DATABASE_URL", ("literal",)),
+        ("get_api_key()@14:11", "API_KEY", ("dataflow",)),
+        ("_read_config(name)@20:11", "SECRET_API_TOKEN", ("dataflow",)),
+    }
+
+    unresolved = {(_id_suffix(r.site), r.reason, r.key) for r in app.config_reads_unresolved}
+    assert unresolved == {
+        ("get_config_multi_def(use_debug)@34:11", "non-literal", None),
+        ("get_missing_config()@40:11", "undefined-key", "NOT_DEFINED_ANYWHERE"),
+    }
+
+
+def test_config_uses_tier_visibility(tmp_path):
+    """Verify config-use edges only appear at their appropriate tier (#162):
+    monotonic growth AND that each tier's own shape is genuinely gated, not
+    just implied by an accidental subset relationship (a subset check alone
+    would pass even if every edge resolved at -a 2 and later tiers added
+    nothing) -- the variable-closing key must be invisible before -a 3, and
+    the param-passed key invisible before -a 4."""
+    def keys_at(level):
+        app = Codeanalyzer(AnalysisOptions(
+            input=FIXTURE, analysis_level=level, no_venv=True,
+            cache_dir=tmp_path / f"tier_l{level}",
+        )).analyze().application
+        return {_id_suffix(e.dst) for e in app.config_uses}
+
+    uses_l2, uses_l3, uses_l4 = keys_at(2), keys_at(3), keys_at(4)
+
+    # Monotonicity: L2 ⊆ L3 ⊆ L4
+    assert uses_l2 <= uses_l3, \
+        f"L2 edges should be subset of L3: {uses_l2 - uses_l3} in L2 but not L3"
+    assert uses_l3 <= uses_l4, \
+        f"L3 edges should be subset of L4: {uses_l3 - uses_l4} in L3 but not L4"
+
+    # Variable-closing (API_KEY): absent before the intra tier exists.
+    assert "API_KEY" not in uses_l2
+    assert "API_KEY" in uses_l3
+
+    # Param-passed (SECRET_API_TOKEN): absent before the interproc tier exists.
+    assert "SECRET_API_TOKEN" not in uses_l3
+    assert "SECRET_API_TOKEN" in uses_l4
+
+
+def test_config_uses_determinism(tmp_path):
+    """Verify config-use edges are deterministic across two identical runs.
+
+    Raw `model_dump_json` comparison, no manual re-sort: `resolve_uses`
+    already sorts both `config_uses` and `config_reads_unresolved` before
+    returning them, so the emitted lists are byte-identical across runs
+    without reconstructing/sorting fields here (L1)."""
+    app1 = Codeanalyzer(AnalysisOptions(
+        input=FIXTURE, analysis_level=4, no_venv=True, cache_dir=tmp_path / "det1",
+    )).analyze().application
+    app2 = Codeanalyzer(AnalysisOptions(
+        input=FIXTURE, analysis_level=4, no_venv=True, cache_dir=tmp_path / "det2",
+    )).analyze().application
+    assert model_dump_json(app1) == model_dump_json(app2)

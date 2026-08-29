@@ -704,6 +704,18 @@ class Codeanalyzer:
             elif art.extraction == "none":
                 art.extraction = "full"
 
+        # config_use (#162) detection: needs callees resolved (backfill_
+        # callees above, gated the same >= 2) and config_keys just extracted
+        # above, so this runs after both rather than immediately following
+        # the callee backfill call itself. Resolution is deferred past the
+        # L3/L4 blocks below (the dataflow tiers need DDG and call_graph/
+        # caller-argument substrate those blocks populate) and gated by
+        # level there, literal tier included.
+        if self.analysis_level >= 2:
+            from codeanalyzer.artifacts import detect_config_reads
+
+            config_reads = detect_config_reads(app)
+
         # L3: intraprocedural dataflow (CFG/CDG/DDG) emitted onto the v2 tree.
         if self.analysis_level >= 3:
             from codeanalyzer.dataflow.builder import (
@@ -743,6 +755,29 @@ class Codeanalyzer:
             # oracle adds beyond the L3 syntactic set, tagged prov=["points-to"].
             # ``infos`` are the syntactic (L3) PDGs from the >=3 block above.
             emit_ddg_pointsto_delta(app, infos, ir, sig_to_id)
+
+        # config_use (#162) resolution: literal tier always runs at >= 2;
+        # the dataflow tiers widen the set as substrate comes online -- intra
+        # needs the DDG the L3 block above just emitted, interproc needs
+        # call_graph + caller PyCallArgument values (already present since
+        # L2) plus, for its one-hop caller-side closure, the caller's own
+        # DDG -- populated for every callable by the same L3 block, which
+        # always runs before this when analysis_level >= 4. A read resolved
+        # at a lower tier is never recomputed, so `-a 2 ⊆ -a 3 ⊆ -a 4` holds
+        # by construction.
+        if self.analysis_level >= 2:
+            from codeanalyzer.artifacts import (
+                dataflow_intra_tier, dataflow_interproc_tier, resolve_uses,
+            )
+
+            tier_fns = []
+            if self.analysis_level >= 3:
+                tier_fns.append(dataflow_intra_tier)
+            if self.analysis_level >= 4:
+                tier_fns.append(dataflow_interproc_tier)
+            app.config_uses, app.config_reads_unresolved = resolve_uses(
+                config_reads, app, tier_fns=tier_fns
+            )
 
         # Build the v2 envelope, then persist it (the cache stores the full
         # ``Analysis`` envelope so a reused cache round-trips schema_version).

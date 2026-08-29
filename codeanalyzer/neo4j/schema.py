@@ -291,6 +291,22 @@ REL_TYPES: List[RelType] = [
     RelType("LOCKS", ["Artifact"], ["Package"], {"version": "string"}),
     RelType("PY_PROVIDES", ["Package"], ["PyExternal"]),
     RelType("PY_UNRESOLVED_IMPORT", ["PyApplication"], ["PyExternal"], {"prov": "string[]"}),
+    # config_use (#162): the resolved-read bridge from a call site's body node
+    # to the PyConfigKey it reads. `src`/`dst` are already GLOBAL ordinal /
+    # ConfigKey ids (resolved upstream by `resolve_uses`), so no discriminant
+    # is needed -- one call site reads one key per edge.
+    RelType("PY_USES_CONFIG", ["PyBodyNode"], ["ConfigKey"], {"prov": "string[]"}),
+    # A detector-matched read that never closed on exactly one declared key --
+    # first-class per #162, PyApplication -> PyExternal ghost of the callee
+    # (mirrors PY_UNRESOLVED_IMPORT's shape). `_k` discriminates by (key,
+    # reason): the same external callee (e.g. `os.getenv`) legitimately reads
+    # several distinct undeclared/dynamic keys across a codebase -- without a
+    # discriminant a plain endpoint-pair MERGE would collapse those onto one
+    # relationship and silently drop every key but the last one SET.
+    RelType(
+        "PY_READS_CONFIG_UNRESOLVED", ["PyApplication"], ["PyExternal"],
+        {"key": "string", "reason": "string", "prov": "string[]", "_k": "string"},
+    ),
 ]
 
 
