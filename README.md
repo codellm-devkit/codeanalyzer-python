@@ -609,7 +609,7 @@ WHERE f.id STARTS WITH "can://python/myapp/src/api.py"
 RETURN a.id, f.id
 ```
 
-Landing with #157 (schema v2 artifacts + dependencies, 1.3.0) — not in the current release:
+Artifact and dependency queries (1.3.0+):
 
 ```cypher
 // all container/orchestration configs in the app
