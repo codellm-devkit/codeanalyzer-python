@@ -6,7 +6,8 @@ graph with a resolved edge and a ghost edge, each callable's CPG
 ``body``/``cfg``/``cdg``/``ddg`` (level 3), and — new at level 4 — the
 interprocedural ``param_in``/``param_out``/``summary`` param-passing overlay plus
 the points-to ``ddg`` delta. Also carries the artifact/dependency subgraph
-(Task 6): a manifest + lock artifact and a locked, import-providing dependency.
+(Task 6): a manifest + lock artifact and a locked, import-providing dependency,
+plus the manifest's own flattened config keys (#152).
 
 The symbol table is built from a real (temporary) source file so
 ``build_function_pdgs`` can recover each callable's AST; ``assign_ids`` +
@@ -34,6 +35,7 @@ from codeanalyzer.dataflow.builder import (
     emit_l3_body,
     emit_l4,
 )
+from codeanalyzer.artifacts.config_keys import extract_config_keys
 from codeanalyzer.dataflow.scalpel_oracle import make_alias_oracle
 from codeanalyzer.dataflow.syntactic import SyntacticOracle
 from codeanalyzer.schema import PyApplication, PyExternalSymbol
@@ -168,6 +170,13 @@ def make_sample_app() -> Tuple[PyApplication, Dict[str, str]]:
             source="", extraction="full",
         ),
     }
+    # Config keys flattened out of the manifest (#152) -- the real extractor,
+    # run over the artifact's own source above, so the id/span shape is
+    # authentic rather than hand-computed. Exercises the ConfigKey label and
+    # DEFINES_CONFIG relationship (guarded by
+    # test_all_catalog_node_kinds_and_relationships_are_exercised).
+    pyproject = app.artifacts["pyproject.toml"]
+    pyproject.config_keys, _ = extract_config_keys(pyproject, pyproject.source, True)
     app.dependencies = [
         PyDependency(
             name="acme", spec=">=1.0", kind="runtime", extras=[],

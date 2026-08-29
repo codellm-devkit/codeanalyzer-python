@@ -479,7 +479,8 @@ The application envelope also contains three substrate sections:
 - **`artifacts`** — discovered non-code files (manifests, configs, Docker files, CI workflows,
   packaging files, scripts, docs, and legal files) with extraction status (`none`, `partial`, or
   `full`; default `none`), keyed by relative path; each artifact carries the
-  `can://artifact/<app>/<path>` id namespace.
+  `can://artifact/<app>/<path>` id namespace. Config files carry extracted `config_keys`
+  (keys, values, namespaces, and references) and `DEFINES_CONFIG` Neo4j edges.
 - **`dependencies`** — declared packages with kind (`runtime`/`dev`/`optional`/`build`), spec,
   locked version, and provenance (`prov`): where each binding came from (manifest file, lock file,
   installed metadata).

@@ -33,11 +33,15 @@ RULES: List[Tuple[str, str, List[str]]] = [
     ("kind/*.yaml", "yaml", ["service-topology"]),
     ("Chart.yaml", "yaml", ["service-topology"]),
     ("values.yaml", "yaml", ["service-topology"]),
+    ("config/*.yml", "yaml", ["tool-config"]),
+    ("config/*.yaml", "yaml", ["tool-config"]),
+    ("*.tf", "text", ["iac"]),
     (".github/workflows/*.yml", "yaml", ["ci"]),
     (".github/workflows/*.yaml", "yaml", ["ci"]),
     (".gitlab-ci.yml", "yaml", ["ci"]),
     (".env", "text", ["env"]),
     (".env.*", "text", ["env"]),
+    (".flaskenv", "text", ["env"]),
     ("tox.ini", "ini", ["tool-config"]),
     ("noxfile.py", "text", ["tool-config"]),
     ("Makefile", "text", ["tool-config"]),
@@ -49,6 +53,11 @@ RULES: List[Tuple[str, str, List[str]]] = [
     ("*.rst", "text", ["docs"]),
     ("*.cfg", "ini", ["unknown"]),
     ("*.toml", "toml", ["unknown"]),
+    ("*.properties", "properties", ["tool-config"]),
+    # Generic fallback AFTER the specific tox.ini rule above, so a non-tox
+    # *.ini file (mypy.ini, pytest.ini, ...) still reaches format="ini" --
+    # config-key extraction (#152) is namespace-eligible by format.
+    ("*.ini", "ini", ["tool-config"]),
 ]
 
 _IGNORED_DIRS = {

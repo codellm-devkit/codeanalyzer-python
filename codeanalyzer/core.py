@@ -37,6 +37,21 @@ from codeanalyzer.utils import ProgressBar
 from codeanalyzer.options import AnalysisOptions
 from codeanalyzer.provenance import analyzer_info, repository_info
 
+def _artifact_full_text(project_dir: Path, path: str, art) -> str:
+    """Mirrors ``artifacts.dependencies._full_text`` verbatim (not imported
+    -- that name is module-private to ``dependencies.py``): config-key
+    extraction (#152) must never depend on the stored ``source`` -- capped
+    by ``text_max_bytes`` and emptied by ``capture_text=False`` (payload-size
+    controls, not extraction controls). Read the real file fresh instead;
+    fall back to ``art.source`` only if it's gone (e.g. a synthetic artifact
+    in a unit test, or the file vanished mid-run). Keep the two in sync if
+    this logic changes."""
+    try:
+        return (project_dir / path).read_bytes().decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return art.source
+
+
 def _ensure_ray() -> None:
     """Initialize Ray with the driver's pinned hash seed in the workers.
 
@@ -650,7 +665,10 @@ class Codeanalyzer:
 
         # Artifacts + dependencies: L1 data, every level, never varies with -a
         # (spec 2026-08-27). Deterministic by default; venv probing is opt-in.
-        from codeanalyzer.artifacts import build_dependency_view, discover_artifacts
+        from codeanalyzer.artifacts import (
+            build_dependency_view, discover_artifacts, extract_config_keys,
+            is_config_eligible,
+        )
 
         app.artifacts = discover_artifacts(
             self.project_dir, app_name,
@@ -664,6 +682,27 @@ class Codeanalyzer:
             self.virtualenv if self.options.resolve_installed else None,
             self.options.resolve_installed,
         )
+
+        # Config keys (#152): L1 data, layered onto the same artifacts, every
+        # level. Namespace-eligible artifacts only (env-family by basename,
+        # else by format). `extraction` combines with any prior
+        # dependency-manifest pass on the same artifact: a parse failure here
+        # always downgrades to "partial" (never drops the artifact); a clean
+        # parse upgrades an untouched "none" to "full", but never overwrites
+        # an existing "partial" (e.g. from a failed dependency-manifest parse
+        # on the same artifact) -- a successful pass here must not silently
+        # erase an unrelated failure already recorded on the artifact.
+        for path in sorted(app.artifacts):
+            art = app.artifacts[path]
+            if not is_config_eligible(art):
+                continue
+            full_text = _artifact_full_text(self.project_dir, path, art)
+            keys, ok = extract_config_keys(art, full_text, self.options.artifact_text)
+            art.config_keys = keys
+            if not ok:
+                art.extraction = "partial"
+            elif art.extraction == "none":
+                art.extraction = "full"
 
         # L3: intraprocedural dataflow (CFG/CDG/DDG) emitted onto the v2 tree.
         if self.analysis_level >= 3:

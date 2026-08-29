@@ -198,3 +198,4 @@ node_modules/
 
 # Track fixture lock files past the repo-root uv.lock ignore
 !test/fixtures/**/uv.lock
+!test/fixtures/**/.env

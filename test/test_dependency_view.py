@@ -226,6 +226,23 @@ def test_large_lock_parses_all_pins_even_with_capture_text_false(tmp_path):
     assert arts["uv.lock"].extraction == "full"
 
 
+def test_ecosystem_pypi_on_every_record(tmp_path):
+    """#152 rider: PyDependency.ecosystem is set explicitly (SDK symmetry with
+    purl) on every record -- both the declared-manifest branch (_emit) and
+    the lock-only transitive branch."""
+    (tmp_path / "pyproject.toml").write_text('[project]\ndependencies = ["requests>=2.31"]\n')
+    (tmp_path / "uv.lock").write_text(
+        '[[package]]\nname = "requests"\nversion = "2.32.3"\n'
+        '[[package]]\nname = "urllib3"\nversion = "2.2.1"\n'
+    )
+    arts = discover_artifacts(tmp_path, "app")
+    deps, _ = build_dependency_view(arts, {}, tmp_path, None, False)
+    by = {d.name: d for d in deps}
+    assert set(by) == {"requests", "urllib3"}  # sanity: both branches present
+    assert by["urllib3"].direct is False  # the lock-only transitive branch
+    assert all(d.ecosystem == "pypi" for d in deps)
+
+
 def test_corrupted_lock_extraction_is_partial_not_full(tmp_path):
     """A lock with real (non-empty) content that parse_lock_pins can't make
     sense of must not claim extraction="full" for zero pins extracted."""

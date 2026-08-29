@@ -32,6 +32,13 @@ def artifact_id(app_name: str, rel_path: str) -> str:
     return f"can://artifact/{app_name}/{rel_path}"
 
 
+def config_key_id(artifact_id: str, dotted_key: str) -> str:
+    """A ``PyConfigKey`` extracted from an artifact: ``<artifact-id>@key/<dotted.key>``.
+    ``dotted_key`` uses numeric segments for array indices (e.g.
+    ``services.web.ports.0``); ids are opaque, do not re-split them."""
+    return f"{artifact_id}@key/{dotted_key}"
+
+
 def purl_pypi(name: str) -> str:
     """Package URL for a (PEP 503 normalized) PyPI distribution name."""
     return f"pkg:pypi/{name}"

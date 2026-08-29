@@ -85,7 +85,11 @@ def _full_text(project_dir: Path, path: str, art: PyArtifact) -> str:
     (both payload-size controls on the JSON/Neo4j payload, not extraction
     controls). Read the real file fresh instead; fall back to ``art.source``
     only if it is gone (e.g. a synthetic artifact in a unit test, or the file
-    vanished mid-run)."""
+    vanished mid-run).
+
+    Mirrored (not imported -- this name is module-private) by
+    ``core._artifact_full_text`` for the same reason on config-key
+    extraction (#152); keep the two in sync if this logic changes."""
     try:
         return (project_dir / path).read_bytes().decode("utf-8")
     except (OSError, UnicodeDecodeError):
@@ -104,7 +108,7 @@ def build_dependency_view(
     def _emit(raw: List[RawDep], declared_in: str, kind_override: Optional[str] = None) -> None:
         for r in raw:
             deps.append(PyDependency(
-                name=r.name, spec=r.spec,
+                name=r.name, ecosystem="pypi", spec=r.spec,
                 kind=kind_override if kind_override is not None else r.kind,
                 extras=sorted(r.extras), declared_in=declared_in, prov=["declared"],
             ))
@@ -177,7 +181,7 @@ def build_dependency_view(
     declared_names = {d.name for d in deps}
     for name in sorted(set(pins) - declared_names):
         deps.append(PyDependency(
-            name=name, kind="runtime", declared_in=pin_lock_artifact[name],
+            name=name, ecosystem="pypi", kind="runtime", declared_in=pin_lock_artifact[name],
             direct=False, locked_version=pins[name], prov=["lockfile"],
         ))
 
