@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.3.0] - 2026-08-29
 
 ### Added
 
@@ -43,6 +43,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   variables; Dockerfile `ARG` mints its own `dockerfile` namespace
   (build-time only, not env-detector-bindable). Compose/k8s recognition
   dual-mints alongside the plain `yaml` dotted-path keys, by design (#165).
+- The release workflow also ships the `analyzing-canpy-graphs` skill as
+  versioned assets: `analyzing-canpy-graphs-skill.tar.gz` (SKILL.md plus the
+  vocabulary and analyses references, Cypher-only) and the standalone
+  `SKILL.md`, staged next to `schema.json`/`schema.cypher`.
+- Call arguments carry literal evidence: `PyCallArgument.value` (JSON-encoded
+  constants) and `PyCallArgument.name` (bare identifiers) at every level.
+
+### Fixed
+
+- The SDG builder resolves callsites from L2-backfilled body callees (the
+  deterministic linker-backed path) instead of Jedi's cache-sensitive
+  `callee_signature` side channel, and the shared dataflow test fixtures
+  build at level 2 -- removing a full-suite-only order dependence.
 
 ## [1.2.0] - 2026-08-26
 
