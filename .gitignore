@@ -195,3 +195,6 @@ node_modules/
 !.claude/
 .claude/*
 !.claude/SCHEMA_DECISIONS.md
+
+# Track fixture lock files past the repo-root uv.lock ignore
+!test/fixtures/**/uv.lock

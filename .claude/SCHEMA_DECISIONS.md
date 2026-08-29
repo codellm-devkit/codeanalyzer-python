@@ -285,6 +285,51 @@ made output load-dependent (#145).
   `callee: null→id` remains the single sanctioned L1→L2 refinement.
 - Neo4j projection unchanged (`PY_CALLS` carries `prov` as data).
 
+## 2026-08-27 — Neutral `Artifact`/`Package` subgraph (issue #157, Task 6)
+
+Design: `.superpowers/sdd/2026-08-27-artifacts-and-dependencies/task-6-brief.md`
+(gitignored working brief — not committed; this entry is the durable record).
+
+Projects `PyApplication.artifacts`/`dependencies`/`unresolved_imports` (Tasks
+1-5) into the graph: new labels `Artifact`, `Package` (merge key `id`); new
+rels `HAS_ARTIFACT` (PyApplication→Artifact), `DECLARES_DEPENDENCY`
+(Artifact→Package, props `spec`/`kind`/`extras`/`prov`), `LOCKS`
+(Artifact→Package, prop `version`), `PY_PROVIDES` (Package→PyExternal),
+`PY_UNRESOLVED_IMPORT` (PyApplication→PyExternal, prop `prov`).
+
+- **`Artifact`/`Package` deliberately break the `Py`-prefix convention** the
+  Level-3 CPG section above establishes (`PySymbol`, `PyBodyNode`, `PY_CALLS`,
+  …). Opposite rationale, same namespacing question: a manifest file or a
+  PyPI package is not a Python-language concept — a TypeScript analyzer
+  reading `package.json` in the same repo should MERGE onto the same
+  `Artifact`/`Package` nodes, not create `TSArtifact`/`TSPackage` twins. The
+  edges that stay this analyzer's own claim (`PY_PROVIDES` — "this analyzer
+  resolved this import to this package", `PY_UNRESOLVED_IMPORT`) keep the
+  `PY_` prefix; the nodes they connect to do not.
+- **`PY_PROVIDES`/`PY_UNRESOLVED_IMPORT` target ids are minted here, not
+  looked up.** `app.external_symbols` only homes call-graph endpoints
+  (`Codeanalyzer._home_external_symbols` walks `app.call_graph` alone), so a
+  module that is imported but never called — the common case for
+  `PyDependency.provides_imports`, and the *only* case for an unresolved
+  import — has no existing `:PyExternal` ghost to MERGE onto. The projection
+  builds one with the same id shape `_call_endpoint`/`_home_external_symbols`
+  already use for a dot-less (no `.`) call-graph signature: `<app can:// id>
+  /@external/<name>`, `module` absent — and the same two-label
+  `["PySymbol", "PyExternal"]` RowBuilder idiom every other ghost in this file
+  uses (schema declares `PyExternal`'s merge label as `PySymbol`). If a call
+  into that same bare name is ever projected too, both rows collapse onto one
+  node under `RowBuilder`'s MERGE-by-`(label, id)` semantics — correctly,
+  since they name the same real-world symbol.
+- **`LOCKS` fans out to every lock artifact present**, not just the one that
+  pinned a given dependency: `PyDependency.locked_version` merges all lock
+  files' pins upstream (`build_dependency_view`) with no per-lock-file
+  attribution left to project. One lock file is the overwhelmingly common
+  case; revisit if a project with two conflicting lock files in one repo
+  turns out to matter in practice.
+- Always projected regardless of `-a` — this section is L1 data, identical at
+  every analysis level (mirrors `analysis.json`), consistent with Neo4j's
+  existing full-depth-always posture for `--emit neo4j`.
+
 ## 2026-08-27 — Artifacts, dependencies, and the `can://artifact/` namespace
 
 Design: `docs/design/specs/2026-08-27-artifacts-and-dependencies-design.md`.
@@ -305,7 +350,7 @@ at every level, like entrypoints.
   `--resolve-installed` flag.
 - **Neo4j**: neutral labels `:Artifact` / `:Package` (no `Py` prefix, shared
   MERGE targets across analyzers); `:Package.id` is a purl (`pkg:pypi/<name>`).
-  `PY_PROVIDES` joins packages to the existing `:PyExternal` ghost ids, wiring
+  `PY_PROVIDES` joins packages to existing-or-minted module-level `:PyExternal` ghosts, wiring
   dependencies into the call graph. New edges: `HAS_ARTIFACT`,
   `DECLARES_DEPENDENCY`, `LOCKS`, `PY_PROVIDES`, `PY_UNRESOLVED_IMPORT`.
 - Capture broad (config files as nodes with `roles`), extract narrow

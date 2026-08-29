@@ -151,6 +151,32 @@
         "end_line": "integer",
         "_module": "string"
       }
+    },
+    {
+      "label": "Artifact",
+      "merge_label": "Artifact",
+      "key": "id",
+      "properties": {
+        "id": "string",
+        "path": "string",
+        "format": "string",
+        "roles": "string[]",
+        "size_bytes": "integer",
+        "sha256": "string",
+        "source": "string",
+        "text_truncated": "boolean",
+        "extraction": "string"
+      }
+    },
+    {
+      "label": "Package",
+      "merge_label": "Package",
+      "key": "id",
+      "properties": {
+        "id": "string",
+        "ecosystem": "string",
+        "name": "string"
+      }
     }
   ],
   "relationship_types": [
@@ -354,6 +380,67 @@
         "PyBodyNode"
       ],
       "properties": {}
+    },
+    {
+      "type": "HAS_ARTIFACT",
+      "from": [
+        "PyApplication"
+      ],
+      "to": [
+        "Artifact"
+      ],
+      "properties": {}
+    },
+    {
+      "type": "DECLARES_DEPENDENCY",
+      "from": [
+        "Artifact"
+      ],
+      "to": [
+        "Package"
+      ],
+      "properties": {
+        "spec": "string",
+        "kind": "string",
+        "extras": "string[]",
+        "prov": "string[]",
+        "direct": "boolean",
+        "_k": "string"
+      }
+    },
+    {
+      "type": "LOCKS",
+      "from": [
+        "Artifact"
+      ],
+      "to": [
+        "Package"
+      ],
+      "properties": {
+        "version": "string"
+      }
+    },
+    {
+      "type": "PY_PROVIDES",
+      "from": [
+        "Package"
+      ],
+      "to": [
+        "PyExternal"
+      ],
+      "properties": {}
+    },
+    {
+      "type": "PY_UNRESOLVED_IMPORT",
+      "from": [
+        "PyApplication"
+      ],
+      "to": [
+        "PyExternal"
+      ],
+      "properties": {
+        "prov": "string[]"
+      }
     }
   ],
   "constraints": [
@@ -364,7 +451,9 @@
     "CREATE CONSTRAINT pydecorator_name IF NOT EXISTS FOR (x:PyDecorator) REQUIRE x.name IS UNIQUE",
     "CREATE CONSTRAINT pyattribute_id IF NOT EXISTS FOR (x:PyAttribute) REQUIRE x.id IS UNIQUE",
     "CREATE CONSTRAINT pyvariable_id IF NOT EXISTS FOR (x:PyVariable) REQUIRE x.id IS UNIQUE",
-    "CREATE CONSTRAINT pybodynode_id IF NOT EXISTS FOR (x:PyBodyNode) REQUIRE x.id IS UNIQUE"
+    "CREATE CONSTRAINT pybodynode_id IF NOT EXISTS FOR (x:PyBodyNode) REQUIRE x.id IS UNIQUE",
+    "CREATE CONSTRAINT artifact_id IF NOT EXISTS FOR (x:Artifact) REQUIRE x.id IS UNIQUE",
+    "CREATE CONSTRAINT package_id IF NOT EXISTS FOR (x:Package) REQUIRE x.id IS UNIQUE"
   ],
   "indexes": [
     "CREATE INDEX py_callable_name IF NOT EXISTS FOR (c:PyCallable) ON (c.name)",

@@ -471,6 +471,52 @@ class PyExternalSymbol(BaseModel):
 
 
 @builder
+class PyArtifact(BaseModel):
+    """Any non-`.py` project file (config, manifest, CI, container spec, or
+    plain data/binary) -- never dropped from the walk. Captured broadly (node
+    + verbatim ``source``); *meaning* is extracted narrowly -- only
+    ``dependency-manifest`` roles feed ``dependencies`` today. ``id`` is
+    language-neutral (``can://artifact/<app>/<path>``)."""
+
+    id: str = ""
+    kind: str = "artifact"
+    path: str  # repo-relative POSIX path (also the map key)
+    format: str  # toml|yaml|json|ini|requirements|dockerfile|text|binary
+    roles: List[str] = []
+    size_bytes: int = 0
+    sha256: str = ""  # always the full file's hash, even when source is truncated/empty
+    source: str = ""  # verbatim by default; "" for binary or when capture is disabled
+    text_truncated: bool = False  # True when `source` is a prefix, not the full file
+    extraction: str = "none"  # none|partial|full
+
+
+@builder
+class PyDependency(BaseModel):
+    """One declared third-party dependency, evidence-tagged via ``prov``."""
+
+    name: str  # PEP 503 normalized
+    spec: str = ""
+    kind: str = "runtime"  # runtime|dev|optional|build
+    extras: List[str] = []
+    declared_in: str = ""  # PyArtifact id
+    # False for lockfile-only (transitive) dependencies -- pinned in a lock
+    # with no manifest declaration (#152 reconciliation).
+    direct: bool = True
+    locked_version: Optional[str] = None
+    provides_imports: List[str] = []
+    prov: List[str] = []  # declared|lockfile|installed-metadata|heuristic
+
+
+@builder
+class PyImportBinding(BaseModel):
+    """A top-level import no declared dependency accounts for."""
+
+    module: str
+    bound_to: Optional[str] = None  # best-effort distribution name
+    prov: List[str] = []
+
+
+@builder
 class PyRepositoryInfo(BaseModel):
     """Where the analyzed source came from: git provenance captured at analysis time."""
 
@@ -502,6 +548,11 @@ class PyApplication(BaseModel):
     # builtin members), keyed by signature. Populated by the analyzer so every
     # backend (JSON and Neo4j) shares one authoritative external-symbol set.
     external_symbols: Dict[str, PyExternalSymbol] = {}
+    # Non-code artifacts, declared dependencies, and undeclared imports
+    # (spec 2026-08-27). L1 data: identical at every analysis level.
+    artifacts: Dict[str, PyArtifact] = {}
+    dependencies: List[PyDependency] = []
+    unresolved_imports: List[PyImportBinding] = []
     # Coverage/failure record for the entrypoint pass; see PyEntrypointReport (#27).
     entrypoint_report: PyEntrypointReport = PyEntrypointReport()
     # Git provenance of the analyzed checkout, captured at analysis time.

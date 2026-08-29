@@ -37,8 +37,13 @@ class AnalysisOptions:
     rebuild_analysis: bool = False
     skip_tests: bool = True
     no_venv: bool = False
+    resolve_installed: bool = False
     file_name: Optional[Path] = None
     cache_dir: Optional[Path] = None
     clear_cache: bool = False
     verbosity: int = 0
     entrypoint_rules: Tuple[Path, ...] = ()
+    # Artifact text-capture controls (#157 follow-up): whether to capture
+    # `source` at all, and the per-file byte cap before it truncates.
+    artifact_text: bool = True
+    artifact_text_max_bytes: int = 262144

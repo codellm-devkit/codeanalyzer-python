@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Schema v2 now captures non-code artifacts (`application.artifacts`), declared
+  dependencies with provenance (`application.dependencies`), and undeclared
+  imports (`application.unresolved_imports`) at every analysis level (#157).
+  Neo4j gains language-neutral `:Artifact`/`:Package` nodes (purl ids) joined
+  to the existing `:PyExternal` ghosts. New flag: `--resolve-installed`.
+  Lockfile-only (transitive) pins are emitted as `direct: false` dependency
+  records attributed to the lock artifact (#152 reconciliation).
+- Artifact discovery never drops a file: every non-`.py` file is now
+  inventoried, matched or not (unmatched decodable files as `text`/`unknown`,
+  anything not UTF-8 decodable as `binary` with empty `source`). New
+  `PyArtifact.text_truncated` field plus `--artifact-text/--no-artifact-text`
+  and `--artifact-text-max-bytes` flags control verbatim `source` capture;
+  `sha256`/`size_bytes` always reflect the full file regardless (#157).
+- The release workflow now also stages `schema.cypher` (the same Neo4j
+  schema contract as runnable, `;`-terminated Cypher DDL -- uniqueness
+  constraints plus indexes) as a GitHub Release asset alongside `schema.json`.
+
 ## [1.2.0] - 2026-08-26
 
 ### Changed
