@@ -2,17 +2,43 @@
 between a call site's key argument and the `PyConfigKey` it reads, plus
 first-class unresolved records for a key that never closes on a literal.
 
-Two passes, wired from core.py's `>= 2` block after callee backfill and the
-config-keys extraction loop (both populate substrate this depends on --
-`BodyNode.callee` and `PyArtifact.config_keys`): `detect_config_reads` scans
-every callable's `body{}` for a `call` node whose `callee` names a
-`PyExternalSymbol` matching a shipped detector rule
-(`config_use_rules.yml`, same load/validate idiom as `entrypoints/rules.py`);
-`resolve_uses` decodes the matched call's key argument, resolves a string
-literal against `PyArtifact.config_keys` per the rule's namespace
-preference, and returns `(edges, unresolved)`. `tier_fns` is the extension
-point later dataflow tiers (#162 Task 3) plug into -- Task 2 only ships the
-literal tier, implemented directly in `resolve_uses`.
+Three tiers, wired from core.py: `detect_config_reads` runs once, after
+callee backfill and the config-keys extraction loop (both populate
+substrate this depends on -- `BodyNode.callee` and `PyArtifact.config_keys`),
+scanning every callable's `body{}` for a `call` node whose `callee` names a
+`PyExternalSymbol` matching a shipped detector rule (`config_use_rules.yml`,
+same load/validate idiom as `entrypoints/rules.py`). `resolve_uses` decodes
+each matched call's key argument, resolves a string literal against
+`PyArtifact.config_keys` per the rule's namespace preference (the literal
+tier, built in directly), then threads whatever is still unresolved through
+`tier_fns` in order -- core.py passes `[dataflow_intra_tier]` at `-a 3` and
+`[dataflow_intra_tier, dataflow_interproc_tier]` at `-a 4` (#162 Task 3),
+so a read resolved at a lower tier is never recomputed and `-a 2 ⊆ -a 3 ⊆
+-a 4` holds by construction.
+
+`dataflow_intra_tier` closes a non-literal key argument (`_Read.key_name`)
+over its own callable's DDG: `_reaching_literal` finds every DDG edge for
+that variable whose destination node's span *contains* the call's span --
+not `== the call's own local id` as a first reading of the plan suggests,
+because the CFG (and hence the DDG) is statement-level (`dataflow/cfg.py`)
+while a call nested in `return`/an assignment gets its own, narrower body-key
+span (`schema/l1_body.py`); containment is what actually finds the reaching
+def for `return os.getenv(KEY)` as well as a bare `os.getenv(KEY)` statement
+(where call and statement spans coincide) -- verified empirically against
+both shapes before landing this. Each reaching def must slice+parse to
+exactly one `Name = <str Constant>` Assign; multiple reaching defs must all
+yield the *same* literal (spec caveat: identical duplicates count as closed).
+`dataflow_interproc_tier` handles a key that names a *parameter* of its
+enclosing callable: every call site targeting that callable (`call_graph`
+join, then a `body` scan for the matching `callee` id -- never `param_in`,
+controller ruling) must supply the same string literal at that parameter's
+position, either directly (`PyCallArgument.value`) or by one non-recursive
+hop of the same intra closure at the *caller*'s own call site (`visited`
+seeded with the callee id guards the direct-self-recursion case). Both
+tiers re-resolve a closed literal against `PyArtifact.config_keys` through
+the same namespace-preference helper the literal tier uses, so a value that
+closes but names no declared key still becomes `reason="undefined-key"`
+rather than `"non-literal"`.
 
 Rule matching is prefix-aware on `module`, not exact-equal: empirically,
 `configparser.ConfigParser().get(...)` resolves (via the defuse linker) to
@@ -34,16 +60,18 @@ rule table entry -- there is no call node it could ever match.
 """
 from __future__ import annotations
 
+import ast
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 import yaml
 
 from codeanalyzer.schema.ids import ordinal_id
 from codeanalyzer.schema.py_schema import (
-    PyApplication, PyCallable, PyClass, PyConfigKey, PyConfigRead, PyConfigUseEdge,
+    BodyNode, PyApplication, PyCallable, PyClass, PyConfigKey, PyConfigRead,
+    PyConfigUseEdge, PyModule,
 )
 
 _SHIPPED = Path(__file__).with_name("config_use_rules.yml")
@@ -71,6 +99,11 @@ class _Read:
     """One detector-matched call, before resolution."""
 
     site: str  # GLOBAL ordinal id: <callable-id>@<local-id>
+    # `callable_id`/`local_id`: the dataflow tiers' join point back to the
+    # enclosing callable's `.ddg`/`.body` (and, for the interproc tier, its
+    # `.parameters` and `call_graph` membership as a callee).
+    callable_id: str  # the enclosing callable's can:// id
+    local_id: str  # the call node's own LOCAL id within `callable_id`'s body
     callee: str  # external id
     rule: Rule
     key_literal: Optional[str]  # decoded str, when the key arg is a str constant
@@ -78,9 +111,10 @@ class _Read:
 
 
 # A tier consumes the reads still unresolved after the ones before it, and
-# returns (new edges, reads still unresolved after this tier). Task 3 defines
-# the real dataflow tiers; Task 2's core.py wiring passes none, so only the
-# literal tier below (built into resolve_uses) ever runs.
+# returns (new edges, reads still unresolved after this tier). core.py wires
+# `[dataflow_intra_tier]` at `-a 3` and `[dataflow_intra_tier,
+# dataflow_interproc_tier]` at `-a 4`; the literal tier (built into
+# resolve_uses) always runs first, regardless of level.
 TierFn = Callable[[List[_Read], PyApplication], Tuple[List[PyConfigUseEdge], List[_Read]]]
 
 
@@ -130,25 +164,43 @@ def _rule_matches(rule: Rule, module: Optional[str], name: str) -> bool:
     return mod == rule.module or mod.startswith(rule.module + ".")
 
 
+def _walk_callable_tree(c: PyCallable):
+    yield c
+    for ic in (c.callables or {}).values():
+        yield from _walk_callable_tree(ic)
+    for cl in (c.types or {}).values():
+        yield from _walk_class_tree(cl)
+
+
+def _walk_class_tree(cl: PyClass):
+    for m in (cl.callables or {}).values():
+        yield from _walk_callable_tree(m)
+    for ic in (cl.types or {}).values():
+        yield from _walk_class_tree(ic)
+
+
+def _walk_module_callables(mod: PyModule):
+    for fn in (mod.functions or {}).values():
+        yield from _walk_callable_tree(fn)
+    for cl in (mod.types or {}).values():
+        yield from _walk_class_tree(cl)
+
+
 def _walk_callables(app: PyApplication):
-    def walk_callable(c: PyCallable):
-        yield c
-        for ic in (c.callables or {}).values():
-            yield from walk_callable(ic)
-        for cl in (c.types or {}).values():
-            yield from walk_class(cl)
-
-    def walk_class(cl: PyClass):
-        for m in (cl.callables or {}).values():
-            yield from walk_callable(m)
-        for ic in (cl.types or {}).values():
-            yield from walk_class(ic)
-
     for mod in app.symbol_table.values():
-        for fn in (mod.functions or {}).values():
-            yield from walk_callable(fn)
-        for cl in (mod.types or {}).values():
-            yield from walk_class(cl)
+        yield from _walk_module_callables(mod)
+
+
+def _index_callables(app: PyApplication) -> Dict[str, Tuple[PyCallable, str]]:
+    """``callable id -> (callable, owning module's source)`` -- the dataflow
+    tiers' join point from a read's/call-graph's callable id back to the
+    `.ddg`/`.body` data (and the module `source` needed to slice a def's
+    span text) that the intra closure reads."""
+    return {
+        c.id: (c, mod.source)
+        for mod in app.symbol_table.values()
+        for c in _walk_module_callables(mod)
+    }
 
 
 def _key_from_args(arguments, key_arg: int) -> Tuple[Optional[str], Optional[str]]:
@@ -190,8 +242,8 @@ def detect_config_reads(app: PyApplication, rules: Optional[Sequence[Rule]] = No
                     continue
                 key_literal, key_name = _key_from_args(node.arguments or [], rule.key_arg)
                 reads.append(_Read(
-                    site=ordinal_id(c.id, local_id), callee=node.callee,
-                    rule=rule, key_literal=key_literal, key_name=key_name,
+                    site=ordinal_id(c.id, local_id), callable_id=c.id, local_id=local_id,
+                    callee=node.callee, rule=rule, key_literal=key_literal, key_name=key_name,
                 ))
                 break  # (module, callable) is unambiguous across the shipped rule set
     reads.sort(key=lambda r: (r.site, r.rule.id))
@@ -206,16 +258,35 @@ def _namespace_matches(literal: str, namespace: str, keys: List[PyConfigKey]) ->
     return sorted(matched, key=lambda k: k.id)
 
 
+def _keys_by_namespace(app: PyApplication) -> Dict[str, List[PyConfigKey]]:
+    keys_by_namespace: Dict[str, List[PyConfigKey]] = {}
+    for art in app.artifacts.values():
+        for key in art.config_keys:
+            keys_by_namespace.setdefault(key.namespace, []).append(key)
+    return keys_by_namespace
+
+
+def _resolve_literal_against_keys(
+    rule: Rule, literal: str, keys_by_namespace: Dict[str, List[PyConfigKey]],
+) -> List[PyConfigKey]:
+    """The matched `PyConfigKey`s for `literal` under `rule`'s namespace
+    preference order -- the first namespace with >=1 match wins, shared by
+    the literal tier and both dataflow tiers so a closed-but-undeclared key
+    is `reason="undefined-key"` regardless of which tier closed it."""
+    for namespace in rule.namespaces:
+        matched = _namespace_matches(literal, namespace, keys_by_namespace.get(namespace, []))
+        if matched:
+            return matched
+    return []
+
+
 def resolve_uses(
     reads: List[_Read], app: PyApplication, tier_fns: Sequence[TierFn] = (),
 ) -> Tuple[List[PyConfigUseEdge], List[PyConfigRead]]:
     """Literal tier (built in here) then any dataflow `tier_fns` (Task 3) over
     what's still unresolved. Reads resolved at a lower tier are never
     recomputed -- additive, so `-a 2 ⊆ -a 3 ⊆ -a 4` holds by construction."""
-    keys_by_namespace: Dict[str, List[PyConfigKey]] = {}
-    for art in app.artifacts.values():
-        for key in art.config_keys:
-            keys_by_namespace.setdefault(key.namespace, []).append(key)
+    keys_by_namespace = _keys_by_namespace(app)
 
     edges: List[PyConfigUseEdge] = []
     unresolved: List[_Read] = []
@@ -223,11 +294,7 @@ def resolve_uses(
         if read.key_literal is None:
             unresolved.append(read)
             continue
-        matched: List[PyConfigKey] = []
-        for namespace in read.rule.namespaces:
-            matched = _namespace_matches(read.key_literal, namespace, keys_by_namespace.get(namespace, []))
-            if matched:
-                break  # first namespace with >=1 match wins
+        matched = _resolve_literal_against_keys(read.rule, read.key_literal, keys_by_namespace)
         if not matched:
             unresolved.append(read)
             continue
@@ -238,18 +305,215 @@ def resolve_uses(
         new_edges, unresolved = tier_fn(unresolved, app)
         edges.extend(new_edges)
 
-    # Task 2 scope: only the literal tier above ever runs (core.py's L2 block
-    # passes no tier_fns), so every leftover read was tried at exactly that
-    # one tier. Task 3 must widen this to the tiers actually attempted once
-    # dataflow tier_fns exist.
+    # `prov` lists every tier attempted: the literal tier always runs (above);
+    # `tier_fns` non-empty means some dataflow tier(s) ran too -- the
+    # vocabulary is exactly "literal"/"dataflow" (no separate intra/interproc
+    # tag), so intra-only (-a 3) and intra+interproc (-a 4) both read the same.
+    attempted = ["literal"] + (["dataflow"] if tier_fns else [])
     unresolved_records = [
         PyConfigRead(
             site=r.site, callee=r.callee, key=r.key_literal,
             reason="undefined-key" if r.key_literal is not None else "non-literal",
-            prov=["literal"],
+            prov=attempted,
         )
         for r in unresolved
     ]
     edges.sort(key=lambda e: (e.src, e.dst))
     unresolved_records.sort(key=lambda u: (u.site, u.reason, u.key or ""))
     return edges, unresolved_records
+
+
+# --- dataflow tiers (#162 Task 3) -------------------------------------------
+
+
+def _assign_literal(source: str, def_node: Optional[BodyNode]) -> Optional[str]:
+    """The str constant a single reaching def closes on, or `None` if
+    `def_node` isn't exactly a single-target `Name = <str Constant>` Assign
+    (a formal-parameter binding has no span; a `for`-header or multi-target
+    assign fails to parse/shape-match -- both correctly never close)."""
+    if def_node is None or def_node.span is None:
+        return None
+    lo, hi = def_node.span.bytes
+    text = source.encode("utf-8")[lo:hi].decode("utf-8")
+    try:
+        parsed = ast.parse(text)
+    except SyntaxError:
+        return None
+    if len(parsed.body) != 1:
+        return None
+    stmt = parsed.body[0]
+    if not isinstance(stmt, ast.Assign) or len(stmt.targets) != 1 or not isinstance(stmt.targets[0], ast.Name):
+        return None
+    value = stmt.value
+    if isinstance(value, ast.Constant) and isinstance(value.value, str):
+        return value.value
+    return None
+
+
+def _reaching_literal(c: PyCallable, source: str, use_local_id: str, var: str) -> Optional[str]:
+    """The one string literal every DDG-reaching def of `var` at
+    `use_local_id` closes on -- `None` if nothing reaches, any reaching def
+    isn't a literal assignment, or reaching defs disagree (identical
+    duplicates count as one, per the spec caveat).
+
+    `use_local_id` is a `call` node's own local id, keyed by its own
+    (typically narrower) span -- but the CFG/DDG is statement-level
+    (`dataflow/cfg.py`), so a def's DDG-recorded *use* site is the
+    *enclosing statement's* local id, which only coincides with the call's
+    own id when the call is itself a bare expression statement. Matching by
+    span containment (the def's dst node's span contains the call's span)
+    covers both that coincidence and the common case of a call nested in a
+    `return`/assignment, without needing to special-case either shape.
+    """
+    use_node = c.body.get(use_local_id)
+    if use_node is None or use_node.span is None:
+        return None
+    lo, hi = use_node.span.bytes
+    literals: Set[str] = set()
+    reached = False
+    for edge in c.ddg:
+        if edge.var != var:
+            continue
+        dst_node = c.body.get(edge.dst)
+        if dst_node is None or dst_node.span is None:
+            continue
+        d_lo, d_hi = dst_node.span.bytes
+        if not (d_lo <= lo and hi <= d_hi):
+            continue  # this DDG use is some other reference to `var`, not this call's
+        reached = True
+        literal = _assign_literal(source, c.body.get(edge.src))
+        if literal is None:
+            return None  # any non-closing reaching def kills resolution
+        literals.add(literal)
+    if not reached or len(literals) != 1:
+        return None
+    return next(iter(literals))
+
+
+def dataflow_intra_tier(reads: List[_Read], app: PyApplication) -> Tuple[List[PyConfigUseEdge], List[_Read]]:
+    """L3 tier: close a non-literal key argument over its own callable's DDG
+    (`_reaching_literal`), then resolve the closed literal against
+    `PyArtifact.config_keys` exactly like the literal tier does."""
+    index = _index_callables(app)
+    keys_by_namespace = _keys_by_namespace(app)
+    edges: List[PyConfigUseEdge] = []
+    unresolved: List[_Read] = []
+    for read in reads:
+        entry = index.get(read.callable_id)
+        if read.key_name is None or entry is None:
+            unresolved.append(read)
+            continue
+        c, source = entry
+        literal = _reaching_literal(c, source, read.local_id, read.key_name)
+        if literal is None:
+            unresolved.append(read)
+            continue
+        matched = _resolve_literal_against_keys(read.rule, literal, keys_by_namespace)
+        if not matched:
+            unresolved.append(replace(read, key_literal=literal))
+            continue
+        for key in matched:
+            edges.append(PyConfigUseEdge(src=read.site, dst=key.id, prov=["dataflow"]))
+    return edges, unresolved
+
+
+def _call_sites_targeting(
+    app: PyApplication, index: Dict[str, Tuple[PyCallable, str]], target_id: str,
+) -> List[Tuple[PyCallable, str, str, BodyNode]]:
+    """Every `(caller, caller_source, local_id, call_node)` whose `callee`
+    is `target_id` -- the call-graph join (which callables call it) narrowed
+    to the actual call-site body nodes (which arguments they pass), sorted
+    for deterministic iteration."""
+    caller_ids = sorted({e.src for e in app.call_graph if e.dst == target_id})
+    sites: List[Tuple[PyCallable, str, str, BodyNode]] = []
+    for caller_id in caller_ids:
+        entry = index.get(caller_id)
+        if entry is None:
+            continue
+        caller, source = entry
+        for local_id, node in sorted((caller.body or {}).items()):
+            if node.kind == "call" and node.callee == target_id:
+                sites.append((caller, source, local_id, node))
+    return sites
+
+
+def _site_literal(
+    node: BodyNode, param_index: int, caller: PyCallable, source: str, local_id: str, visited: Set[str],
+) -> Optional[str]:
+    """This call site's contribution to closing the callee's parameter: the
+    str literal passed directly at `param_index`, or -- when that argument
+    is itself a bare Name -- one non-recursive hop of `_reaching_literal` at
+    the *caller*'s own call site (guarded by `visited` against the direct
+    self-recursive-call case). Only positional args reach `BodyNode.arguments`
+    (same substrate limitation `_key_from_args` documents), so a kwarg-only
+    or too-short call site contributes nothing -- `None`, same as any other
+    non-closing site, which is enough to leave the read unresolved."""
+    args = node.arguments or []
+    if param_index >= len(args):
+        return None
+    arg = args[param_index]
+    if arg.value is not None:
+        try:
+            decoded = json.loads(arg.value)
+        except json.JSONDecodeError:
+            return None
+        return decoded if isinstance(decoded, str) else None
+    if arg.name is not None and caller.id not in visited:
+        return _reaching_literal(caller, source, local_id, arg.name)
+    return None
+
+
+def dataflow_interproc_tier(
+    reads: List[_Read], app: PyApplication,
+) -> Tuple[List[PyConfigUseEdge], List[_Read]]:
+    """L4 tier: a key that names a *parameter* of its enclosing callable
+    closes when every call site targeting that callable supplies the same
+    string literal (directly, or via one hop of caller-side intra closure)
+    -- call-graph + caller argument values only, never `param_in` traversal
+    (controller ruling)."""
+    index = _index_callables(app)
+    keys_by_namespace = _keys_by_namespace(app)
+    edges: List[PyConfigUseEdge] = []
+    unresolved: List[_Read] = []
+    for read in reads:
+        entry = index.get(read.callable_id)
+        # `key_literal` already set means the intra tier closed this read to
+        # a literal that simply named no declared key (e.g. a parameter
+        # shadowed by a local reassignment the intra tier correctly traced
+        # instead) -- that is this read's real value; re-deriving one from
+        # the *callers'* arguments here would ignore the shadow and can
+        # misattribute a caller-supplied value to a name the callee never
+        # actually reads.
+        if read.key_name is None or read.key_literal is not None or entry is None:
+            unresolved.append(read)
+            continue
+        c, _source = entry
+        param_names = [p.name for p in c.parameters or []]
+        if read.key_name not in param_names:
+            unresolved.append(read)
+            continue
+        param_index = param_names.index(read.key_name)
+        sites = _call_sites_targeting(app, index, c.id)
+        if not sites:
+            unresolved.append(read)
+            continue
+        visited = {c.id}  # guards the direct self-recursive-call case
+        literals: Set[str] = set()
+        all_closed = True
+        for caller, source, local_id, node in sites:
+            literal = _site_literal(node, param_index, caller, source, local_id, visited)
+            if literal is None:
+                all_closed = False
+                break
+            literals.add(literal)
+        if not all_closed or len(literals) != 1:
+            unresolved.append(read)
+            continue
+        literal = next(iter(literals))
+        matched = _resolve_literal_against_keys(read.rule, literal, keys_by_namespace)
+        if not matched:
+            unresolved.append(replace(read, key_literal=literal))
+            continue
+        for key in matched:
+            edges.append(PyConfigUseEdge(src=read.site, dst=key.id, prov=["dataflow"]))
+    return edges, unresolved
