@@ -105,6 +105,12 @@ def project(app: PyApplication, app_name: str, sig_to_id: dict,
     # full-depth-always regardless of -a.
     _project_artifacts(b, app, app_name, app_ref)
 
+    # config_use (#162): the resolved-read bridge (PyBodyNode from
+    # _project_program_graphs above) into the config-key subgraph
+    # (ConfigKey from _project_artifacts above), plus first-class unresolved
+    # reads.
+    _project_config_uses(b, app, app_ref, externals, sig_to_id)
+
     return b.finish()
 
 
@@ -390,6 +396,47 @@ def _project_artifacts(b: RowBuilder, app: PyApplication, app_name: str, app_ref
         if key not in seen:
             seen.add(key)
             b.edge("PY_UNRESOLVED_IMPORT", app_ref, ghost_ref, prune({"prov": u.prov}))
+
+
+def _project_config_uses(
+    b: RowBuilder, app: PyApplication, app_ref: NodeRef, externals: dict, sig_to_id: dict,
+) -> None:
+    """config_use (#162): PY_USES_CONFIG (`app.config_uses`) and
+    PY_READS_CONFIG_UNRESOLVED (`app.config_reads_unresolved`).
+
+    `PyConfigUseEdge.src`/`.dst` are already a GLOBAL ordinal id and a
+    ConfigKey id (both resolved upstream by `resolve_uses`), so — like
+    `param_in`/`param_out` — they address existing PyBodyNode/ConfigKey rows
+    directly with a plain :class:`NodeRef`; no defer-and-gate needed. Call
+    nodes enter a callable's `body` at L1 (before any config_use tier runs),
+    so the src PyBodyNode is always already projected by
+    `_project_program_graphs`, whatever level this ran at.
+
+    `PyConfigRead.callee` is already the full external `can://…/@external/…`
+    id (not a bare module name), so its ghost goes through `_call_endpoint`
+    (which looks it up in `externals` directly) rather than `_import_ghost`
+    (built for a bare imported name) — same inline node()+edge() shape
+    `PY_UNRESOLVED_IMPORT` uses. `_k` discriminates by (key, reason): the same
+    external callee (e.g. `os.getenv`) legitimately reads several distinct
+    undeclared/dynamic keys across a codebase, and without a discriminant a
+    plain endpoint-pair MERGE would collapse those onto one relationship.
+    """
+    for e in app.config_uses:
+        b.edge(
+            "PY_USES_CONFIG",
+            NodeRef("PyBodyNode", "id", e.src),
+            NodeRef("ConfigKey", "id", e.dst),
+            prune({"prov": list(e.prov) if e.prov else None}),
+        )
+    for r in app.config_reads_unresolved:
+        ghost_ref = _call_endpoint(b, r.callee, externals, sig_to_id)
+        b.edge(
+            "PY_READS_CONFIG_UNRESOLVED",
+            app_ref,
+            ghost_ref,
+            prune({"key": r.key, "reason": r.reason, "prov": list(r.prov) if r.prov else None}),
+            key=f"{r.key or ''}|{r.reason}",
+        )
 
 
 def _sym(can_id: str) -> NodeRef:
