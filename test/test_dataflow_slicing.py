@@ -20,7 +20,10 @@ FIXTURE = Path(__file__).parent / "fixtures" / "single_functionalities" / "dataf
 def ir(tmp_path_factory):
     cache = tmp_path_factory.mktemp("dataflow-slice-cache")
     options = AnalysisOptions(
-        input=FIXTURE, analysis_level=1, no_venv=True, cache_dir=cache
+        # Level 2: the SDG builder resolves callsites from L2-backfilled body
+        # callees (deterministic); at level 1 it would fall back to Jedi's
+        # cache-sensitive side channel (same fragility fixed for test_dataflow_sdg).
+        input=FIXTURE, analysis_level=2, no_venv=True, cache_dir=cache
     )
     with Codeanalyzer(options) as analyzer:
         return build_program_graphs(analyzer.analyze().application)
