@@ -17,6 +17,13 @@ Respect the global `~/.claude/CLAUDE.md` instructions strictly.
   tracked past a global gitignore via `!`-negations in `.gitignore`; keep those
   negations if you touch the ignore file.
 
+## Querying the emitted graph
+
+`docs/skills/analyzing-canpy-graphs/` is a reference skill (tool-neutral, repo-shared)
+for querying the analyzer's own output — vocabulary tables and recipes for entrypoint,
+taint, exit-point, and slicing queries over `analysis.json` and the Neo4j projection.
+Read it before writing Cypher or JSON traversals over schema v2.
+
 ## Schema v2 — the model this analyzer emits
 
 `codeanalyzer-python` emits **canonical schema v2** (`schema_version` `2.0.0`): one
