@@ -442,8 +442,13 @@ def build_program_graphs(
             for t in cs.targets:
                 call_edges.append((sig, t))
 
-    summaries = compute_summaries(infos, sorted(set(call_edges)))
-    return assemble_sdg(infos, summaries, k)
+    # The converged (facts, ddg) per function are threaded straight into the
+    # assembler rather than re-derived there (#155).
+    solutions: Dict[str, object] = {}
+    summaries = compute_summaries(
+        infos, sorted(set(call_edges)), solutions=solutions
+    )
+    return assemble_sdg(infos, summaries, k, solutions=solutions)
 
 
 def emit_l4(
