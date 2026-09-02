@@ -332,10 +332,27 @@ def uniqueness_constraints() -> list[str]:
 
 CONSTRAINTS: List[str] = uniqueness_constraints()
 
+# The labels this analyzer owns per module -- the ones carrying the internal ``_module``
+# provenance property. Derived from NODE_LABELS so a new module-scoped label is covered
+# without a second list to maintain. `_module` is NOT python-private: codeanalyzer-java
+# and codeanalyzer-typescript set the same property on their nodes, so every statement
+# matching on it must be anchored to these labels or it matches a sibling analyzer's graph
+# in a shared database (#171).
+MODULE_OWNED_LABELS: List[str] = [n.label for n in NODE_LABELS if "_module" in n.properties]
+
+# The label disjunction to anchor such a statement with: ``MATCH (x:PyModule|PyClass|...)``.
+MODULE_OWNED_PATTERN: str = "|".join(MODULE_OWNED_LABELS)
+
 INDEXES: List[str] = [
     "CREATE INDEX py_callable_name IF NOT EXISTS FOR (c:PyCallable) ON (c.name)",
     "CREATE INDEX py_class_name IF NOT EXISTS FOR (c:PyClass) ON (c.name)",
     "CREATE FULLTEXT INDEX py_code_fts IF NOT EXISTS FOR (c:PyCallable) ON EACH [c.code, c.docstring]",
+] + [
+    # One per module-owned label: the incremental writer's per-module purge matches on
+    # `_module` once per changed module, which without these is a label scan per label per
+    # module -- quadratic on a full push (#171).
+    f"CREATE INDEX {label.lower()}_module IF NOT EXISTS FOR (x:{label}) ON (x._module)"
+    for label in MODULE_OWNED_LABELS
 ]
 
 

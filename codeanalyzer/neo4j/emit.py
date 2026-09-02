@@ -67,9 +67,10 @@ def emit_neo4j(analysis: Analysis, options: AnalysisOptions) -> None:
             password=options.neo4j_password,
             database=options.neo4j_database,
         )
-        # A full run (no single-file restriction) makes orphan pruning safe.
+        # A full run (no single-file restriction) makes orphan pruning safe; --eager
+        # is what permits any deletion at all (#171).
         full_run = options.file_name is None
-        bolt_writer(rows, cfg, full_run)
+        bolt_writer(rows, cfg, full_run, eager=options.rebuild_analysis)
         return
 
     out_dir = options.output if options.output is not None else Path.cwd()

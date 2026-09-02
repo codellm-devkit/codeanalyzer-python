@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Neo4j incremental push no longer deletes a sibling analyzer's nodes. The
+  per-module purge matched `MATCH (x {_module: $m})` with no label, and
+  `_module` is a shared convention -- `codeanalyzer-java` and
+  `codeanalyzer-typescript` set it on their nodes too -- so where a file key
+  collided, a python push silently detach-deleted their graph. Both statements
+  are now anchored on the python-owned labels, derived from the schema catalog
+  (`MODULE_OWNED_LABELS`) so a new module-scoped label is covered
+  automatically (#171).
+
+### Changed
+
+- A Neo4j Bolt push no longer deletes anything by default. The per-module purge
+  and the full-run orphan prune are the only destructive steps, and both now run
+  under `--eager` only; a default `--lazy` push is purely additive. The cost of
+  the default is staleness -- a declaration or call edge the source no longer has
+  survives until an `--eager` push reconciles it -- and the gain is that an
+  incremental push into a shared database cannot destroy anything (#171).
+
+### Added
+
+- An `_module` index per module-owned Neo4j label. The per-module purge ran as
+  an unindexed scan once per changed module -- quadratic on a full push (#171).
+
 ## [1.3.0] - 2026-08-29
 
 ### Added

@@ -128,13 +128,13 @@ def test_full_run_does_not_prune_another_applications_modules(driver, cfg):
     """Regression for #45: a full-run push for one application must not prune the
     modules of a *different* application sharing the database."""
     app_a, sig_to_id_a = make_sample_app()
-    bolt_writer(project(app_a, "app-a", sig_to_id_a), cfg, full_run=True)
+    bolt_writer(project(app_a, "app-a", sig_to_id_a), cfg, full_run=True, eager=True)
     before = _num(driver, "MATCH (:PyApplication {name:'app-a'})-[:PY_HAS_MODULE]->(m) RETURN count(m)")
     assert before > 0
 
     # A full-run push for a different application must leave app-a untouched.
     app_b, sig_to_id_b = _single_module_app()
-    bolt_writer(project(app_b, "app-b", sig_to_id_b), cfg, full_run=True)
+    bolt_writer(project(app_b, "app-b", sig_to_id_b), cfg, full_run=True, eager=True)
 
     after = _num(driver, "MATCH (:PyApplication {name:'app-a'})-[:PY_HAS_MODULE]->(m) RETURN count(m)")
     assert after == before, "full-run push for app-b pruned app-a's modules (#45)"
@@ -151,15 +151,16 @@ def test_re_pushing_identical_analysis_is_idempotent(driver, cfg):
 
 
 def test_a_full_run_prunes_a_module_whose_source_vanished(driver, cfg):
+    """Pruning is destructive, so it is an --eager behaviour (#171)."""
     app0, sig_to_id0 = make_sample_app()
-    bolt_writer(project(app0, "sample-app", sig_to_id0), cfg, full_run=True)
+    bolt_writer(project(app0, "sample-app", sig_to_id0), cfg, full_run=True, eager=True)
 
     # Drop one module from a fresh app and re-push as a full run.
     app, sig_to_id = make_sample_app()
     victim = sorted(app.symbol_table.keys())[0]
     del app.symbol_table[victim]
     rows = project(app, "sample-app", sig_to_id)
-    bolt_writer(rows, cfg, full_run=True)
+    bolt_writer(rows, cfg, full_run=True, eager=True)
 
     # The victim's module-scoped nodes are gone.
     assert _num(driver, "MATCH (n {_module:$m}) RETURN count(n)", m=victim) == 0
@@ -169,3 +170,44 @@ def test_a_full_run_prunes_a_module_whose_source_vanished(driver, cfg):
     # compare only _module-tagged nodes.)
     module_scoped = sum(1 for n in rows.nodes if "_module" in n.props)
     assert _num(driver, "MATCH (n) WHERE n._module IS NOT NULL RETURN count(n)") == module_scoped
+
+
+def test_a_push_never_touches_a_sibling_analyzers_nodes(driver, cfg):
+    """Regression for #171: `_module` is a shared convention — codeanalyzer-java and
+    codeanalyzer-typescript set it on their nodes too. A python push for a module whose
+    file key collides with a sibling analyzer's must leave that analyzer's graph intact."""
+    file_key = "appb/main.py"
+    with driver.session() as session:
+        session.run(
+            "CREATE (a:TsModule {_module: $m, id: 'ts-1'})"
+            "-[:TS_HAS_METHOD]->(b:TsCallable {_module: $m, id: 'ts-2'})",
+            m=file_key,
+        )
+
+    app_b, sig_to_id_b = _single_module_app(file_key)
+    bolt_writer(project(app_b, "app-b", sig_to_id_b), cfg, full_run=True, eager=True)
+
+    assert _num(driver, "MATCH (n:TsModule) RETURN count(n)") == 1
+    assert _num(driver, "MATCH (n:TsCallable) RETURN count(n)") == 1
+    assert _num(driver, "MATCH (:TsModule)-[r:TS_HAS_METHOD]->(:TsCallable) RETURN count(r)") == 1
+
+
+def test_a_lazy_push_deletes_nothing(driver, cfg):
+    """#171: a push is additive by default. Re-pushing an app with a module and a
+    callable removed must leave both in the graph — only --eager reconciles them."""
+    app0, sig_to_id0 = make_sample_app()
+    rows0 = project(app0, "sample-app", sig_to_id0)
+    bolt_writer(rows0, cfg, full_run=True)
+    before = _num(driver, "MATCH (n) WHERE n._module IS NOT NULL RETURN count(n)")
+
+    app, sig_to_id = make_sample_app()
+    victim = sorted(app.symbol_table.keys())[0]
+    del app.symbol_table[victim]
+    bolt_writer(project(app, "sample-app", sig_to_id), cfg, full_run=True)
+
+    assert _num(driver, "MATCH (n) WHERE n._module IS NOT NULL RETURN count(n)") == before
+    assert _num(driver, "MATCH (n) WHERE n._module = $m RETURN count(n)", m=victim) > 0
+
+    # ...and --eager still reconciles it.
+    bolt_writer(project(app, "sample-app", sig_to_id), cfg, full_run=True, eager=True)
+    assert _num(driver, "MATCH (n) WHERE n._module = $m RETURN count(n)", m=victim) == 0

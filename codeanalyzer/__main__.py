@@ -175,7 +175,10 @@ def main(
         bool,
         typer.Option(
             "--eager/--lazy",
-            help="Enable eager or lazy analysis. Defaults to lazy.",
+            help="Enable eager or lazy analysis. Defaults to lazy. Also gates every "
+            "destructive step of a '--emit neo4j' Bolt push: a lazy push only adds and "
+            "updates, an eager one also removes declarations and edges the source no "
+            "longer has.",
         ),
     ] = False,
     skip_tests: Annotated[
