@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Removed
+
+- **BREAKING:** the artifact-text byte cap, its `--artifact-text-max-bytes`
+  flag, and the `PyArtifact.text_truncated` field (also the Neo4j `:Artifact`
+  property). An artifact's `source` is now the whole file, or `""` because it
+  is binary or `--no-artifact-text` was passed -- never a prefix. A truncated
+  `source` read exactly like a complete small file, and the flag meant to
+  distinguish them conflated "whole file" with "capture off"; measured on
+  microsoft/vscode the cap fired on 32 of 4,953 artifacts (0.6%). Matches
+  codeanalyzer-typescript, which removed both in its #117. `--no-artifact-text`
+  is unchanged. python's `dependency-manifest` exemption from the cap is gone
+  with the cap -- every decodable file is captured in full (#172).
+
+### Fixed
+
+- Neo4j incremental push no longer deletes a sibling analyzer's nodes. The
+  per-module purge matched `MATCH (x {_module: $m})` with no label, and
+  `_module` is a shared convention -- `codeanalyzer-java` and
+  `codeanalyzer-typescript` set it on their nodes too -- so where a file key
+  collided, a python push silently detach-deleted their graph. Both statements
+  are now anchored on the python-owned labels, derived from the schema catalog
+  (`MODULE_OWNED_LABELS`) so a new module-scoped label is covered
+  automatically (#171).
+
+### Changed
+
+- A Neo4j Bolt push no longer deletes anything by default. The per-module purge
+  and the full-run orphan prune are the only destructive steps, and both now run
+  under `--eager` only; a default `--lazy` push is purely additive. The cost of
+  the default is staleness -- a declaration or call edge the source no longer has
+  survives until an `--eager` push reconciles it -- and the gain is that an
+  incremental push into a shared database cannot destroy anything (#171).
+
+### Added
+
+- An `_module` index per module-owned Neo4j label. The per-module purge ran as
+  an unindexed scan once per changed module -- quadratic on a full push (#171).
+
 ## [1.3.0] - 2026-08-29
 
 ### Added

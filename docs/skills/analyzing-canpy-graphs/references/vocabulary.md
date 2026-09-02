@@ -14,7 +14,7 @@
 | `PyAttribute` | `id` | _module, docstring, end_line, id, initializer, name, start_line, type |
 | `PyVariable` | `id` | _module, end_line, id, initializer, name, scope, start_line, type |
 | `PyBodyNode` | `id` (GLOBAL ordinal) | _module, arguments_json, call_node, end_line, id, is_constructor_call, kind, method_name, receiver_expr, receiver_type, return_type, start_line, var |
-| `Artifact` | `id` (`can://artifact/…`) | extraction, format, id, path, roles, sha256, size_bytes, source, text_truncated — **language-neutral, no Py prefix by design**; every non-`.py` file is inventoried (never-drop), binaries with empty source |
+| `Artifact` | `id` (`can://artifact/…`) | extraction, format, id, path, roles, sha256, size_bytes, source — **language-neutral, no Py prefix by design**; every non-`.py` file is inventoried (never-drop), binaries with empty source. `source` is the WHOLE file or `""` (binary, or `--no-artifact-text`) — never a prefix, so it needs no companion flag to be trusted |
 | `Package` | `id` (purl `pkg:pypi/<name>`, `<name>` PEP 503 normalized: lowercase, `[-_.]+` → `-`, so always `pkg:pypi/pyyaml`, never `pkg:pypi/PyYAML`) | ecosystem, id, name — language-neutral |
 
 `PyBodyNode.kind`: `entry`, `exit`, `statement`, `branch`, `loop`, `return`,

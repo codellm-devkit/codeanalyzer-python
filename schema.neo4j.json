@@ -164,7 +164,6 @@
         "size_bytes": "integer",
         "sha256": "string",
         "source": "string",
-        "text_truncated": "boolean",
         "extraction": "string"
       }
     },
@@ -510,6 +509,12 @@
   "indexes": [
     "CREATE INDEX py_callable_name IF NOT EXISTS FOR (c:PyCallable) ON (c.name)",
     "CREATE INDEX py_class_name IF NOT EXISTS FOR (c:PyClass) ON (c.name)",
-    "CREATE FULLTEXT INDEX py_code_fts IF NOT EXISTS FOR (c:PyCallable) ON EACH [c.code, c.docstring]"
+    "CREATE FULLTEXT INDEX py_code_fts IF NOT EXISTS FOR (c:PyCallable) ON EACH [c.code, c.docstring]",
+    "CREATE INDEX pymodule_module IF NOT EXISTS FOR (x:PyModule) ON (x._module)",
+    "CREATE INDEX pyclass_module IF NOT EXISTS FOR (x:PyClass) ON (x._module)",
+    "CREATE INDEX pycallable_module IF NOT EXISTS FOR (x:PyCallable) ON (x._module)",
+    "CREATE INDEX pyattribute_module IF NOT EXISTS FOR (x:PyAttribute) ON (x._module)",
+    "CREATE INDEX pyvariable_module IF NOT EXISTS FOR (x:PyVariable) ON (x._module)",
+    "CREATE INDEX pybodynode_module IF NOT EXISTS FOR (x:PyBodyNode) ON (x._module)"
   ]
 }

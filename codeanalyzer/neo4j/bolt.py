@@ -27,10 +27,23 @@ Algorithm (the module subgraph is the unit of idempotent replacement):
   4. upsert edges owned by changed modules (+ the shared edges).
   5. on a FULL run only, prune modules whose source file vanished.
 
+**A push never deletes by default** (#171). Steps 3 and 5 are the only destructive
+ones and both run on ``eager`` (``--eager``) only; a default ``--lazy`` push is purely
+additive — MERGE-upsert of nodes and edges, nothing removed. The cost of the default is
+staleness: a declaration or a call edge the source no longer has stays in the graph until
+an ``--eager`` push reconciles it. That is the deliberate trade — an incremental push into
+a shared database should not be able to destroy anything, and the destructive rebuild is
+opt-in under the same flag that already forces a clean analysis rebuild.
+
 Nodes are MERGE-upserted, never blindly deleted, so a declaration another
 (unchanged) module still references survives and its incoming edges stay valid.
 ``:PyExternal`` / ``:PyPackage`` / ``:PyDecorator`` are shared (no ``_module``) and are
 MERGE-only.
+
+Every ``_module`` match is anchored on the python-owned labels
+(``schema.MODULE_OWNED_PATTERN``). ``_module`` is a shared convention, not a python-private
+one -- codeanalyzer-java and codeanalyzer-typescript set it on their nodes too -- so an
+unlabelled match reaches a sibling analyzer's graph in a shared database (#171).
 
 The ``neo4j`` driver is imported lazily so it stays an optional dependency and
 off the default (json) output path entirely.
@@ -41,7 +54,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 from codeanalyzer.neo4j.rows import EdgeRow, GraphRows, NodeRow, chunk
-from codeanalyzer.neo4j.schema import CONSTRAINTS, INDEXES
+from codeanalyzer.neo4j.schema import CONSTRAINTS, INDEXES, MODULE_OWNED_PATTERN
 from codeanalyzer.utils import logger
 
 DESCENDANTS = (
@@ -59,7 +72,7 @@ class BoltConfig:
     database: Optional[str] = None
 
 
-def bolt_writer(rows: GraphRows, cfg: BoltConfig, full_run: bool) -> None:
+def bolt_writer(rows: GraphRows, cfg: BoltConfig, full_run: bool, eager: bool = False) -> None:
     try:
         import neo4j  # noqa: WPS433 (lazy, optional dependency)
     except ImportError as exc:  # pragma: no cover - exercised only without the extra
@@ -119,15 +132,26 @@ def bolt_writer(rows: GraphRows, cfg: BoltConfig, full_run: bool) -> None:
         _upsert_nodes(session, neo4j, shared)
 
         # 4. per changed module: purge owned edges + vanished decls, then upsert its nodes.
+        # The purge is the only destructive step in a push, so it runs on --eager only.
         for m in changed:
             nodes = by_module[m]
             keys = [n.value for n in nodes]
+            if not eager:
+                _upsert_nodes(session, neo4j, nodes)
+                continue
             with session() as s:
                 def _purge(tx, module=m, node_keys=keys):
-                    tx.run("MATCH (x {_module: $m})-[r]->() DELETE r", m=module)
+                    # Anchored on python-owned labels: `_module` is also set by the java
+                    # and typescript analyzers, so an unlabelled match would delete a
+                    # sibling's nodes wherever a file key collides (#171).
                     tx.run(
-                        "MATCH (x {_module: $m}) "
-                        "WHERE NOT coalesce(x.signature, x.id, x.file_key) IN $keys "
+                        f"MATCH (x:{MODULE_OWNED_PATTERN}) WHERE x._module = $m "
+                        "MATCH (x)-[r]->() DELETE r",
+                        m=module,
+                    )
+                    tx.run(
+                        f"MATCH (x:{MODULE_OWNED_PATTERN}) WHERE x._module = $m "
+                        "AND NOT coalesce(x.signature, x.id, x.file_key) IN $keys "
                         "DETACH DELETE x",
                         m=module,
                         keys=node_keys,
@@ -147,7 +171,7 @@ def bolt_writer(rows: GraphRows, cfg: BoltConfig, full_run: bool) -> None:
         # 6. orphan prune — only safe on a full run (a targeted run can't tell deleted from untargeted).
         # Scope to THIS application's anchor so a full run for application B never
         # deletes application A's modules from a shared database.
-        if full_run and app_name is not None:
+        if full_run and eager and app_name is not None:
             present = list(by_module.keys())
             with session() as s:
                 res = s.run(
@@ -161,6 +185,11 @@ def bolt_writer(rows: GraphRows, cfg: BoltConfig, full_run: bool) -> None:
                 pruned = res.single()
                 pruned_count = pruned["pruned"] if pruned else 0
                 logger.info(f"neo4j(bolt): pruned {pruned_count} vanished module(s)")
+        elif not eager:
+            logger.info(
+                "neo4j(bolt): additive push (--lazy) — nothing deleted; "
+                "re-run with --eager to reconcile removed declarations and edges"
+            )
         else:
             logger.info(
                 "neo4j(bolt): targeted run — orphan pruning skipped (deleted files not removed)"

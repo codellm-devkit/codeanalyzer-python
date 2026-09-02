@@ -1,7 +1,7 @@
 """Task 2: every file becomes a PyArtifact node except `.py` files and ignored
 dirs (never-drop inventory, issue #157 follow-up). Rule-matched files keep
 their format/roles; unmatched files fall back to text/unknown (or binary).
-Also covers the text-capture controls (`capture_text`/`text_max_bytes`)."""
+Also covers the text-capture control (`capture_text`)."""
 import hashlib
 from pathlib import Path
 from codeanalyzer.schema import model_dump
@@ -175,36 +175,17 @@ def test_py_files_never_become_artifacts(tmp_path):
     assert "setup.py" in arts and arts["setup.py"].roles == ["dependency-manifest"]
 
 
-def test_text_max_bytes_caps_source_and_flags_truncation(tmp_path):
-    content = "0123456789abcdefGHIJ"  # 21 bytes, past a 16-byte cap
+def test_source_is_the_whole_file_however_large(tmp_path):
+    """#172: there is no byte cap. `source` is the whole file or "" -- never a
+    prefix -- so a large file round-trips verbatim, multi-byte chars included."""
+    content = ("café " * 100_000) + "tail"  # ~600 KB, well past the old 262144 cap
     _mk(tmp_path, "notes.md", content)
     raw = content.encode("utf-8")
-    arts = discover_artifacts(tmp_path, "a", text_max_bytes=16)
-    art = arts["notes.md"]
-    assert art.source == content[:16]
-    assert art.text_truncated is True
+    assert len(raw) > 262144
+    art = discover_artifacts(tmp_path, "a")["notes.md"]
+    assert art.source == content
     assert art.sha256 == hashlib.sha256(raw).hexdigest()   # sha256 always full-file
     assert art.size_bytes == len(raw)
-
-
-def test_text_max_bytes_never_raises_on_split_multibyte_char(tmp_path):
-    """A cap that lands mid-codepoint must decode cleanly, never raise --
-    back off to the last clean char boundary (errors='ignore' on the prefix)."""
-    raw = ("a" * 15 + "é" + "extra-tail").encode("utf-8")  # 'é' straddles byte 16
-    (tmp_path / "notes.md").write_bytes(raw)
-    arts = discover_artifacts(tmp_path, "a", text_max_bytes=16)
-    art = arts["notes.md"]
-    assert art.text_truncated is True
-    assert art.source == "a" * 15
-    assert len(art.source.encode("utf-8")) <= 16
-    assert art.sha256 == hashlib.sha256(raw).hexdigest()
-
-
-def test_file_under_cap_is_not_truncated(tmp_path):
-    _mk(tmp_path, "notes.md", "short\n")
-    arts = discover_artifacts(tmp_path, "a", text_max_bytes=16)
-    assert arts["notes.md"].source == "short\n"
-    assert arts["notes.md"].text_truncated is False
 
 
 def test_capture_text_false_empties_source_everywhere_else_identical(tmp_path):
@@ -216,33 +197,20 @@ def test_capture_text_false_empties_source_everywhere_else_identical(tmp_path):
     assert set(with_text) == set(without_text)
     for path in with_text:
         b = without_text[path]
-        assert b.source == "" and b.text_truncated is False
+        assert b.source == ""
         a_dict = model_dump(with_text[path])
         b_dict = model_dump(b)
         a_dict["source"] = b_dict["source"] = ""
-        a_dict["text_truncated"] = b_dict["text_truncated"] = False
         assert a_dict == b_dict
 
 
-def test_dependency_manifest_exempt_from_text_max_bytes(tmp_path):
-    """#157 review fix: a dependency-manifest's source IS the extraction
-    input -- the byte cap targets bulk/incidental assets, never manifests.
-    A cap far below the file's real size must not truncate it."""
-    content = '[project]\ndependencies = ["requests"]\n'  # > 16 bytes
-    _mk(tmp_path, "pyproject.toml", content)
-    arts = discover_artifacts(tmp_path, "a", text_max_bytes=16)
-    art = arts["pyproject.toml"]
-    assert art.source == content
-    assert art.text_truncated is False
-
-
-def test_dependency_manifest_still_empty_source_with_capture_text_false(tmp_path):
-    """The manifest exemption is from the byte CAP only -- capture_text=False
-    still empties source for manifests exactly like everything else."""
+def test_dependency_manifest_source_is_empty_with_capture_text_false(tmp_path):
+    """capture_text=False empties source for manifests exactly like everything
+    else. (The old cap exemption for dependency-manifests went away with the
+    cap itself -- every decodable file is captured in full now, #172.)"""
     _mk(tmp_path, "pyproject.toml", '[project]\ndependencies = ["requests"]\n')
-    arts = discover_artifacts(tmp_path, "a", capture_text=False, text_max_bytes=16)
-    art = arts["pyproject.toml"]
-    assert art.source == "" and art.text_truncated is False
+    arts = discover_artifacts(tmp_path, "a", capture_text=False)
+    assert arts["pyproject.toml"].source == ""
 
 
 def test_discovers_terraform_flaskenv_properties_and_generic_ini(tmp_path):

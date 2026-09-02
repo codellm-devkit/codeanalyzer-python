@@ -175,7 +175,10 @@ def main(
         bool,
         typer.Option(
             "--eager/--lazy",
-            help="Enable eager or lazy analysis. Defaults to lazy.",
+            help="Enable eager or lazy analysis. Defaults to lazy. Also gates every "
+            "destructive step of a '--emit neo4j' Bolt push: a lazy push only adds and "
+            "updates, an eager one also removes declarations and edges the source no "
+            "longer has.",
         ),
     ] = False,
     skip_tests: Annotated[
@@ -239,19 +242,11 @@ def main(
         typer.Option(
             "--artifact-text/--no-artifact-text",
             help="Capture verbatim `source` text on discovered artifacts. "
-            "--no-artifact-text empties `source` everywhere (inventory unchanged).",
+            "`source` is the whole file; --no-artifact-text empties it "
+            "everywhere (inventory unchanged). sha256/size_bytes always "
+            "reflect the full file.",
         ),
     ] = True,
-    artifact_text_max_bytes: Annotated[
-        int,
-        typer.Option(
-            "--artifact-text-max-bytes",
-            help="Per-file byte cap on captured artifact `source`; a decodable "
-            "file over the cap is truncated (text_truncated=True). "
-            "sha256/size_bytes always reflect the full file.",
-            min=1,
-        ),
-    ] = 262144,
 ):
     # Determinism: pin the interpreter hash seed before any analysis (no-op
     # when PYTHONHASHSEED is already set; --version exits before this).
@@ -336,7 +331,6 @@ def main(
         verbosity=verbosity,
         entrypoint_rules=tuple(entrypoint_rules or ()),
         artifact_text=artifact_text,
-        artifact_text_max_bytes=artifact_text_max_bytes,
     )
 
     _set_log_level(options.verbosity)

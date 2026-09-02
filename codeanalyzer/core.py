@@ -40,9 +40,9 @@ from codeanalyzer.provenance import analyzer_info, repository_info
 def _artifact_full_text(project_dir: Path, path: str, art) -> str:
     """Mirrors ``artifacts.dependencies._full_text`` verbatim (not imported
     -- that name is module-private to ``dependencies.py``): config-key
-    extraction (#152) must never depend on the stored ``source`` -- capped
-    by ``text_max_bytes`` and emptied by ``capture_text=False`` (payload-size
-    controls, not extraction controls). Read the real file fresh instead;
+    extraction (#152) must never depend on the stored ``source`` -- emptied
+    by ``capture_text=False`` (a payload-size control, not an extraction
+    control). Read the real file fresh instead;
     fall back to ``art.source`` only if it's gone (e.g. a synthetic artifact
     in a unit test, or the file vanished mid-run). Keep the two in sync if
     this logic changes."""
@@ -673,7 +673,6 @@ class Codeanalyzer:
         app.artifacts = discover_artifacts(
             self.project_dir, app_name,
             capture_text=self.options.artifact_text,
-            text_max_bytes=self.options.artifact_text_max_bytes,
         )
         app.dependencies, app.unresolved_imports = build_dependency_view(
             app.artifacts,

@@ -42,33 +42,29 @@ def test_resolve_installed_flag_default_off():
     assert AnalysisOptions(input=Path(".")).resolve_installed is False
 
 
-def test_artifact_text_flags_defaults():
-    opts = AnalysisOptions(input=Path("."))
-    assert opts.artifact_text is True
-    assert opts.artifact_text_max_bytes == 262144
+def test_artifact_text_flag_default():
+    assert AnalysisOptions(input=Path(".")).artifact_text is True
 
 
-def test_artifact_text_options_thread_through_core(tmp_path):
-    """core.py must pass artifact_text/artifact_text_max_bytes to
-    discover_artifacts -- verified end to end, not just at the discovery unit."""
+def test_artifact_text_option_threads_through_core(tmp_path):
+    """core.py must pass artifact_text to discover_artifacts -- verified end to
+    end, not just at the discovery unit. #172: capture is whole-file or empty,
+    with no cap in between."""
     proj = tmp_path / "proj"
     proj.mkdir()
-    (proj / "notes.md").write_text("0123456789abcdefGHIJ")  # 21 bytes
+    content = "0123456789abcdefGHIJ" * 20_000  # 400 KB, past the old 262144 cap
+    (proj / "notes.md").write_text(content)
 
-    capped = Codeanalyzer(AnalysisOptions(
-        input=proj, analysis_level=1, no_venv=True, cache_dir=tmp_path / "cache-capped",
-        artifact_text_max_bytes=16,
+    whole = Codeanalyzer(AnalysisOptions(
+        input=proj, analysis_level=1, no_venv=True, cache_dir=tmp_path / "cache-whole",
     )).analyze().application
-    art = capped.artifacts["notes.md"]
-    assert art.text_truncated is True
-    assert len(art.source.encode("utf-8")) <= 16
+    assert whole.artifacts["notes.md"].source == content
 
     no_text = Codeanalyzer(AnalysisOptions(
         input=proj, analysis_level=1, no_venv=True, cache_dir=tmp_path / "cache-no-text",
         artifact_text=False,
     )).analyze().application
     assert no_text.artifacts["notes.md"].source == ""
-    assert no_text.artifacts["notes.md"].text_truncated is False
 
 
 def test_config_keys_present_and_identical_across_levels(tmp_path):

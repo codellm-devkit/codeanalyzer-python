@@ -195,16 +195,17 @@ def _big_lock_text(min_bytes: int) -> str:
     return "".join(parts)
 
 
-def test_large_lock_parses_all_pins_under_default_text_cap(tmp_path):
-    """#157 review fix: a lock bigger than the default 262144-byte cap must
-    still parse in full -- dependency-manifest artifacts are exempt from
-    text_max_bytes at discovery, and extraction reads the file fresh besides."""
+def test_large_lock_parses_all_pins_and_is_captured_whole(tmp_path):
+    """#157 review fix, now unconditional (#172): a lock bigger than the old
+    262144-byte cap parses in full AND is stored in full -- there is no cap and
+    so no manifest exemption to rely on, and extraction reads the file fresh
+    besides."""
     text = _big_lock_text(300_000)
     assert len(text.encode("utf-8")) > 262144
     (tmp_path / "uv.lock").write_text(text)
     package_count = text.count("[[package]]")
-    arts = discover_artifacts(tmp_path, "app")  # default text_max_bytes
-    assert arts["uv.lock"].text_truncated is False
+    arts = discover_artifacts(tmp_path, "app")
+    assert arts["uv.lock"].source == text
     deps, _ = build_dependency_view(arts, {}, tmp_path, None, False)
     pinned = {d.name for d in deps if d.locked_version}
     assert len(pinned) == package_count

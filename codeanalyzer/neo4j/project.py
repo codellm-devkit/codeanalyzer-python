@@ -309,7 +309,6 @@ def _project_artifacts(b: RowBuilder, app: PyApplication, app_name: str, app_ref
                     "size_bytes": art.size_bytes,
                     "sha256": art.sha256,
                     "source": art.source,
-                    "text_truncated": art.text_truncated,
                     "extraction": art.extraction,
                 }
             ),
