@@ -164,7 +164,6 @@
         "size_bytes": "integer",
         "sha256": "string",
         "source": "string",
-        "text_truncated": "boolean",
         "extraction": "string"
       }
     },

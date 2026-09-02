@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **BREAKING:** the artifact-text byte cap, its `--artifact-text-max-bytes`
+  flag, and the `PyArtifact.text_truncated` field (also the Neo4j `:Artifact`
+  property). An artifact's `source` is now the whole file, or `""` because it
+  is binary or `--no-artifact-text` was passed -- never a prefix. A truncated
+  `source` read exactly like a complete small file, and the flag meant to
+  distinguish them conflated "whole file" with "capture off"; measured on
+  microsoft/vscode the cap fired on 32 of 4,953 artifacts (0.6%). Matches
+  codeanalyzer-typescript, which removed both in its #117. `--no-artifact-text`
+  is unchanged. python's `dependency-manifest` exemption from the cap is gone
+  with the cap -- every decodable file is captured in full (#172).
+
 ### Fixed
 
 - Neo4j incremental push no longer deletes a sibling analyzer's nodes. The

@@ -81,9 +81,9 @@ def _resolve_ref(manifest_path: str, ref: str) -> Optional[str]:
 
 def _full_text(project_dir: Path, path: str, art: PyArtifact) -> str:
     """Manifest/lock extraction must never depend on the stored ``source`` --
-    that's capped by ``text_max_bytes`` and emptied by ``capture_text=False``
-    (both payload-size controls on the JSON/Neo4j payload, not extraction
-    controls). Read the real file fresh instead; fall back to ``art.source``
+    that's emptied by ``capture_text=False`` (a payload-size control on the
+    JSON/Neo4j payload, not an extraction control). Read the real file fresh
+    instead; fall back to ``art.source``
     only if it is gone (e.g. a synthetic artifact in a unit test, or the file
     vanished mid-run).
 

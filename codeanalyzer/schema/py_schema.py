@@ -512,9 +512,8 @@ class PyArtifact(BaseModel):
     format: str  # toml|yaml|json|ini|properties|requirements|dockerfile|text|binary
     roles: List[str] = []
     size_bytes: int = 0
-    sha256: str = ""  # always the full file's hash, even when source is truncated/empty
-    source: str = ""  # verbatim by default; "" for binary or when capture is disabled
-    text_truncated: bool = False  # True when `source` is a prefix, not the full file
+    sha256: str = ""  # always the full file's hash, even when source is empty
+    source: str = ""  # the WHOLE file, or "" for binary / when capture is disabled -- never a prefix
     extraction: str = "none"  # none|partial|full
     config_keys: List[PyConfigKey] = []  # flattened config keys (#152); [] when not namespace-eligible
 
