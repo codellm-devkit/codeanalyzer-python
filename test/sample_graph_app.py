@@ -109,16 +109,6 @@ def read_config():
 '''
 
 
-def _qualify_base_classes(module) -> None:
-    """Resolve each class's bare base-class names to their in-module signatures
-    (``BaseService`` → ``service.BaseService``), mirroring what a semantic
-    resolution pass does, so the Neo4j PY_EXTENDS edge lands on the declared base
-    class's ``can://`` id rather than dangling on an unresolved bare name."""
-    name_to_sig = {cls.name: cls.signature for cls in (module.types or {}).values()}
-    for cls in (module.types or {}).values():
-        cls.base_classes = [name_to_sig.get(b, b) for b in (cls.base_classes or [])]
-
-
 def make_sample_app() -> Tuple[PyApplication, Dict[str, str]]:
     """Build the v2 sample application with its level-3 CPG overlay and level-4
     interprocedural delta emitted.
@@ -130,7 +120,6 @@ def make_sample_app() -> Tuple[PyApplication, Dict[str, str]]:
     source_file.write_text(_SOURCE, encoding="utf-8")
 
     module = SymbolTableBuilder(workdir, None).build_pymodule_from_file(source_file)
-    _qualify_base_classes(module)
     app = PyApplication(symbol_table={"service.py": module})
 
     # Two independent builds of this fixture must project byte-identical rows (the

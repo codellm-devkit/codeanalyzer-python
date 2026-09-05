@@ -426,7 +426,7 @@ levels are cumulative and additive — `analysis.json(-a 1) ⊆ … ⊆ analysis
 | **1** | `-a 1` (default) | Symbol table, Jedi call graph, and `call` nodes in each callable's `body` | `body` calls (`callee: null`) |
 | **2** | `-a 2` | Defuse-linker call-graph enrichment; each call's `callee` backfilled to a `can://` id | `call_graph`, `body` callees |
 | **3** | `-a 3` | Native **intraprocedural** CFG/CDG/DDG (syntactic, name-equality, `prov: ["ssa"]`) | `cfg`, `cdg`, `ddg`, `@entry`/`@exit` on each callable |
-| **4** | `-a 4` | **Interprocedural** SDG: synthetic param vertices, alias-aware DDG (`prov: ["points-to"]`) | `param_in`, `param_out`, `summary`, semantic `ddg` |
+| **4** | `-a 4` | **Interprocedural** SDG: synthetic param vertices, alias-aware DDG (`prov: ["points-to"]`), port-wiring DDG between statements and param vertices (`prov: ["reaching-defs"]`) | `param_in`, `param_out`, `summary`, semantic `ddg` |
 
 `-a 1`/`-a 2` timings and output are unaffected by the heavier levels — nothing at level 3+ runs
 unless requested. Flag gating: `--graphs sdg` requires `-a 4`; `--graphs cfg,dfg,pdg` and
@@ -448,7 +448,11 @@ symbol-table signature by construction
 - **Points-to oracle (level 4):** the **Scalpel** may-alias oracle — `ScalpelAliasOracle`
   (`codeanalyzer/dataflow/scalpel_oracle.py`) — consumes Scalpel's SSA copy/const facts to answer
   `may_alias(path_a, path_b)`, adding the alias-aware DDG edges (`prov: ["points-to"]`) and the
-  interprocedural summaries. Scalpel is **vendored** — a `typed_ast`-free slice built into the
+  interprocedural summaries. Level 4 also wires the statement-level DDG to the param
+  vertices (def → `actual_in`, `actual_out` → call site, `formal_in` → use, def → `formal_out`)
+  with `prov: ["reaching-defs"]`; without those the SDG would be two disconnected graphs. So
+  `prov` takes three values: `ssa` (syntactic, L3), `reaching-defs` (port wiring, L4) and
+  `points-to` (alias-derived, L4). Scalpel is **vendored** — a `typed_ast`-free slice built into the
   package under `codeanalyzer/dataflow/scalpel/` — so it is the **default** level-4 oracle with no
   external dependency to install; the analyzer falls back to the built-in `TypeBasedAliasOracle`
   (Jedi-inferred types; unknown types conservatively alias) only when Scalpel can't resolve a

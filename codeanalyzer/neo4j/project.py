@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from codeanalyzer.neo4j.schema import SCHEMA_VERSION
 from codeanalyzer.neo4j.rows import GraphRows, NodeRef, Props, RowBuilder, prune
@@ -87,7 +87,8 @@ def project(app: PyApplication, app_name: str, sig_to_id: dict,
     for file_key, mod in app.symbol_table.items():
         mod_ref = b.node(["PyModule"], "id", mod.id, _module_props(mod, file_key))
         b.edge("PY_HAS_MODULE", app_ref, mod_ref)
-        _project_module_body(b, file_key, mod_ref, mod, externals, sig_to_id, module_id_by_key)
+        _project_module_body(b, file_key, mod_ref, mod, externals, sig_to_id, module_id_by_key,
+                             application_id(app_name))
 
     # The aggregated :PY_CALLS twin.
     for e in app.call_graph:
@@ -453,6 +454,45 @@ def _symbol_ref(signature: str, externals: dict, sig_to_id: dict) -> NodeRef:
     return NodeRef("PySymbol", "signature", signature)
 
 
+def _base_ref_resolver(
+    b: RowBuilder, mod: PyModule, externals: dict, sig_to_id: dict, app_can_id: str,
+) -> Callable[[str], NodeRef]:
+    """Per-module: the written base spelling → the NodeRef PY_EXTENDS lands on (#178).
+
+    ``base_classes`` stores the spelling as written (``Base``, ``views.View``),
+    while ``sig_to_id`` is keyed by signature (``pkg.mod.Base``), so the two never
+    met and every PY_EXTENDS row was dropped as dangling. Resolution order: a class
+    declared in this module (bare name or ``Outer.Inner`` path) → its can:// id; a
+    name the module's import table maps (same resolver the entrypoint pass uses)
+    that is a declared class elsewhere → its can:// id; otherwise an ``@external``
+    ghost with the id shape ``_home_external_symbols`` uses, so a call to the same
+    symbol MERGEs onto the same node."""
+    from codeanalyzer.entrypoints.pipeline import _base_resolver
+
+    local: Dict[str, str] = {}
+
+    def index(cl: PyClass, path: str) -> None:
+        local.setdefault(cl.name, cl.signature)
+        local[path] = cl.signature
+        for ic in (cl.types or {}).values():
+            index(ic, f"{path}.{ic.name}")
+
+    for cl in (mod.types or {}).values():
+        index(cl, cl.name)
+    resolve = _base_resolver(mod)
+
+    def base_ref(written: str) -> NodeRef:
+        sig = local.get(written) or resolve(written)
+        can_id = sig_to_id.get(sig)
+        if can_id is not None:
+            return _sym(can_id)
+        module, name = sig.rsplit(".", 1) if "." in sig else (None, sig)
+        ext_id = f"{app_can_id}/@external/{module}/{name}" if module else f"{app_can_id}/@external/{name}"
+        return b.node(["PySymbol", "PyExternal"], "id", ext_id, prune({"name": name, "module": module}))
+
+    return base_ref
+
+
 def _call_endpoint(
     b: RowBuilder, signature: str, externals: dict, sig_to_id: dict
 ) -> NodeRef:
@@ -500,14 +540,15 @@ def _call_endpoint(
 
 def _project_module_body(
     b: RowBuilder, file_key: str, mod_ref: NodeRef, mod: PyModule,
-    externals: dict, sig_to_id: dict, module_id_by_key: dict,
+    externals: dict, sig_to_id: dict, module_id_by_key: dict, app_can_id: str,
 ) -> None:
+    base_ref = _base_ref_resolver(b, mod, externals, sig_to_id, app_can_id)
     for fn in (mod.functions or {}).values():
         _project_callable(b, file_key, mod_ref, "PY_DECLARES", fn, externals, sig_to_id,
-                          mod.source)
+                          mod.source, base_ref)
     for cl in (mod.types or {}).values():
         _project_class(b, file_key, mod_ref, "PY_DECLARES", cl, externals, sig_to_id,
-                       mod.source)
+                       mod.source, base_ref)
     for v in mod.variables or []:
         _project_variable(b, file_key, mod_ref, file_key, v)
     _project_imports(b, mod_ref, mod, module_id_by_key)
@@ -575,7 +616,7 @@ def _project_imports(b: RowBuilder, mod_ref: NodeRef, mod: PyModule,
 
 def _project_class(
     b: RowBuilder, file_key: str, parent: NodeRef, parent_rel: str, cl: PyClass,
-    externals: dict, sig_to_id: dict, source: str,
+    externals: dict, sig_to_id: dict, source: str, base_ref: Callable[[str], NodeRef],
 ) -> None:
     ref = b.node(
         ["PySymbol", "PyClass"], "id", cl.id, _class_props(cl, file_key, source)
@@ -587,20 +628,21 @@ def _project_class(
 
     for base in cl.base_classes or []:
         if base:
-            b.edge_to_symbol("PY_EXTENDS", ref, _symbol_ref(base, externals, sig_to_id))
+            b.edge_to_symbol("PY_EXTENDS", ref, base_ref(base))
 
     for m in (cl.callables or {}).values():
         _project_callable(b, file_key, ref, "PY_HAS_METHOD", m, externals, sig_to_id,
-                          source)
+                          source, base_ref)
     for a in (cl.attributes or {}).values():
         _project_attribute(b, file_key, ref, cl.signature, a)
     for ic in (cl.types or {}).values():
-        _project_class(b, file_key, ref, "PY_DECLARES", ic, externals, sig_to_id, source)
+        _project_class(b, file_key, ref, "PY_DECLARES", ic, externals, sig_to_id, source,
+                       base_ref)
 
 
 def _project_callable(
     b: RowBuilder, file_key: str, owner: NodeRef, owner_rel: str, c: PyCallable,
-    externals: dict, sig_to_id: dict, source: str,
+    externals: dict, sig_to_id: dict, source: str, base_ref: Callable[[str], NodeRef],
 ) -> None:
     ref = b.node(
         ["PySymbol", "PyCallable"],
@@ -617,9 +659,10 @@ def _project_callable(
         _project_variable(b, file_key, ref, c.signature, v)
     for ic in (c.callables or {}).values():
         _project_callable(b, file_key, ref, "PY_DECLARES", ic, externals, sig_to_id,
-                          source)
+                          source, base_ref)
     for cl in (c.types or {}).values():
-        _project_class(b, file_key, ref, "PY_DECLARES", cl, externals, sig_to_id, source)
+        _project_class(b, file_key, ref, "PY_DECLARES", cl, externals, sig_to_id, source,
+                       base_ref)
 
 
 def _project_attribute(
