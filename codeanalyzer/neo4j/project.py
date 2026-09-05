@@ -70,6 +70,13 @@ def project(app: PyApplication, app_name: str, sig_to_id: dict,
                 "repo_uri": app.repository.uri if app.repository else None,
                 "source_revision": app.repository.revision if app.repository else None,
                 "repo_dirty": app.repository.dirty if app.repository else None,
+                # #177: the entrypoint pass under-approximates by design, so a
+                # graph consumer must be able to tell "no entrypoints" from "the
+                # pass found nothing". Always present, even when empty.
+                "entrypoint_frameworks": list(app.entrypoint_report.frameworks_detected),
+                "entrypoint_report_json": json.dumps(
+                    app.entrypoint_report.model_dump(), sort_keys=True
+                ),
             }
         ),
     )
