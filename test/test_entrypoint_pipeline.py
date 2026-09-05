@@ -193,3 +193,52 @@ def test_running_the_pass_twice_does_not_duplicate_entrypoints(tmp_path: Path):
     detect_entrypoints(app, tmp_path)
     second = [model_dump(e) for e in fn.entrypoints]
     assert second == first
+
+
+# ----------------------------------------------------------------------------------------------
+# #177: the report counts what failed to resolve, decorators fall back to the import table, and
+# odoo controllers are a shipped framework.
+# ----------------------------------------------------------------------------------------------
+
+
+def _odoo_module():
+    from codeanalyzer.schema.py_schema import PyCallable, PyClass, PyDecorator, PyImport, PyModule
+
+    index = PyCallable(name="index", path="c.py", signature="c.Ctl.index")
+    index.decorators.append(PyDecorator(name="http.route", qualified_name=None,
+                                        positional_arguments=['"/x"'],
+                                        keyword_arguments={"auth": '"public"'}))
+    ctl = PyClass(name="Ctl", signature="c.Ctl", base_classes=["http.Controller"],
+                  callables={"index": index})
+    mystery = PyCallable(name="m", path="c.py", signature="c.m")
+    mystery.decorators.append(PyDecorator(name="whatever.deco", qualified_name=None))
+    orphan = PyClass(name="O", signature="c.O", base_classes=["Nowhere"])
+    return PyModule(
+        file_path="c.py", module_name="c",
+        imports=[PyImport(module="odoo", name="http")],
+        types={"Ctl": ctl, "O": orphan}, functions={"m": mystery},
+    )
+
+
+def test_odoo_controller_detected_through_import_table_fallback(tmp_path: Path):
+    mod = _odoo_module()
+    app = PyApplication(symbol_table={"c.py": mod})
+    detect_entrypoints(app, tmp_path)
+    assert "odoo" in app.entrypoint_report.frameworks_detected
+    index = mod.types["Ctl"].callables["index"]
+    assert [e.rule for e in index.entrypoints] == ["odoo.route"]
+    assert index.entrypoints[0].route == "/x"
+    assert index.entrypoints[0].http_methods == ["GET"]
+    assert index.entrypoints[0].evidence == "odoo.http.route"
+    assert [e.rule for e in mod.types["Ctl"].entrypoints] == ["odoo.controller"]
+
+
+def test_report_counts_decorators_and_bases_nothing_resolves(tmp_path: Path):
+    mod = _odoo_module()
+    app = PyApplication(symbol_table={"c.py": mod})
+    detect_entrypoints(app, tmp_path)
+    # `http.route` resolved through the import table, so it is NOT unresolved;
+    # `whatever.deco` and base `Nowhere` map to nothing anywhere.
+    assert app.entrypoint_report.unresolved == {"whatever.deco": 1, "Nowhere": 1}
+    detect_entrypoints(app, tmp_path)  # idempotent on a warm cache
+    assert app.entrypoint_report.unresolved == {"whatever.deco": 1, "Nowhere": 1}

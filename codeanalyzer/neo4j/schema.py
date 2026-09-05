@@ -75,6 +75,8 @@ NODE_LABELS: List[NodeLabel] = [
             "repo_uri": "string",
             "source_revision": "string",
             "repo_dirty": "boolean",
+            "entrypoint_frameworks": "string[]",
+            "entrypoint_report_json": "string",
         },
     ),
     NodeLabel(

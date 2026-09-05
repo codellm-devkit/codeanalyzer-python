@@ -17,6 +17,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Both projections now name a body node the same way, so consumers stop
   recomposing the `can://` grammar themselves. Additive; `schema_version`
   and the graph contract are unchanged.
+- The entrypoint report is projected to Neo4j (#177): `:PyApplication` carries
+  `entrypoint_frameworks` (`string[]`) and `entrypoint_report_json` (the whole
+  `PyEntrypointReport`), always present, so a graph consumer can tell "no
+  entrypoints" from "the pass found nothing". Additive graph-catalog change.
+- `odoo` joins the shipped entrypoint rules: `@http.route` methods (route from
+  the first positional, one route or a list; methods from `methods=`, default
+  `GET`) and `http.Controller` subclasses.
+- Decorator matching falls back to the module's import table when Jedi cannot
+  resolve the decorator (#177), the way base-class matching already did. So
+  `from odoo import http` plus `@http.route` matches `odoo.http.route` with
+  odoo not importable in the analysis environment, which is every `--no-venv`
+  run.
 
 ### Fixed
 
@@ -28,6 +40,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `can://` id; anything else lands on an `@external` ghost with the same id
   shape call targets use. Relative imports resolve through `resolved_module`
   for entrypoint base matching too.
+- `PyEntrypointReport.unresolved` is now written (#177). It had no writer at
+  all, so it read `{}` on every run; it now counts, per written spelling, the
+  decorators and base classes that neither Jedi nor the import table could
+  name.
 
 ## [1.4.0] - 2026-09-02
 

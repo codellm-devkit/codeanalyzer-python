@@ -22,6 +22,22 @@ frameworks:
         transitive: true
         dispatch: [get, post, put, delete, patch]
 
+  odoo:
+    detect: [odoo]
+    decorators:
+      # `route` is a plain function in odoo/http.py, so Jedi's definition path
+      # and the import-table fallback (`from odoo import http` + `@http.route`,
+      # the shape every --no-venv run sees) both spell it `odoo.http.route`.
+      # The first positional may be one route or a list of them.
+      - id: odoo.route
+        match: "odoo.http.route"
+        route: {from: positional, index: 0}
+        methods: {from: keyword, name: methods, default: [GET]}
+    bases:
+      - id: odoo.controller
+        match: "odoo.http.Controller"
+        transitive: true
+
   fastapi:
     detect: [fastapi]
     decorators:
