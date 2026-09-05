@@ -90,7 +90,8 @@ def _base_resolver(mod: PyModule):
     aliases: Dict[str, str] = {}
     for imp in mod.imports or []:
         original = imp.alias or imp.name
-        aliases[imp.name] = imp.module if imp.module == original else f"{imp.module}.{original}"
+        module = imp.resolved_module or imp.module
+        aliases[imp.name] = module if imp.module == original else f"{module}.{original}"
 
     def resolve(written: str) -> str:
         head, _, rest = written.partition(".")

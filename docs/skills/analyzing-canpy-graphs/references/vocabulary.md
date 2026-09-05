@@ -21,6 +21,11 @@ In `analysis.json` the same value is `body[<local>].id` on every body node, and
 `parameters[i].id` is `<callable-id>@formal_in:<i>` — so a JSON-side node and its
 `:PyBodyNode` join on one string without recomposing the id.
 
+`PyClass.code` / `PyCallable.code` is exactly `module.source[span.bytes]`, one contiguous
+slice starting at the `class`/`def` token. For a nested declaration the first line therefore
+carries no indentation while continuation lines keep theirs; strip `span.start[1]` columns from
+those lines to dedent.
+
 `PyBodyNode.kind`: `entry`, `exit`, `statement`, `branch`, `loop`, `return`,
 `raise`, `handler`, `call`, `formal_in`, `formal_out`, `actual_in`, `actual_out`.
 
