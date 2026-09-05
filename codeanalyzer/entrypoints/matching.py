@@ -93,15 +93,17 @@ def _route_of(dec, spec: Optional[Dict[str, Any]]) -> Optional[str]:
     if idx >= len(args):
         return None
     value = _literal(args[idx])
+    if isinstance(value, (list, tuple)):
+        value = next((v for v in value if isinstance(v, str)), None)
     return value if isinstance(value, str) else None
 
 
-def _methods_of(dec, spec: Optional[Dict[str, Any]]) -> List[str]:
+def _methods_of(dec, spec: Optional[Dict[str, Any]], qualified: Optional[str] = None) -> List[str]:
     if not spec:
         return []
     source = spec.get("from")
     if source == "match_suffix":
-        verb = (dec.qualified_name or "").rsplit(".", 1)[-1]
+        verb = (qualified or dec.qualified_name or "").rsplit(".", 1)[-1]
         return [verb.upper()]
     if source == "keyword":
         raw = (dec.keyword_arguments or {}).get(spec.get("name", ""))
@@ -113,12 +115,21 @@ def _methods_of(dec, spec: Optional[Dict[str, Any]]) -> List[str]:
 
 
 def entrypoints_from_decorators(
-    node, framework: str, rules: Iterable["DecoratorRule"]
+    node,
+    framework: str,
+    rules: Iterable["DecoratorRule"],
+    resolve: Optional[Callable[[str], str]] = None,
 ) -> List[PyEntrypoint]:
+    """``resolve`` is the module's import-table resolver (#177): when Jedi could
+    not resolve a decorator (the framework is not importable in the analysis
+    environment -- every ``--no-venv`` run), ``@http.route`` still resolves to
+    ``odoo.http.route`` from ``from odoo import http`` alone, the same way base
+    classes already do. Jedi's definition path wins when it exists."""
     out: List[PyEntrypoint] = []
     for dec in getattr(node, "decorators", []) or []:
+        qualified = decorator_qualified_name(dec, resolve)
         for rule in rules:
-            if not match_pattern(rule.match, dec.qualified_name):
+            if not match_pattern(rule.match, qualified):
                 continue
             out.append(
                 PyEntrypoint(
@@ -126,12 +137,23 @@ def entrypoints_from_decorators(
                     confidence=rule.confidence,
                     rule=rule.id,
                     ruleset=rule.origin,
-                    evidence=dec.qualified_name,
+                    evidence=qualified,
                     route=_route_of(dec, rule.route),
-                    http_methods=_methods_of(dec, rule.methods),
+                    http_methods=_methods_of(dec, rule.methods, qualified),
                 )
             )
     return out
+
+
+def decorator_qualified_name(dec, resolve: Optional[Callable[[str], str]]) -> Optional[str]:
+    """Jedi's resolution, else the import-table resolution of the written
+    spelling, else ``None`` (a spelling the import table cannot map either)."""
+    if dec.qualified_name:
+        return dec.qualified_name
+    if resolve is None:
+        return None
+    resolved = resolve(dec.name)
+    return resolved if resolved != dec.name else None
 
 
 def entrypoints_from_bases(

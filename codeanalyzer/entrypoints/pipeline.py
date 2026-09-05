@@ -10,7 +10,9 @@ from pathlib import Path
 from typing import Dict, Iterable, Iterator
 
 from codeanalyzer.entrypoints.detect import detected_frameworks
-from codeanalyzer.entrypoints.matching import entrypoints_from_bases, entrypoints_from_decorators
+from codeanalyzer.entrypoints.matching import (
+    decorator_qualified_name, entrypoints_from_bases, entrypoints_from_decorators,
+)
 from codeanalyzer.entrypoints.rules import RuleSet, load_rules
 from codeanalyzer.schema.py_schema import PyApplication, PyCallable, PyClass, PyModule
 from codeanalyzer.utils import logger
@@ -56,18 +58,32 @@ def _run_stages(app: PyApplication, project_dir: Path, rules: RuleSet) -> None:
     """
     for node in _walk(app):
         node.entrypoints = []
+    app.entrypoint_report.unresolved = {}
 
     app.entrypoint_report.rulesets = list(rules.rulesets)
     frameworks = detected_frameworks(app, project_dir, rules)
     app.entrypoint_report.frameworks_detected = sorted(frameworks)
 
     names = sorted(frameworks)
+    unresolved = app.entrypoint_report.unresolved
     for mod in app.symbol_table.values():
         resolve = _base_resolver(mod)
+        declared = {cl.name for cl in (mod.types or {}).values()}
         for node in _walk_module(mod):
+            # #177: what neither Jedi nor the import table could name. This is
+            # the counter that makes silence visible; it was never written before.
+            for dec in getattr(node, "decorators", None) or []:
+                if decorator_qualified_name(dec, resolve) is None:
+                    unresolved[dec.name] = unresolved.get(dec.name, 0) + 1
+            if isinstance(node, PyClass):
+                for base in node.base_classes or []:
+                    if base not in declared and resolve(base) == base:
+                        unresolved[base] = unresolved.get(base, 0) + 1
             for name in names:
                 fw = rules.frameworks[name]
-                node.entrypoints.extend(entrypoints_from_decorators(node, name, fw.decorators))
+                node.entrypoints.extend(
+                    entrypoints_from_decorators(node, name, fw.decorators, resolve)
+                )
                 if isinstance(node, PyClass) and fw.bases:
                     class_eps, method_eps = entrypoints_from_bases(
                         node, name, fw.bases, resolve

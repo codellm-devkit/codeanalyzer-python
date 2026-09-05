@@ -653,6 +653,10 @@ RETURN DISTINCT c.id
 MATCH (m:PyCallable {is_entrypoint: true})
 RETURN m.id, m.entrypoint_frameworks
 
+// did the entrypoint pass find anything? (no entrypoints vs. nothing detected)
+MATCH (a:PyApplication)
+RETURN a.entrypoint_frameworks, a.entrypoint_report_json
+
 // data dependences into one statement (level 3+)
 MATCH (s:PyBodyNode {id: $stmt})<-[d:PY_DDG]-(src:PyBodyNode)
 RETURN src.id, d.var, d.prov

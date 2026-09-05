@@ -14,7 +14,9 @@
         "analyzer_version": "string",
         "repo_uri": "string",
         "source_revision": "string",
-        "repo_dirty": "boolean"
+        "repo_dirty": "boolean",
+        "entrypoint_frameworks": "string[]",
+        "entrypoint_report_json": "string"
       }
     },
     {
