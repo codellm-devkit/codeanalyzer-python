@@ -251,3 +251,20 @@ def test_projected_code_property_is_the_module_source_span_slice():
     # the sample app has functions, methods, an inner class and a subclass —
     # if we checked fewer than that, the walk itself is broken.
     assert checked >= 6
+
+
+def test_pyapplication_carries_the_entrypoint_report():
+    # #177: a Neo4j consumer can tell "no entrypoints" from "the pass found nothing".
+    from codeanalyzer.schema.py_schema import PyEntrypointReport
+    import json as _json
+    app = PyApplication(symbol_table={}, entrypoint_report=PyEntrypointReport(
+        frameworks_detected=["flask"], rulesets=["shipped"], unresolved={"x.y": 2}, errors=[]))
+    rows = project(app, "app", {})
+    node = next(n for n in rows.nodes if n.labels[0] == "PyApplication")
+    assert node.props["entrypoint_frameworks"] == ["flask"]
+    assert _json.loads(node.props["entrypoint_report_json"]) == {
+        "frameworks_detected": ["flask"], "rulesets": ["shipped"], "unresolved": {"x.y": 2}, "errors": []}
+    # an empty report is still present — absence would be indistinguishable from silence
+    rows = project(PyApplication(symbol_table={}), "app", {})
+    node = next(n for n in rows.nodes if n.labels[0] == "PyApplication")
+    assert "entrypoint_report_json" in node.props

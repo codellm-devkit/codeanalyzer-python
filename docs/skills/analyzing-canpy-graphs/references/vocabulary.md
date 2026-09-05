@@ -4,7 +4,7 @@
 
 | label | merge key | properties |
 | --- | --- | --- |
-| `PyApplication` | `name` | analyzer_name, analyzer_version, name, repo_dirty, repo_uri, schema_version, source_revision |
+| `PyApplication` | `name` | analyzer_name, analyzer_version, name, repo_dirty, repo_uri, schema_version, source_revision, entrypoint_frameworks, entrypoint_report_json |
 | `PyModule` | `id` | _module, content_hash, file_key, file_size, id, last_modified, module_name |
 | `PyClass` | `id` | _module, base_classes, code, decorators, docstring, end_line, entrypoint_frameworks, id, is_entrypoint, name, signature, start_line |
 | `PyCallable` | `id` | _module, accessed_symbols_json, code, code_start_line, cyclomatic_complexity, decorators, docstring, end_line, entrypoint_frameworks, id, is_entrypoint, modifiers, name, parameters_json, path, return_type |
