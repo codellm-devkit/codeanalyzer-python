@@ -251,3 +251,37 @@ def test_projected_code_property_is_the_module_source_span_slice():
     # the sample app has functions, methods, an inner class and a subclass —
     # if we checked fewer than that, the walk itself is broken.
     assert checked >= 6
+
+
+# ----------------------------------------------------------------------------------------------
+# #178: PY_EXTENDS resolves the written base to the declared class's can:// id, or to an
+# @external ghost — never to a bare spelling nothing emits (which RowBuilder drops).
+# ----------------------------------------------------------------------------------------------
+
+_EXTENDS_FIXTURE = (
+    "from lib.core import Thing\n"
+    "import lib.views as views\n"
+    "class Base:\n    pass\n"
+    "class Child(Base):\n    pass\n"
+    "class Ext(Thing):\n    pass\n"
+    "class Dotted(views.View):\n    pass\n"
+)
+
+
+def test_py_extends_targets_declared_base_by_can_id_and_external_by_ghost(tmp_path):
+    f = tmp_path / "m.py"
+    f.write_text(_EXTENDS_FIXTURE, encoding="utf-8")
+    mod = SymbolTableBuilder(tmp_path, None).build_pymodule_from_file(f)
+    app = PyApplication(symbol_table={"m.py": mod})
+    sig_to_id = assign_ids(app, "app")
+    by_name = {c.name: c for c in mod.types.values()}
+    assert by_name["Child"].base_classes == ["Base"], "precondition: written spelling"
+
+    rows = project(app, "app", sig_to_id)
+    ext = {(e.from_ref.value, e.to_ref.value) for e in rows.edges if e.type == "PY_EXTENDS"}
+    assert (by_name["Child"].id, by_name["Base"].id) in ext
+    assert (by_name["Ext"].id, "can://python/app/@external/lib.core/Thing") in ext
+    assert (by_name["Dotted"].id, "can://python/app/@external/lib.views/View") in ext
+    assert len(ext) == 3
+    ghosts = {n.value for n in rows.nodes if "PyExternal" in n.labels}
+    assert "can://python/app/@external/lib.core/Thing" in ghosts

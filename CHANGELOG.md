@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `PY_EXTENDS` is now actually emitted (#178). The projector handed the written
+  base spelling (`Base`, `views.View`) to a lookup keyed by signature
+  (`pkg.mod.Base`), so every inheritance edge was dropped as dangling and no
+  graph since 2.0.0 carried one. Bases now resolve per module: a class declared
+  in the module or reachable through its import table lands on that class's
+  `can://` id; anything else lands on an `@external` ghost with the same id
+  shape call targets use. Relative imports resolve through `resolved_module`
+  for entrypoint base matching too.
+
 ## [1.4.0] - 2026-09-02
 
 ### Removed
