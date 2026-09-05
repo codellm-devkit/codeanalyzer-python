@@ -128,6 +128,9 @@ class BodyNode(BaseModel):
     """A node in a callable's `body`: an AST region (statement/call/branch/…) or
     a synthetic analysis vertex (entry/exit/formal_in/out/actual_in/out)."""
     kind: str
+    # #176: the GLOBAL ordinal id — `<callable-id>@<local>` — the same value the
+    # Neo4j projection merges :PyBodyNode on. Stamped by `ids.stamp_body_ids`.
+    id: str = ""
     span: Optional[Span] = None
     callee: Optional[str] = None   # only on `call` nodes; the sanctioned null→id slot
     of: Optional[str] = None       # param vertices: the variable/return they carry
@@ -287,6 +290,9 @@ class PyCallableParameter(BaseModel):
     """Represents a parameter of a Python callable (function/method)."""
 
     name: str
+    # #176: `<callable-id>@formal_in:<i>` for position i — the L4 formal_in vertex
+    # that carries this parameter. A forward reference below level 4.
+    id: str = ""
     type: Optional[str] = None
     default_value: Optional[str] = None
     decorators: List[PyDecorator] = []

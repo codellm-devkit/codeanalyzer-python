@@ -1,6 +1,7 @@
 """L1 body population: materialize `call` nodes from existing call sites.
 `callee` is left None here — the sanctioned null→id refinement happens at L2."""
 from __future__ import annotations
+from codeanalyzer.schema.ids import stamp_body_ids
 from codeanalyzer.schema.py_schema import PyApplication, PyClass, PyCallable, BodyNode, Span, byte_offsets
 
 def _do_callable(source: str, c: PyCallable) -> None:
@@ -20,6 +21,7 @@ def _do_callable(source: str, c: PyCallable) -> None:
             is_constructor_call=cs.is_constructor_call,
             arguments=list(cs.arguments or []),
         )
+    stamp_body_ids(c)
     for ic in (c.callables or {}).values():
         _do_callable(source, ic)
     for icl in (c.types or {}).values():
