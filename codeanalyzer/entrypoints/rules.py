@@ -22,7 +22,7 @@ _CONFIDENCE = {"declared", "certain", "heuristic"}
 # blocks (Units 4-5) not implemented yet; they are deliberately absent here
 # rather than accepted-and-ignored, so a user file using them fails loudly
 # instead of loading clean and doing nothing.
-_TOP_LEVEL_KEYS = {"version", "frameworks", "disable"}
+_TOP_LEVEL_KEYS = {"version", "frameworks", "heuristics", "disable"}
 
 
 class RulesError(Exception):
@@ -60,6 +60,10 @@ class Framework:
 @dataclass
 class RuleSet:
     frameworks: Dict[str, Framework] = field(default_factory=dict)
+    # Framework-independent decorator rules matched on the WRITTEN spelling,
+    # confidence `heuristic` by default. They run on every node regardless of
+    # `frameworks_detected` and never double a record a framework rule made.
+    heuristics: List[DecoratorRule] = field(default_factory=list)
     rulesets: List[str] = field(default_factory=list)
 
 
@@ -103,9 +107,16 @@ def _merge(out: RuleSet, data: Dict[str, Any], origin: str) -> None:
         for raw in body.get("bases") or []:
             fw.bases.append(_base_rule(raw, origin))
 
+    heuristics = data.get("heuristics") or {}
+    if not isinstance(heuristics, dict):
+        raise RulesError(f"{origin}: `heuristics` must be a mapping")
+    for raw in heuristics.get("decorators") or []:
+        out.heuristics.append(_decorator_rule({"confidence": "heuristic", **raw}, origin))
+
     for fw in out.frameworks.values():
         fw.decorators = [r for r in fw.decorators if r.id not in disabled]
         fw.bases = [r for r in fw.bases if r.id not in disabled]
+    out.heuristics = [r for r in out.heuristics if r.id not in disabled]
 
 
 def _disable_list(data: Dict[str, Any], origin: str) -> List[str]:

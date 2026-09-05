@@ -115,3 +115,14 @@ def test_nested_brace_in_match_pattern_is_rejected(tmp_path):
     )
     with pytest.raises(RulesError):
         load_rules([bad])
+
+
+def test_shipped_heuristics_load_and_are_disableable(tmp_path):
+    rs = load_rules()
+    ids = {r.id for r in rs.heuristics}
+    assert {"heuristic.http-route", "heuristic.http-verb"} <= ids
+    assert all(r.confidence == "heuristic" for r in rs.heuristics)
+    user = tmp_path / "u.yml"
+    user.write_text("disable: [heuristic.http-route]\n")
+    rs = load_rules([user])
+    assert "heuristic.http-route" not in {r.id for r in rs.heuristics}

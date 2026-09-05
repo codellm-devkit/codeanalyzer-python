@@ -6,8 +6,9 @@ loses flags, never the analysis.
 """
 from __future__ import annotations
 
+import builtins
 from pathlib import Path
-from typing import Dict, Iterable, Iterator
+from typing import Dict, Iterable, Iterator, Set
 
 from codeanalyzer.entrypoints.detect import detected_frameworks
 from codeanalyzer.entrypoints.matching import (
@@ -68,16 +69,18 @@ def _run_stages(app: PyApplication, project_dir: Path, rules: RuleSet) -> None:
     unresolved = app.entrypoint_report.unresolved
     for mod in app.symbol_table.values():
         resolve = _base_resolver(mod)
-        declared = {cl.name for cl in (mod.types or {}).values()}
+        known = _known_heads(mod)
         for node in _walk_module(mod):
             # #177: what neither Jedi nor the import table could name. This is
             # the counter that makes silence visible; it was never written before.
+            # A builtin, a declared class, or a name whose head is imported is
+            # nameable and is not counted (`object`, `Exception`, `typing.Generic[T]`).
             for dec in getattr(node, "decorators", None) or []:
-                if decorator_qualified_name(dec, resolve) is None:
+                if decorator_qualified_name(dec, resolve) is None and _unnameable(dec.name, known):
                     unresolved[dec.name] = unresolved.get(dec.name, 0) + 1
             if isinstance(node, PyClass):
                 for base in node.base_classes or []:
-                    if base not in declared and resolve(base) == base:
+                    if _unnameable(base, known):
                         unresolved[base] = unresolved.get(base, 0) + 1
             for name in names:
                 fw = rules.frameworks[name]
@@ -93,6 +96,34 @@ def _run_stages(app: PyApplication, project_dir: Path, rules: RuleSet) -> None:
                         target = (node.callables or {}).get(method_name)
                         if target is not None:
                             target.entrypoints.extend(eps)
+            # Heuristic tier: the written spelling, no framework needed. Runs
+            # last so a node a framework rule already claimed keeps one record.
+            if not node.entrypoints and rules.heuristics:
+                node.entrypoints.extend(
+                    entrypoints_from_decorators(
+                        node, "heuristic", rules.heuristics, resolve, on_written=True
+                    )
+                )
+
+
+_BUILTIN_NAMES: Set[str] = set(dir(builtins))
+
+
+def _known_heads(mod: PyModule) -> Set[str]:
+    """Names that can head a nameable spelling in this module: its declared classes
+    and every imported name or alias."""
+    heads = {cl.name for cl in (mod.types or {}).values()}
+    for imp in mod.imports or []:
+        heads.add(imp.alias or imp.name)
+    return heads
+
+
+def _unnameable(written: str, known: Set[str]) -> bool:
+    """Whether a written base/decorator spelling maps to nothing this module can
+    name: not a builtin, not a declared class, and its head is not imported.
+    Subscripts (`Generic[T]`, `dict[K, V]`) are stripped before the check."""
+    head = written.split("[", 1)[0].split(".", 1)[0].strip()
+    return bool(head) and head not in _BUILTIN_NAMES and head not in known
 
 
 def _base_resolver(mod: PyModule):

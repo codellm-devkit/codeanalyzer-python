@@ -228,7 +228,7 @@ def test_odoo_controller_detected_through_import_table_fallback(tmp_path: Path):
     index = mod.types["Ctl"].callables["index"]
     assert [e.rule for e in index.entrypoints] == ["odoo.route"]
     assert index.entrypoints[0].route == "/x"
-    assert index.entrypoints[0].http_methods == ["GET"]
+    assert index.entrypoints[0].http_methods == ["GET", "POST"]
     assert index.entrypoints[0].evidence == "odoo.http.route"
     assert [e.rule for e in mod.types["Ctl"].entrypoints] == ["odoo.controller"]
 
@@ -242,3 +242,51 @@ def test_report_counts_decorators_and_bases_nothing_resolves(tmp_path: Path):
     assert app.entrypoint_report.unresolved == {"whatever.deco": 1, "Nowhere": 1}
     detect_entrypoints(app, tmp_path)  # idempotent on a warm cache
     assert app.entrypoint_report.unresolved == {"whatever.deco": 1, "Nowhere": 1}
+
+
+def test_heuristic_tier_flags_http_decorators_with_no_framework_detected(tmp_path: Path):
+    """A method spelled `@http.route` is an entrypoint whether or not a framework rule
+    exists for it. The heuristic tier runs regardless of `frameworks_detected`, and
+    never doubles a record a framework rule already made."""
+    from codeanalyzer.schema.py_schema import PyCallable, PyClass, PyDecorator, PyModule
+    index = PyCallable(name="index", path="c.py", signature="c.Ctl.index")
+    index.decorators.append(PyDecorator(name="http.route", qualified_name=None,
+                                        positional_arguments=['"/x"']))
+    ctl = PyClass(name="Ctl", signature="c.Ctl", base_classes=["http.Controller"],
+                  callables={"index": index})
+    mod = PyModule(file_path="c.py", module_name="c", imports=[], types={"Ctl": ctl})
+    app = PyApplication(symbol_table={"c.py": mod})
+    detect_entrypoints(app, tmp_path)
+    assert app.entrypoint_report.frameworks_detected == []
+    assert [(e.framework, e.rule, e.route, e.confidence) for e in index.entrypoints] == [
+        ("heuristic", "heuristic.http-route", "/x", "heuristic")
+    ]
+    assert index.is_entrypoint is True
+
+    # with the odoo import present the framework rule wins and the heuristic stays silent
+    mod2 = _odoo_module()
+    app2 = PyApplication(symbol_table={"c.py": mod2})
+    detect_entrypoints(app2, tmp_path)
+    idx2 = mod2.types["Ctl"].callables["index"]
+    assert [e.rule for e in idx2.entrypoints] == ["odoo.route"]
+    assert idx2.entrypoints[0].http_methods == ["GET", "POST"]
+
+
+def test_unresolved_skips_builtins_generics_and_imported_heads(tmp_path: Path):
+    from codeanalyzer.schema.py_schema import PyCallable, PyClass, PyDecorator, PyImport, PyModule
+    f = PyCallable(name="f", path="c.py", signature="c.f")
+    f.decorators.append(PyDecorator(name="property", qualified_name=None))
+    f.decorators.append(PyDecorator(name="functools.lru_cache", qualified_name=None))
+    f.decorators.append(PyDecorator(name="mystery.deco", qualified_name=None))
+    classes = {
+        "A": PyClass(name="A", signature="c.A", base_classes=["object", "Exception"]),
+        "B": PyClass(name="B", signature="c.B", base_classes=["typing.Generic[T]", "dict[K, V]"]),
+        "C": PyClass(name="C", signature="c.C", base_classes=["Nowhere", "A"]),
+    }
+    mod = PyModule(file_path="c.py", module_name="c",
+                   imports=[PyImport(module="functools", name="functools"),
+                            PyImport(module="typing", name="typing")],
+                   types=classes, functions={"f": f})
+    app = PyApplication(symbol_table={"c.py": mod})
+    detect_entrypoints(app, tmp_path)
+    assert app.entrypoint_report.unresolved == {"mystery.deco": 1, "Nowhere": 1}

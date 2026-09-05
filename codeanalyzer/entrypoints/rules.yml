@@ -28,11 +28,13 @@ frameworks:
       # `route` is a plain function in odoo/http.py, so Jedi's definition path
       # and the import-table fallback (`from odoo import http` + `@http.route`,
       # the shape every --no-venv run sees) both spell it `odoo.http.route`.
-      # The first positional may be one route or a list of them.
+      # The first positional may be one route or a list of them. Odoo serves
+      # GET and POST on a route unless `methods=` narrows it (json-typed routes
+      # are POST), so the default is both, not GET.
       - id: odoo.route
         match: "odoo.http.route"
         route: {from: positional, index: 0}
-        methods: {from: keyword, name: methods, default: [GET]}
+        methods: {from: keyword, name: methods, default: [GET, POST]}
     bases:
       - id: odoo.controller
         match: "odoo.http.Controller"
@@ -102,3 +104,19 @@ frameworks:
         match: "django.views.generic.*"
         transitive: true
         dispatch: [get, post, put, patch, delete, head, options]
+
+# Framework-independent tier. Matched on the decorator's WRITTEN spelling, never
+# on a resolved name, so a shape that reads as an HTTP entrypoint is flagged even
+# when the library behind it has no `frameworks:` block above (or is not
+# importable). Confidence `heuristic`; a consumer wanting only certain hits
+# filters on it. A node a framework rule already matched gets no heuristic record.
+heuristics:
+  decorators:
+    - id: heuristic.http-route
+      match: "{route,*.route,*.*.route}"
+      route: {from: positional, index: 0}
+      methods: {from: keyword, name: methods}
+    - id: heuristic.http-verb
+      match: "{*,*.*}.{get,post,put,patch,delete,head,options,websocket}"
+      route: {from: positional, index: 0}
+      methods: {from: match_suffix}
