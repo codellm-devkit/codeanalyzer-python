@@ -35,7 +35,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List
 
-SCHEMA_VERSION = "2.0.0"
+SCHEMA_VERSION = "3.0.0"
 
 # PropType ∈ {"string", "integer", "float", "boolean", "string[]", "integer[]"}.
 
@@ -57,7 +57,9 @@ class RelType:
 
 
 # Labels layered onto a node in addition to its primary/specific label.
-MARKER_LABELS: List[str] = []
+# ``PyCanNode`` (#173) rides every node keyed by a ``can://python/`` id — an index
+# anchor for the prefix-scoped destructive statements (see ``rows.CAN_NODE``).
+MARKER_LABELS: List[str] = ["PyCanNode"]
 
 _SPAN = {"start_line": "integer", "end_line": "integer"}
 
@@ -90,7 +92,6 @@ NODE_LABELS: List[NodeLabel] = [
             "content_hash": "string",
             "last_modified": "float",
             "file_size": "integer",
-            "_module": "string",
         },
     ),
     NodeLabel(
@@ -106,7 +107,6 @@ NODE_LABELS: List[NodeLabel] = [
             "decorators": "string[]",
             "docstring": "string",
             **_SPAN,
-            "_module": "string",
             "is_entrypoint": "boolean",
             "entrypoint_frameworks": "string[]",
         },
@@ -130,7 +130,6 @@ NODE_LABELS: List[NodeLabel] = [
             "modifiers": "string[]",
             "parameters_json": "string",
             "accessed_symbols_json": "string",
-            "_module": "string",
             "is_entrypoint": "boolean",
             "entrypoint_frameworks": "string[]",
         },
@@ -159,7 +158,6 @@ NODE_LABELS: List[NodeLabel] = [
             "initializer": "string",
             "docstring": "string",
             **_SPAN,
-            "_module": "string",
         },
     ),
     NodeLabel(
@@ -173,7 +171,6 @@ NODE_LABELS: List[NodeLabel] = [
             "initializer": "string",
             "scope": "string",
             **_SPAN,
-            "_module": "string",
         },
     ),
     # Level-3 CPG overlay (present only at -a 3). The dataflow vocabulary is
@@ -200,7 +197,6 @@ NODE_LABELS: List[NodeLabel] = [
             "is_constructor_call": "boolean",
             "arguments_json": "string",
             **_SPAN,
-            "_module": "string",
         },
     ),
     # Neutral artifact/dependency subgraph (spec 2026-08-27, Task 6). No `Py`
@@ -334,27 +330,14 @@ def uniqueness_constraints() -> list[str]:
 
 CONSTRAINTS: List[str] = uniqueness_constraints()
 
-# The labels this analyzer owns per module -- the ones carrying the internal ``_module``
-# provenance property. Derived from NODE_LABELS so a new module-scoped label is covered
-# without a second list to maintain. `_module` is NOT python-private: codeanalyzer-java
-# and codeanalyzer-typescript set the same property on their nodes, so every statement
-# matching on it must be anchored to these labels or it matches a sibling analyzer's graph
-# in a shared database (#171).
-MODULE_OWNED_LABELS: List[str] = [n.label for n in NODE_LABELS if "_module" in n.properties]
-
-# The label disjunction to anchor such a statement with: ``MATCH (x:PyModule|PyClass|...)``.
-MODULE_OWNED_PATTERN: str = "|".join(MODULE_OWNED_LABELS)
-
 INDEXES: List[str] = [
     "CREATE INDEX py_callable_name IF NOT EXISTS FOR (c:PyCallable) ON (c.name)",
     "CREATE INDEX py_class_name IF NOT EXISTS FOR (c:PyClass) ON (c.name)",
     "CREATE FULLTEXT INDEX py_code_fts IF NOT EXISTS FOR (c:PyCallable) ON EACH [c.code, c.docstring]",
-] + [
-    # One per module-owned label: the incremental writer's per-module purge matches on
-    # `_module` once per changed module, which without these is a label scan per label per
-    # module -- quadratic on a full push (#171).
-    f"CREATE INDEX {label.lower()}_module IF NOT EXISTS FOR (x:{label}) ON (x._module)"
-    for label in MODULE_OWNED_LABELS
+    # #173: every destructive statement is ``MATCH (x:PyCanNode) WHERE x.id STARTS WITH $p``.
+    # A range index on the marker makes that a prefix seek; without it, a store scan per
+    # changed module. STARTS WITH is index-backed; CONTAINS / ENDS WITH are not.
+    "CREATE INDEX py_can_node_id IF NOT EXISTS FOR (n:PyCanNode) ON (n.id)",
 ]
 
 

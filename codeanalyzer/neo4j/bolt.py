@@ -37,13 +37,16 @@ opt-in under the same flag that already forces a clean analysis rebuild.
 
 Nodes are MERGE-upserted, never blindly deleted, so a declaration another
 (unchanged) module still references survives and its incoming edges stay valid.
-``:PyExternal`` / ``:PyPackage`` / ``:PyDecorator`` are shared (no ``_module``) and are
+``:PyExternal`` / ``:PyPackage`` / ``:PyDecorator`` have no owning module and are
 MERGE-only.
 
-Every ``_module`` match is anchored on the python-owned labels
-(``schema.MODULE_OWNED_PATTERN``). ``_module`` is a shared convention, not a python-private
-one -- codeanalyzer-java and codeanalyzer-typescript set it on their nodes too -- so an
-unlabelled match reaches a sibling analyzer's graph in a shared database (#171).
+**Every destructive statement is scoped on the ``can://`` id prefix** (#173). The id is a
+path — ``can://python/<app>/<file>/...`` — so ``id = <module-id> OR id STARTS WITH
+<module-id> + '/'`` is containment, and it is one language, one application and one
+module at once. That is what neither a label anchor nor the retired ``_module`` property
+could give: two python applications sharing ``src/foo.py`` carry identical labels and an
+identical file key, and only the id tells them apart. ``:PyCanNode`` anchors the predicate
+so it seeks an index instead of scanning the store; it carries no safety claim.
 
 The ``neo4j`` driver is imported lazily so it stays an optional dependency and
 off the default (json) output path entirely.
@@ -53,15 +56,33 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
-from codeanalyzer.neo4j.rows import EdgeRow, GraphRows, NodeRow, chunk
-from codeanalyzer.neo4j.schema import CONSTRAINTS, INDEXES, MODULE_OWNED_PATTERN
+from codeanalyzer.neo4j.rows import (
+    CAN_NODE, EdgeRow, GraphRows, NodeRow, application_prefix, chunk, descendant_prefix,
+)
+from codeanalyzer.neo4j.schema import CONSTRAINTS, INDEXES
 from codeanalyzer.utils import logger
 
-DESCENDANTS = (
-    "[:PY_DECLARES|PY_HAS_METHOD|PY_HAS_ATTRIBUTE|PY_DECLARES_VAR"
-    "|PY_HAS_CALLSITE|PY_HAS_BODY_NODE*1..]"
-)
 BATCH = 1000
+
+# The per-module purge (#173): the module by equality, its subtree by prefix. Anchored
+# on :PyCanNode only so the predicate can seek (see ``rows.CAN_NODE``).
+PURGE_MODULE_EDGES = (
+    f"MATCH (x:{CAN_NODE}) WHERE x.id = $mid OR x.id STARTS WITH $pre "
+    "MATCH (x)-[r]->() DELETE r"
+)
+PURGE_VANISHED_NODES = (
+    f"MATCH (x:{CAN_NODE}) WHERE (x.id = $mid OR x.id STARTS WITH $pre) "
+    "AND NOT x.id IN $keys DETACH DELETE x"
+)
+# The orphan prune: modules inside this application's prefix that the run no longer
+# emits, and everything under each. Batched — deleting a large application in one
+# transaction exhausts dbms.memory.transaction.total.max (typescript#116).
+PRUNE_VANISHED_MODULES = (
+    f"MATCH (m:PyModule:{CAN_NODE}) WHERE m.id STARTS WITH $app AND NOT m.id IN $present "
+    f"CALL {{ WITH m MATCH (x:{CAN_NODE}) WHERE x.id = m.id OR x.id STARTS WITH m.id + '/' "
+    "DETACH DELETE x } IN TRANSACTIONS OF 1000 ROWS "
+    "RETURN count(*) AS pruned"
+)
 
 
 @dataclass
@@ -93,35 +114,44 @@ def bolt_writer(rows: GraphRows, cfg: BoltConfig, full_run: bool, eager: bool = 
             for stmt in [*CONSTRAINTS, *INDEXES]:
                 s.run(stmt)
 
-        # The application anchor (a shared node) — used to scope the orphan prune
-        # so it never touches modules belonging to a different :PyApplication.
+        # The application anchor. Every destructive statement below is scoped to
+        # ``can://python/<app>/``; an empty application id is refused up front rather
+        # than becoming ``STARTS WITH ''`` (every node in the database).
         app_name = next(
             (n.value for n in rows.nodes if n.labels and n.labels[0] == "PyApplication"),
             None,
         )
+        app_prefix = application_prefix(app_name)
 
-        # Partition nodes by owning module; shared nodes have no _module.
+        # Partition nodes by owning module (an in-memory field, never emitted, #173);
+        # shared nodes have none.
         by_module: Dict[str, List[NodeRow]] = {}
         shared: List[NodeRow] = []
         module_of: Dict[str, str] = {}  # node value → owning module
         for n in rows.nodes:
-            m = n.props.get("_module")
-            if isinstance(m, str):
-                by_module.setdefault(m, []).append(n)
-                module_of[n.value] = m
+            if n.module is not None:
+                by_module.setdefault(n.module, []).append(n)
+                module_of[n.value] = n.module
             else:
                 shared.append(n)
 
-        # 2. diff content_hash.
+        # 2. diff content_hash, keyed by module id inside this application's prefix.
+        # Keyed by file key it was application-blind: a second application whose
+        # module shares the path and the hash looked "unchanged" and was never written.
         db_hash: Dict[str, Optional[str]] = {}
         with session() as s:
-            res = s.run("MATCH (m:PyModule) RETURN m.file_key AS k, m.content_hash AS h")
+            res = s.run(
+                f"MATCH (m:PyModule:{CAN_NODE}) WHERE m.id STARTS WITH $app "
+                "RETURN m.id AS k, m.content_hash AS h",
+                app=app_prefix,
+            )
             for rec in res:
                 db_hash[rec["k"]] = rec["h"]
         changed = set()
         for m, nodes in by_module.items():
-            row_hash = _hash_of(nodes, m)
-            if m not in db_hash or row_hash is None or row_hash != db_hash.get(m):
+            mid = _module_id_of(nodes)
+            row_hash = _hash_of(nodes)
+            if mid not in db_hash or row_hash is None or row_hash != db_hash.get(mid):
                 changed.add(m)
         logger.info(
             f"neo4j(bolt): {len(by_module)} modules ({len(changed)} changed), "
@@ -139,23 +169,19 @@ def bolt_writer(rows: GraphRows, cfg: BoltConfig, full_run: bool, eager: bool = 
             if not eager:
                 _upsert_nodes(session, neo4j, nodes)
                 continue
+            # The module id comes from the module's own row, never by splitting a
+            # declaration's id: a file key may itself contain '/'.
+            module_id = _module_id_of(nodes)
+            if module_id is None or not module_id.startswith(app_prefix):
+                raise ValueError(
+                    f"neo4j: module {m!r} has no can:// id under {app_prefix!r}; "
+                    "refusing to purge"
+                )
             with session() as s:
-                def _purge(tx, module=m, node_keys=keys):
-                    # Anchored on python-owned labels: `_module` is also set by the java
-                    # and typescript analyzers, so an unlabelled match would delete a
-                    # sibling's nodes wherever a file key collides (#171).
-                    tx.run(
-                        f"MATCH (x:{MODULE_OWNED_PATTERN}) WHERE x._module = $m "
-                        "MATCH (x)-[r]->() DELETE r",
-                        m=module,
-                    )
-                    tx.run(
-                        f"MATCH (x:{MODULE_OWNED_PATTERN}) WHERE x._module = $m "
-                        "AND NOT coalesce(x.signature, x.id, x.file_key) IN $keys "
-                        "DETACH DELETE x",
-                        m=module,
-                        keys=node_keys,
-                    )
+                def _purge(tx, mid=module_id, node_keys=keys):
+                    params = {"mid": mid, "pre": descendant_prefix(mid)}
+                    tx.run(PURGE_MODULE_EDGES, **params)
+                    tx.run(PURGE_VANISHED_NODES, keys=node_keys, **params)
 
                 s.execute_write(_purge)
             _upsert_nodes(session, neo4j, nodes)
@@ -169,19 +195,13 @@ def bolt_writer(rows: GraphRows, cfg: BoltConfig, full_run: bool, eager: bool = 
         _upsert_edges(session, neo4j, edges)
 
         # 6. orphan prune — only safe on a full run (a targeted run can't tell deleted from untargeted).
-        # Scope to THIS application's anchor so a full run for application B never
-        # deletes application A's modules from a shared database.
-        if full_run and eager and app_name is not None:
-            present = list(by_module.keys())
+        # Scoped to ``can://python/<app>/`` so a full run for application B never deletes
+        # application A's modules from a shared database — even when both are python and
+        # share a module path.
+        if full_run and eager:
+            present = [mid for mid in (_module_id_of(ns) for ns in by_module.values()) if mid]
             with session() as s:
-                res = s.run(
-                    "MATCH (:PyApplication {name: $app})-[:PY_HAS_MODULE]->(m:PyModule) "
-                    "WHERE NOT m.file_key IN $present "
-                    f"OPTIONAL MATCH (m)-{DESCENDANTS}->(x) DETACH DELETE x, m "
-                    "RETURN count(m) AS pruned",
-                    app=app_name,
-                    present=present,
-                )
+                res = s.run(PRUNE_VANISHED_MODULES, app=app_prefix, present=present)
                 pruned = res.single()
                 pruned_count = pruned["pruned"] if pruned else 0
                 logger.info(f"neo4j(bolt): pruned {pruned_count} vanished module(s)")
@@ -263,12 +283,19 @@ def _upsert_edges(session, neo4j, edges: List[EdgeRow]) -> None:
 # ----------------------------------------------------------------------------------------------
 
 
-def _hash_of(nodes: List[NodeRow], file_key: str) -> Optional[str]:
-    for n in nodes:
-        if n.labels[0] == "PyModule" and n.value == file_key:
-            h = n.props.get("content_hash")
-            return h if isinstance(h, str) else None
-    return None
+def _module_row(nodes: List[NodeRow]) -> Optional[NodeRow]:
+    return next((n for n in nodes if n.labels[0] == "PyModule"), None)
+
+
+def _module_id_of(nodes: List[NodeRow]) -> Optional[str]:
+    row = _module_row(nodes)
+    return row.value if row is not None else None
+
+
+def _hash_of(nodes: List[NodeRow]) -> Optional[str]:
+    row = _module_row(nodes)
+    h = row.props.get("content_hash") if row is not None else None
+    return h if isinstance(h, str) else None
 
 
 def _to_params(props, neo4j) -> dict:

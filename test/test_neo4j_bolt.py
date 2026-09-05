@@ -127,7 +127,10 @@ def test_full_push_materializes_the_whole_graph_and_schema(driver, cfg):
 def test_full_run_does_not_prune_another_applications_modules(driver, cfg):
     """Regression for #45: a full-run push for one application must not prune the
     modules of a *different* application sharing the database."""
-    app_a, sig_to_id_a = make_sample_app()
+    app_a, _ = make_sample_app()
+    # Re-stamp under the pushed name: the writer refuses a module whose can:// id
+    # is not under the application it is asked to purge for (#173).
+    sig_to_id_a = assign_ids(app_a, "app-a")
     bolt_writer(project(app_a, "app-a", sig_to_id_a), cfg, full_run=True, eager=True)
     before = _num(driver, "MATCH (:PyApplication {name:'app-a'})-[:PY_HAS_MODULE]->(m) RETURN count(m)")
     assert before > 0
@@ -162,14 +165,16 @@ def test_a_full_run_prunes_a_module_whose_source_vanished(driver, cfg):
     rows = project(app, "sample-app", sig_to_id)
     bolt_writer(rows, cfg, full_run=True, eager=True)
 
-    # The victim's module-scoped nodes are gone.
-    assert _num(driver, "MATCH (n {_module:$m}) RETURN count(n)", m=victim) == 0
+    # The victim's subtree is gone: nothing under its can:// prefix remains.
+    victim_id = app0.symbol_table[victim].id
+    assert _num(driver, "MATCH (n:PyCanNode) WHERE n.id = $mid OR n.id STARTS WITH $pre RETURN count(n)",
+                mid=victim_id, pre=victim_id + "/") == 0
 
-    # The surviving module-scoped graph matches the reduced projection. (Shared
-    # :PyExternal/:PyPackage/:PyDecorator nodes are MERGE-only and never pruned, so we
-    # compare only _module-tagged nodes.)
-    module_scoped = sum(1 for n in rows.nodes if "_module" in n.props)
-    assert _num(driver, "MATCH (n) WHERE n._module IS NOT NULL RETURN count(n)") == module_scoped
+    # The surviving module-owned graph matches the reduced projection. (:PyExternal /
+    # :PyPackage / :PyDecorator are MERGE-only and never pruned, so compare only rows
+    # that have an owning module.)
+    module_scoped = sum(1 for n in rows.nodes if n.module is not None)
+    assert _num(driver, "MATCH (n:PyCanNode) WHERE NOT n.id CONTAINS '/@external/' RETURN count(n)") == module_scoped
 
 
 def test_a_push_never_touches_a_sibling_analyzers_nodes(driver, cfg):
@@ -198,16 +203,56 @@ def test_a_lazy_push_deletes_nothing(driver, cfg):
     app0, sig_to_id0 = make_sample_app()
     rows0 = project(app0, "sample-app", sig_to_id0)
     bolt_writer(rows0, cfg, full_run=True)
-    before = _num(driver, "MATCH (n) WHERE n._module IS NOT NULL RETURN count(n)")
+    before = _num(driver, "MATCH (n:PyCanNode) RETURN count(n)")
 
     app, sig_to_id = make_sample_app()
     victim = sorted(app.symbol_table.keys())[0]
+    victim_pre = app.symbol_table[victim].id + "/"
     del app.symbol_table[victim]
     bolt_writer(project(app, "sample-app", sig_to_id), cfg, full_run=True)
 
-    assert _num(driver, "MATCH (n) WHERE n._module IS NOT NULL RETURN count(n)") == before
-    assert _num(driver, "MATCH (n) WHERE n._module = $m RETURN count(n)", m=victim) > 0
+    assert _num(driver, "MATCH (n:PyCanNode) RETURN count(n)") == before
+    assert _num(driver, "MATCH (n:PyCanNode) WHERE n.id STARTS WITH $pre RETURN count(n)", pre=victim_pre) > 0
 
     # ...and --eager still reconciles it.
     bolt_writer(project(app, "sample-app", sig_to_id), cfg, full_run=True, eager=True)
-    assert _num(driver, "MATCH (n) WHERE n._module = $m RETURN count(n)", m=victim) == 0
+    assert _num(driver, "MATCH (n:PyCanNode) WHERE n.id STARTS WITH $pre RETURN count(n)", pre=victim_pre) == 0
+
+
+def test_eager_push_of_a_second_python_app_with_a_colliding_module_path_leaves_the_first_intact(driver, cfg):
+    """#173: two python applications sharing a module path carry identical labels, so only
+    the id prefix separates them. Both the per-module purge and the orphan prune must
+    stay inside `can://python/<app>/`."""
+    file_key = "appb/main.py"
+    app_a, sig_a = _single_module_app(file_key)
+    app_a_rows = project(app_a, "app-a", assign_ids(app_a, "app-a"))
+    bolt_writer(app_a_rows, cfg, full_run=True, eager=True)
+    a_nodes = _num(driver, "MATCH (n:PyCanNode) WHERE n.id STARTS WITH 'can://python/app-a/' RETURN count(n)")
+    assert a_nodes > 0
+
+    app_b, sig_b = _single_module_app(file_key)
+    bolt_writer(project(app_b, "app-b", sig_b), cfg, full_run=True, eager=True)
+    # ...and again, so app-b's purge runs against a graph that already holds app-b too.
+    bolt_writer(project(app_b, "app-b", sig_b), cfg, full_run=True, eager=True)
+
+    assert _num(driver, "MATCH (n:PyCanNode) WHERE n.id STARTS WITH 'can://python/app-a/' RETURN count(n)") == a_nodes
+    assert _num(driver, "MATCH (:PyApplication {name:'app-a'})-[:PY_HAS_MODULE]->(m) RETURN count(m)") == 1
+    assert _num(driver, "MATCH (:PyApplication {name:'app-b'})-[:PY_HAS_MODULE]->(m) RETURN count(m)") == 1
+
+
+def test_external_nodes_sit_inside_the_application_prefix(driver, cfg):
+    """#179: `:PyExternal` ids carry the application segment, so an external→app call
+    edge is reachable by the same prefix predicate as every other node."""
+    app, sig_to_id = make_sample_app()
+    bolt_writer(project(app, "sample-app", sig_to_id), cfg, full_run=True, eager=True)
+    total = _num(driver, "MATCH (e:PyExternal) RETURN count(e)")
+    assert total >= 1
+    inside = _num(driver, "MATCH (e:PyExternal:PyCanNode) WHERE e.id STARTS WITH 'can://python/sample-app/' RETURN count(e)")
+    assert inside == total
+
+
+def test_eager_push_refuses_an_empty_application_id(driver, cfg):
+    app, sig_to_id = make_sample_app()
+    rows = project(app, "", sig_to_id)
+    with pytest.raises(ValueError):
+        bolt_writer(rows, cfg, full_run=True, eager=True)

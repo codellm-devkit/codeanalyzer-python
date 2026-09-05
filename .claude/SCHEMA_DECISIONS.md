@@ -440,3 +440,37 @@ Spec: `codellm-devkit/.github` → `docs/design/specs/2026-09-05-body-node-id-in
   class attributes/variables (signature-minted Neo4j ids, being redone under
   #173) do not get one. `schema_version` stays `2.0.0`; graph contract
   unchanged.
+
+## 2026-09-05 — Destructive Neo4j statements scope on the `can://` prefix; `_module` retires (issue #173, epic .github#50)
+
+Spec: `codellm-devkit/.github` → `docs/design/specs/2026-09-02-prune-scope-on-can-id-prefix.md`.
+Reference implementation: codeanalyzer-java#220.
+
+- **Scope is identity, not a property.** Every delete — the per-module purge,
+  the full-run orphan prune, the snapshot wipe — matches `x.id = <id> OR x.id
+  STARTS WITH <id> + '/'`. The id already carries language, application and
+  file, so a prefix match is containment and separates two python applications
+  sharing a module path, which no label anchor can (identical labels). The
+  separator is mandatory (`rows.descendant_prefix`); an empty application id is
+  refused (`rows.application_prefix`) rather than becoming `STARTS WITH ''`.
+- **`_module` leaves the graph, not the writer.** `RowBuilder.node` lifts it off
+  the props into `NodeRow.module`, so no projector call site changed and the
+  incremental diff still groups by module. The module id for the purge comes
+  from the module's own row — never by splitting a declaration's id, because a
+  file key may itself contain `/`.
+- **`PyCanNode` is an index anchor only.** Neo4j property indexes are
+  label-scoped; without a label the prefix predicate scans the store. `STARTS
+  WITH` seeks a range index, `CONTAINS`/`ENDS WITH` do not. Per-language
+  marker (not a shared `CanNode`) so three analyzers do not contend on one
+  index and a wrong prefix still costs one language at most. Add a shared
+  label alongside only when a polyglot consumer asks for it.
+- **Attribute and variable ids are `can://`.** `<class-id>/<name>` and
+  `<owner-id>/<name>@<line>`. The signature-minted ids they replace had no
+  application segment and MERGEd across applications; they also fell outside
+  every prefix, so the purge would have stopped reaching them. Module-level
+  variables hang under `<module-id>/` so the module's own prefix reaches them.
+- **No bare-signature ids remain.** `_call_endpoint`'s last-resort ghost now
+  mints `<app>/@external/<module>/<name>` (the `_home_external_symbols` shape),
+  so java's "legacy ids cannot be prefix-scoped" case has no python analogue.
+- Graph contract `2.0.0 → 3.0.0` (a property removed). `analysis.json` is
+  untouched; `_module` never appeared there.
