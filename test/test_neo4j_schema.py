@@ -127,8 +127,11 @@ def test_call_edge_to_imported_module_name_is_not_dropped():
     sig_to_id = assign_ids(app, "app")
     rows = project(app, "app", sig_to_id)
 
+    # #173: an unhomed target lands on an @external ghost under the application
+    # prefix (never a bare-signature id), the same node `_import_ghost` builds.
+    ghost = "can://python/app/@external/os"
     calls_to_os = [
-        e for e in rows.edges if e.type == "PY_CALLS" and e.to_ref.value == "os"
+        e for e in rows.edges if e.type == "PY_CALLS" and e.to_ref.value == ghost
     ]
     assert (
         len(calls_to_os) == 1
@@ -136,7 +139,7 @@ def test_call_edge_to_imported_module_name_is_not_dropped():
 
     # 'os' is materialized as a :PyExternal symbol (the call target) ...
     assert any(
-        n.value == "os" and "PyExternal" in n.labels for n in rows.nodes
+        n.value == ghost and "PyExternal" in n.labels for n in rows.nodes
     ), ":PyExternal ghost for the call target 'os' is missing"
     # ... distinct from the :PyPackage 'os' created by the import.
     assert any(

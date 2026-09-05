@@ -29,6 +29,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `from odoo import http` plus `@http.route` matches `odoo.http.route` with
   odoo not importable in the analysis environment, which is every `--no-venv`
   run.
+- `:PyCanNode` marker label on every node keyed by a `can://python/` id, with a
+  range index on `id`. It is the anchor the prefix predicates seek on; scope
+  comes from the prefix, not the label. `:PyExternal` nodes carry it too, so
+  external→application `PY_CALLS` edges sit inside the application scope
+  (#179).
+
+### Changed
+
+- **BREAKING (graph contract 3.0.0):** every destructive Neo4j statement is
+  scoped on the `can://` id prefix, and the internal `_module` property retires
+  from every node, from the catalog and from its six per-label indexes (#173,
+  epic codellm-devkit/.github#50). The per-module purge matches the module by
+  id and its subtree by `id STARTS WITH <module-id> + '/'`; the full-run orphan
+  prune and the snapshot wipe match `can://python/<app>/`. Two python
+  applications sharing a module path no longer delete each other's nodes; an
+  empty application id is refused instead of matching the whole store.
+  Migration: a consumer that filtered on `x._module` filters on
+  `x.id STARTS WITH 'can://python/<app>/<file>/'` instead.
+- **BREAKING:** `:PyAttribute` and `:PyVariable` ids are minted from the owner's
+  `can://` id — `<class-id>/<name>` and `<owner-id>/<name>@<line>` — instead of
+  from its signature. The old ids (`service.Service.name`) carried no
+  application segment, so two applications MERGEd onto one node.
+- A call target nobody homed now lands on an `@external` ghost under the
+  application prefix (`can://python/<app>/@external/<module>/<name>`), never
+  on a bare-signature id, so every id-keyed node is a `can://` node.
 
 ### Fixed
 
@@ -44,6 +69,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   all, so it read `{}` on every run; it now counts, per written spelling, the
   decorators and base classes that neither Jedi nor the import table could
   name.
+- The Bolt writer's `content_hash` diff compared the module row's `can://` id
+  against a file key and never matched, so every module counted as changed on
+  every push. It now reads the module row directly, and keys the database side
+  by module id under the application prefix: keyed by file key it was
+  application-blind, so a second application whose module shared the path and
+  the hash looked "unchanged" and was never written.
+
 
 ## [1.4.0] - 2026-09-02
 

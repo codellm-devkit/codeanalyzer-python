@@ -27,7 +27,8 @@ Modelling decisions (mirror of the TypeScript backend):
   - call-graph endpoints absent from the symbol table become ``:PyExternal`` ghost
     nodes, so RPC / third-party / framework edges are preserved (matching the
     analyzer's own ghost-node behaviour).
-  - every project-owned node carries an internal ``_module`` provenance prop, so
+  - every project-owned node names its owning module (``_module`` in the props it
+    hands RowBuilder, lifted to ``NodeRow.module`` and never emitted, #173), so
     the incremental writer can delete exactly what a re-analyzed module emitted.
 """
 from __future__ import annotations
@@ -98,16 +99,17 @@ def project(app: PyApplication, app_name: str, sig_to_id: dict,
                              application_id(app_name))
 
     # The aggregated :PY_CALLS twin.
+    app_can_id = application_id(app_name)
     for e in app.call_graph:
-        src = _call_endpoint(b, e.src, externals, sig_to_id)
-        tgt = _call_endpoint(b, e.dst, externals, sig_to_id)
+        src = _call_endpoint(b, e.src, externals, sig_to_id, app_can_id)
+        tgt = _call_endpoint(b, e.dst, externals, sig_to_id, app_can_id)
         b.edge(
             "PY_CALLS", src, tgt, _call_edge_props(e.weight, list(e.prov or []))
         )
 
     # Level-3 CPG overlay: each callable's v2 body/cfg/cdg/ddg. Idempotent under
     # MERGE — a no-op when no callable carries L3 fields (levels 1/2).
-    _project_program_graphs(b, app, externals, sig_to_id)
+    _project_program_graphs(b, app, externals, sig_to_id, app_can_id)
 
     # Neutral artifact/dependency subgraph (Task 6). L1 data — always present,
     # full-depth-always regardless of -a.
@@ -117,7 +119,7 @@ def project(app: PyApplication, app_name: str, sig_to_id: dict,
     # _project_program_graphs above) into the config-key subgraph
     # (ConfigKey from _project_artifacts above), plus first-class unresolved
     # reads.
-    _project_config_uses(b, app, app_ref, externals, sig_to_id)
+    _project_config_uses(b, app, app_ref, externals, sig_to_id, app_can_id)
 
     return b.finish()
 
@@ -144,7 +146,7 @@ def _body_ref(callable_id: str, local_key: str) -> NodeRef:
 
 
 def _project_program_graphs(
-    b: RowBuilder, app: PyApplication, externals: dict, sig_to_id: dict
+    b: RowBuilder, app: PyApplication, externals: dict, sig_to_id: dict, app_can_id: str,
 ) -> None:
     """Level-3 CPG overlay, projected off each callable's v2 ``body``/``cfg``/
     ``cdg``/``ddg`` (populated by ``emit_l3_body`` at ``-a 3``; empty otherwise).
@@ -213,7 +215,7 @@ def _project_program_graphs(
                     b.edge(
                         "PY_RESOLVES_TO",
                         ref,
-                        _call_endpoint(b, node.callee, externals, sig_to_id),
+                        _call_endpoint(b, node.callee, externals, sig_to_id, app_can_id),
                     )
             for e in c.cfg or []:
                 # kind-discriminated: a conditional's true/false pair between one
@@ -403,6 +405,7 @@ def _project_artifacts(b: RowBuilder, app: PyApplication, app_name: str, app_ref
 
 def _project_config_uses(
     b: RowBuilder, app: PyApplication, app_ref: NodeRef, externals: dict, sig_to_id: dict,
+    app_can_id: str,
 ) -> None:
     """config_use (#162): PY_USES_CONFIG (`app.config_uses`) and
     PY_READS_CONFIG_UNRESOLVED (`app.config_reads_unresolved`).
@@ -432,7 +435,7 @@ def _project_config_uses(
             prune({"prov": list(e.prov) if e.prov else None}),
         )
     for r in app.config_reads_unresolved:
-        ghost_ref = _call_endpoint(b, r.callee, externals, sig_to_id)
+        ghost_ref = _call_endpoint(b, r.callee, externals, sig_to_id, app_can_id)
         b.edge(
             "PY_READS_CONFIG_UNRESOLVED",
             app_ref,
@@ -489,15 +492,22 @@ def _base_ref_resolver(
         can_id = sig_to_id.get(sig)
         if can_id is not None:
             return _sym(can_id)
-        module, name = sig.rsplit(".", 1) if "." in sig else (None, sig)
-        ext_id = f"{app_can_id}/@external/{module}/{name}" if module else f"{app_can_id}/@external/{name}"
-        return b.node(["PySymbol", "PyExternal"], "id", ext_id, prune({"name": name, "module": module}))
+        return _external_ghost(b, app_can_id, sig)
 
     return base_ref
 
 
+def _external_ghost(b: RowBuilder, app_can_id: str, signature: str) -> NodeRef:
+    """A :PyExternal ghost for a dotted signature nobody homed, with the id shape
+    ``_home_external_symbols`` uses — ``<app>/@external/<module>/<name>`` — so it
+    sits inside the application prefix (#173) and MERGEs with a homed twin."""
+    module, name = signature.rsplit(".", 1) if "." in signature else (None, signature)
+    ext_id = f"{app_can_id}/@external/{module}/{name}" if module else f"{app_can_id}/@external/{name}"
+    return b.node(["PySymbol", "PyExternal"], "id", ext_id, prune({"name": name, "module": module}))
+
+
 def _call_endpoint(
-    b: RowBuilder, signature: str, externals: dict, sig_to_id: dict
+    b: RowBuilder, signature: str, externals: dict, sig_to_id: dict, app_can_id: str,
 ) -> NodeRef:
     """A call-graph endpoint: a declared callable already emitted (keyed by its
     canonical ``can://`` id, resolved through ``sig_to_id``), or an external symbol
@@ -527,13 +537,7 @@ def _call_endpoint(
             ext.id or signature,
             prune({"name": ext.name, "module": ext.module}),
         )
-    name = signature.rsplit(".", 1)[-1] if "." in signature else signature
-    return b.node(
-        ["PySymbol", "PyExternal"],
-        "id",
-        signature,
-        prune({"name": name}),
-    )
+    return _external_ghost(b, app_can_id, signature)
 
 
 # ----------------------------------------------------------------------------------------------
@@ -553,7 +557,7 @@ def _project_module_body(
         _project_class(b, file_key, mod_ref, "PY_DECLARES", cl, externals, sig_to_id,
                        mod.source, base_ref)
     for v in mod.variables or []:
-        _project_variable(b, file_key, mod_ref, file_key, v)
+        _project_variable(b, file_key, mod_ref, v)
     _project_imports(b, mod_ref, mod, module_id_by_key)
 
 
@@ -637,7 +641,7 @@ def _project_class(
         _project_callable(b, file_key, ref, "PY_HAS_METHOD", m, externals, sig_to_id,
                           source, base_ref)
     for a in (cl.attributes or {}).values():
-        _project_attribute(b, file_key, ref, cl.signature, a)
+        _project_attribute(b, file_key, ref, a)
     for ic in (cl.types or {}).values():
         _project_class(b, file_key, ref, "PY_DECLARES", ic, externals, sig_to_id, source,
                        base_ref)
@@ -659,7 +663,7 @@ def _project_callable(
         _project_decorator(b, ref, d)
 
     for v in c.local_variables or []:
-        _project_variable(b, file_key, ref, c.signature, v)
+        _project_variable(b, file_key, ref, v)
     for ic in (c.callables or {}).values():
         _project_callable(b, file_key, ref, "PY_DECLARES", ic, externals, sig_to_id,
                           source, base_ref)
@@ -669,9 +673,12 @@ def _project_callable(
 
 
 def _project_attribute(
-    b: RowBuilder, file_key: str, owner: NodeRef, owner_sig: str, a: PyClassAttribute
+    b: RowBuilder, file_key: str, owner: NodeRef, a: PyClassAttribute
 ) -> None:
-    attr_id = f"{owner_sig}.{a.name}"
+    # ``<class can:// id>/<name>`` (#173): minted from the owner's id so it carries
+    # the application segment. The signature-minted ``service.Service.name`` it
+    # replaced was identical across applications, so two apps MERGEd onto one node.
+    attr_id = f"{owner.value}/{a.name}"
     ref = b.node(["PyAttribute"], "id", attr_id, _attribute_props(a, attr_id, file_key))
     b.edge("PY_HAS_ATTRIBUTE", owner, ref)
 
@@ -680,10 +687,12 @@ def _project_variable(
     b: RowBuilder,
     file_key: str,
     owner: NodeRef,
-    owner_id: str,
     v: PyVariableDeclaration,
 ) -> None:
-    var_id = f"{owner_id}#{v.name}@{v.start_line}"
+    # ``<owner can:// id>/<name>@<line>`` (#173) — the owner is the module or the
+    # callable, so a module-level variable sits under ``<module-id>/`` like every
+    # other declaration and the module's prefix purge reaches it.
+    var_id = f"{owner.value}/{v.name}@{v.start_line}"
     ref = b.node(["PyVariable"], "id", var_id, _variable_props(v, var_id, file_key))
     b.edge("PY_DECLARES_VAR", owner, ref)
 

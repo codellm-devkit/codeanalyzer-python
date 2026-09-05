@@ -5,15 +5,15 @@
 | label | merge key | properties |
 | --- | --- | --- |
 | `PyApplication` | `name` | analyzer_name, analyzer_version, name, repo_dirty, repo_uri, schema_version, source_revision, entrypoint_frameworks, entrypoint_report_json |
-| `PyModule` | `id` | _module, content_hash, file_key, file_size, id, last_modified, module_name |
-| `PyClass` | `id` | _module, base_classes, code, decorators, docstring, end_line, entrypoint_frameworks, id, is_entrypoint, name, signature, start_line |
-| `PyCallable` | `id` | _module, accessed_symbols_json, code, code_start_line, cyclomatic_complexity, decorators, docstring, end_line, entrypoint_frameworks, id, is_entrypoint, modifiers, name, parameters_json, path, return_type |
+| `PyModule` | `id` | content_hash, file_key, file_size, id, last_modified, module_name |
+| `PyClass` | `id` | base_classes, code, decorators, docstring, end_line, entrypoint_frameworks, id, is_entrypoint, name, signature, start_line |
+| `PyCallable` | `id` | accessed_symbols_json, code, code_start_line, cyclomatic_complexity, decorators, docstring, end_line, entrypoint_frameworks, id, is_entrypoint, modifiers, name, parameters_json, path, return_type |
 | `PyExternal` | `id` | id, module, name — ghosts; member-level (`…/@external/<module>/<name>`) or module-level (`…/@external/<module>`) |
 | `PyPackage` | `name` | name (Python package dirs, not PyPI packages) |
 | `PyDecorator` | `name` | name, qualified_name |
-| `PyAttribute` | `id` | _module, docstring, end_line, id, initializer, name, start_line, type |
-| `PyVariable` | `id` | _module, end_line, id, initializer, name, scope, start_line, type |
-| `PyBodyNode` | `id` (GLOBAL ordinal) | _module, arguments_json, call_node, end_line, id, is_constructor_call, kind, method_name, receiver_expr, receiver_type, return_type, start_line, var |
+| `PyAttribute` | `id` | docstring, end_line, id, initializer, name, start_line, type |
+| `PyVariable` | `id` | end_line, id, initializer, name, scope, start_line, type |
+| `PyBodyNode` | `id` (GLOBAL ordinal) | arguments_json, call_node, end_line, id, is_constructor_call, kind, method_name, receiver_expr, receiver_type, return_type, start_line, var |
 | `Artifact` | `id` (`can://artifact/…`) | extraction, format, id, path, roles, sha256, size_bytes, source — **language-neutral, no Py prefix by design**; every non-`.py` file is inventoried (never-drop), binaries with empty source. `source` is the WHOLE file or `""` (binary, or `--no-artifact-text`) — never a prefix, so it needs no companion flag to be trusted |
 | `Package` | `id` (purl `pkg:pypi/<name>`, `<name>` PEP 503 normalized: lowercase, `[-_.]+` → `-`, so always `pkg:pypi/pyyaml`, never `pkg:pypi/PyYAML`) | ecosystem, id, name — language-neutral |
 
@@ -25,6 +25,13 @@ In `analysis.json` the same value is `body[<local>].id` on every body node, and
 slice starting at the `class`/`def` token. For a nested declaration the first line therefore
 carries no indentation while continuation lines keep theirs; strip `span.start[1]` columns from
 those lines to dedent.
+
+Every node keyed by a `can://python/` id also carries the marker label `PyCanNode`, indexed on
+`id`. Scope a query to one application or one module with a prefix, never with a label list:
+`MATCH (x:PyCanNode) WHERE x.id STARTS WITH 'can://python/<app>/'` (append `<file>/` for one
+module). `PyAttribute` ids are `<class-id>/<name>`; `PyVariable` ids are
+`<owner-id>/<name>@<line>` with the owner a module or a callable. `:PyExternal` ids are
+`can://python/<app>/@external/<module>/<name>`, inside the application prefix.
 
 `PyBodyNode.kind`: `entry`, `exit`, `statement`, `branch`, `loop`, `return`,
 `raise`, `handler`, `call`, `formal_in`, `formal_out`, `actual_in`, `actual_out`.

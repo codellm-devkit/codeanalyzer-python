@@ -28,9 +28,11 @@ from __future__ import annotations
 from typing import Dict, List
 
 from codeanalyzer.neo4j.rows import (
+    CAN_NODE,
     EdgeRow,
     GraphRows,
     NodeRow,
+    application_prefix,
     chunk,
     cypher_map,
     cypher_value,
@@ -66,13 +68,17 @@ def render_cypher(rows: GraphRows, app_name: str) -> str:
 
 
 def _wipe(app_name: str) -> str:
+    """Everything under ``can://python/<app>/`` plus the application anchor (#173).
+    Scoped by id prefix, so it is one language and one application by construction —
+    a second python app sharing a module path, a sibling analyzer's graph, and the
+    cross-language :Artifact / :Package nodes are all outside it."""
+    prefix = cypher_value(application_prefix(app_name))
     name = cypher_value(app_name)
     return "\n".join(
         [
-            f"MATCH (a:PyApplication {{name: {name}}})",
-            "OPTIONAL MATCH (a)-[:PY_HAS_MODULE]->(m:PyModule)",
-            "OPTIONAL MATCH (m)-[:PY_DECLARES|PY_HAS_METHOD|PY_HAS_ATTRIBUTE|PY_DECLARES_VAR|PY_HAS_CALLSITE*1..]->(x)",
-            "DETACH DELETE x, m, a;",
+            f"MATCH (x:{CAN_NODE}) WHERE x.id STARTS WITH {prefix}",
+            "CALL { WITH x DETACH DELETE x } IN TRANSACTIONS OF 1000 ROWS;",
+            f"MATCH (a:PyApplication {{name: {name}}}) DETACH DELETE a;",
         ]
     )
 

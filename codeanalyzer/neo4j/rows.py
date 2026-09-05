@@ -50,6 +50,35 @@ class NodeRow:
     key_prop: str
     value: str
     props: Props
+    # The owning module's file key, for the incremental writer's per-module diff.
+    # In memory only (#173): it used to be emitted as ``_module`` and every
+    # destructive statement matched on it, which is application-blind. Scope now
+    # comes from the ``can://`` id prefix; this field only groups rows.
+    module: Optional[str] = None
+
+
+# The marker label on every node keyed by a ``can://python/`` id (#173). It is an
+# INDEX ANCHOR, nothing more: Neo4j property indexes are label-scoped, so the
+# prefix predicate ``id STARTS WITH $p`` needs a label to seek on. Safety comes
+# from the prefix, which carries language, application and module.
+CAN_NODE = "PyCanNode"
+_PY_CAN_PREFIX = "can://python/"
+
+
+def descendant_prefix(can_id: str) -> str:
+    """The prefix that matches a node's descendants and nothing else. The separator
+    is the point: ``can://python/app/src/foo.py`` is also a prefix of
+    ``can://python/app/src/foo.pyX``, so descendants match on ``id + '/'`` and the
+    node itself by equality."""
+    return f"{can_id}/"
+
+
+def application_prefix(app_name: Optional[str]) -> str:
+    """``can://python/<app>/`` — the scope of every destructive statement. Refuses an
+    empty application: ``STARTS WITH ''`` would match every node in the database."""
+    if not app_name:
+        raise ValueError("neo4j: refusing a destructive statement without an application id")
+    return descendant_prefix(f"{_PY_CAN_PREFIX}{app_name}")
 
 
 @dataclass
@@ -100,14 +129,20 @@ class RowBuilder:
         (last write wins) and unions labels — the in-memory analog of
         ``MERGE (n:Label {key}) SET n += props``."""
         node_id = f"{labels[0]} {value}"
+        props = dict(props)
+        module = props.pop("_module", None)  # lifted off the graph (#173)
+        if key_prop == "id" and value.startswith(_PY_CAN_PREFIX) and CAN_NODE not in labels:
+            labels = [*labels, CAN_NODE]
         existing = self._nodes.get(node_id)
         if existing is not None:
             existing.props.update(props)
+            if module is not None:
+                existing.module = module
             for label in labels:
                 if label not in existing.labels:
                     existing.labels.append(label)
         else:
-            self._nodes[node_id] = NodeRow(list(labels), key_prop, value, dict(props))
+            self._nodes[node_id] = NodeRow(list(labels), key_prop, value, props, module)
         self._keys.add((labels[0], value))
         return NodeRef(labels[0], key_prop, value)
 
