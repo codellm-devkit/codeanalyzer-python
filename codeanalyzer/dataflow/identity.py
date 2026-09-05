@@ -16,6 +16,8 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Dict, Iterable, Optional, Tuple
 
+from codeanalyzer.schema.ids import global_ordinal
+
 
 class IdentityMap:
     def __init__(self, callable_id: str, id_to_local: Dict[int, str]):
@@ -83,9 +85,7 @@ class IdentityMap:
 
     def global_id(self, node_id: int) -> str:
         """Fully addressable id: ``"<callable-id>@<local>"``."""
-        loc = self._map[node_id]
-        # local statements are "line:col"; bookends already carry the leading "@"
-        return f"{self._callable_id}{loc}" if loc.startswith("@") else f"{self._callable_id}@{loc}"
+        return global_ordinal(self._callable_id, self._map[node_id])
 
     def node_ids(self) -> Iterable[int]:
         return self._map.keys()

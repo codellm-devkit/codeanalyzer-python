@@ -23,6 +23,23 @@ def ordinal_id(callable_id: str, tag: str) -> str:
     return f"{callable_id}@{tag}"
 
 
+def global_ordinal(callable_id: str, local_key: str) -> str:
+    """The GLOBAL ordinal id of a body node from its LOCAL key: synthetic keys
+    (`@entry`, `@formal_in:0`) already carry the `@`; positional keys (`15:2`,
+    `15:2/actual_in:0`) get one. This is the :PyBodyNode merge key and, since
+    #176, `BodyNode.id` — the one implementation both projections share."""
+    return f"{callable_id}{local_key}" if local_key.startswith("@") else f"{callable_id}@{local_key}"
+
+
+def stamp_body_ids(callable) -> None:
+    """Stamp `id` on every body node and parameter of one callable (#176).
+    Idempotent; each body emitter calls it after writing its nodes."""
+    for key, node in callable.body.items():
+        node.id = global_ordinal(callable.id, key)
+    for i, p in enumerate(callable.parameters or []):
+        p.id = ordinal_id(callable.id, f"formal_in:{i}")
+
+
 def artifact_id(app_name: str, rel_path: str) -> str:
     """Language-neutral artifact id: ``can://artifact/<app>/<rel-path>``.
 

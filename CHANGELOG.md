@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `BodyNode.id` and `PyCallableParameter.id` in `analysis.json` (#176). A body
+  node's `id` is the global ordinal `<callable-id>@<local>` the Neo4j projection
+  already merges `:PyBodyNode` on, present at every level the node exists; a
+  parameter's `id` is `<callable-id>@formal_in:<i>` for its position `i`, the
+  level-4 `formal_in` vertex that carries it (a forward reference below `-a 4`).
+  Both projections now name a body node the same way, so consumers stop
+  recomposing the `can://` grammar themselves. Additive; `schema_version`
+  and the graph contract are unchanged.
+
 ## [1.4.0] - 2026-09-02
 
 ### Removed

@@ -412,3 +412,31 @@ side) and `docs/design/specs/2026-08-28-config-use-edge-design.md` (the
   `points-to` edge whose def is not a `Name = <str Constant>` shape and so
   unfilterably kills the closure at `-a 4` while `-a 3` (ssa-only by
   construction) resolves cleanly.
+
+## 2026-09-05 — `BodyNode.id` and `PyCallableParameter.id` (issue #176, epic .github#56)
+
+Spec: `codellm-devkit/.github` → `docs/design/specs/2026-09-05-body-node-id-in-analysis-json.md`.
+
+- **Body nodes carry the global ordinal in JSON.** `BodyNode.id` is
+  `<callable-id>@<local>` — the value `neo4j/project.py` already merges
+  `:PyBodyNode` on. The `@`-rule lives once, in `schema/ids.py:global_ordinal`
+  (synthetic keys `@entry`/`@formal_in:0` concatenate, positional keys `15:2`/
+  `15:2/actual_in:0` gain a `@`); `IdentityMap.global_id` and the projector's
+  `_global_ordinal` delegate to it, so the two projections cannot drift.
+  Stamped by `ids.stamp_body_ids` at the end of each body emitter
+  (`populate_l1_body`, `emit_l3_body`, `emit_l4`), not threaded through the
+  four construction sites — one pass per level, idempotent under cache reuse.
+- **Parameters name their L4 formal.** `PyCallableParameter.id` is
+  `<callable-id>@formal_in:<i>` by position in `parameters`. Below `-a 4` it is
+  a forward reference (the vertex is not in `body` yet), accepted on the same
+  footing as a `call` node's `callee` naming a callable. The rule holds
+  because `access_paths._param_names` and the symbol table walk parameters in
+  the same order (`posonlyargs, args, vararg, kwonlyargs, kwarg`) and
+  `build_formals` allocates declared params before captures/globals; the L4
+  agreement test pins `body["@formal_in:i"].of == parameters[i].name`.
+- **Spine, not leaf.** Java and typescript mint the same value for Neo4j and
+  the grammar is keystone-defined, so the field is a spine addition tracked
+  per analyzer under epic .github#56. `PyCallsite` (legacy, #120) and
+  class attributes/variables (signature-minted Neo4j ids, being redone under
+  #173) do not get one. `schema_version` stays `2.0.0`; graph contract
+  unchanged.

@@ -251,3 +251,41 @@ def test_projected_code_property_is_the_module_source_span_slice():
     # the sample app has functions, methods, an inner class and a subclass —
     # if we checked fewer than that, the walk itself is broken.
     assert checked >= 6
+
+
+# ----------------------------------------------------------------------------------------------
+# #176: the JSON `body` nodes and `parameters` carry the same id the projection merges on.
+# ----------------------------------------------------------------------------------------------
+
+
+def test_l3_body_node_ids_equal_projected_pybodynode_keys(tmp_path):
+    app, sig_to_id, mod = _build_l3_app(tmp_path)
+    c = next(iter(mod.functions.values()))
+    rows = project(app, "app", sig_to_id)
+    emitted = {
+        n.value for n in rows.nodes
+        if n.labels[0] == "PyBodyNode" and n.value.startswith(c.id + "@")
+    }
+    assert {n.id for n in c.body.values()} == emitted
+    for k, n in c.body.items():
+        assert n.id == _global_ordinal(c.id, k)
+    # a call node's `id` is a body id, its `callee` a callable id — never the same string
+    for n in c.body.values():
+        if n.kind == "call":
+            assert n.id != n.callee
+
+
+def test_l4_param_vertex_ids_and_parameter_ids_agree(tmp_path):
+    app, sig_to_id, id_fn, caller_fn = _build_l4_app(tmp_path)
+    rows = project(app, "app", sig_to_id)
+    keys = {n.value for n in rows.nodes if n.labels[0] == "PyBodyNode"}
+    for fn in (id_fn, caller_fn):
+        for k, n in fn.body.items():
+            assert n.id == _global_ordinal(fn.id, k)
+            assert n.id in keys
+        # parameters[i].id names the formal_in vertex at position i, in list order
+        for i, p in enumerate(fn.parameters):
+            assert p.id == f"{fn.id}@formal_in:{i}"
+            vertex = fn.body[f"@formal_in:{i}"]
+            assert vertex.id == p.id
+            assert vertex.of == p.name

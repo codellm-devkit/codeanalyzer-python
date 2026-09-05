@@ -43,6 +43,7 @@ from codeanalyzer.dataflow.alias import TypeBasedAliasOracle
 from codeanalyzer.dataflow.pdg import build_pdg
 from codeanalyzer.dataflow.sdg import ProgramGraphsIR, assemble_sdg
 from codeanalyzer.dataflow.summaries import CallSite, FunctionInfo, compute_summaries
+from codeanalyzer.schema.ids import stamp_body_ids
 from codeanalyzer.schema.py_schema import PyApplication, PyCallable, PyClass, PyModule
 from codeanalyzer.utils import logger
 
@@ -333,6 +334,7 @@ def emit_l3_body(
                     for e in pdg.edges
                     if e.type == "DDG"
                 ]
+            stamp_body_ids(pycallable)
 
 
 def build_program_graphs(
@@ -538,6 +540,7 @@ def emit_l4(
             pycallable.body[im.local(pn.id)] = BodyNode(
                 kind=pn.kind, of=pn.var, parent=parent
             )
+        stamp_body_ids(pycallable)
 
     # (b/c/d) SDG edges → summary / param_in / param_out; CALL dropped.
     for e in ir.sdg_edges:

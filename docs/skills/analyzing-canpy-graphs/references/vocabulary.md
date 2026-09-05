@@ -17,6 +17,10 @@
 | `Artifact` | `id` (`can://artifact/…`) | extraction, format, id, path, roles, sha256, size_bytes, source — **language-neutral, no Py prefix by design**; every non-`.py` file is inventoried (never-drop), binaries with empty source. `source` is the WHOLE file or `""` (binary, or `--no-artifact-text`) — never a prefix, so it needs no companion flag to be trusted |
 | `Package` | `id` (purl `pkg:pypi/<name>`, `<name>` PEP 503 normalized: lowercase, `[-_.]+` → `-`, so always `pkg:pypi/pyyaml`, never `pkg:pypi/PyYAML`) | ecosystem, id, name — language-neutral |
 
+In `analysis.json` the same value is `body[<local>].id` on every body node, and
+`parameters[i].id` is `<callable-id>@formal_in:<i>` — so a JSON-side node and its
+`:PyBodyNode` join on one string without recomposing the id.
+
 `PyBodyNode.kind`: `entry`, `exit`, `statement`, `branch`, `loop`, `return`,
 `raise`, `handler`, `call`, `formal_in`, `formal_out`, `actual_in`, `actual_out`.
 

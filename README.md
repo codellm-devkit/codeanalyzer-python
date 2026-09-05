@@ -513,7 +513,8 @@ A **callable** (function or method) carries its own CPG, keyed by node id:
   "body": {                                       // node id → node
     "@entry": { "kind": "entry" },
     "6:4":    { "kind": "statement", "span": { … } },
-    "6:8":    { "kind": "call", "span": { … }, "callee": "can://…/helper(x)" },  // callee null until L2
+    "6:8":    { "id": "can://…/main()@6:8", "kind": "call", "span": { … },
+                "callee": "can://…/helper(x)" },                                // callee null until L2
     "@formal_in:0":    { "kind": "formal_in", "of": "a" },              // L4 param vertices
     "6:4/actual_in:0": { "kind": "actual_in", "of": "a", "parent": "6:4" },
     "@exit":  { "kind": "exit" }
