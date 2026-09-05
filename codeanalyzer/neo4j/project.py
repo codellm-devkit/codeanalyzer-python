@@ -47,7 +47,7 @@ from codeanalyzer.schema import (
     PyModule,
     PyVariableDeclaration,
 )
-from codeanalyzer.schema.ids import application_id, purl_pypi
+from codeanalyzer.schema.ids import application_id, global_ordinal, purl_pypi
 from codeanalyzer.schema.py_schema import PyDecorator
 
 
@@ -128,11 +128,7 @@ def _global_ordinal(callable_id: str, local_key: str) -> str:
     This MUST agree with :meth:`IdentityMap.global_id` for the same node, so the
     JSON ``body``/``cfg`` projection and this Neo4j projection land on one node
     identity (two-projection agreement)."""
-    return (
-        f"{callable_id}{local_key}"
-        if local_key.startswith("@")
-        else f"{callable_id}@{local_key}"
-    )
+    return global_ordinal(callable_id, local_key)
 
 
 def _body_ref(callable_id: str, local_key: str) -> NodeRef:
