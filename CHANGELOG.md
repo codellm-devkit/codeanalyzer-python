@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A framework-independent **heuristic tier** for entrypoints. A decorator whose
+  written spelling reads as an HTTP hook (`route`, `*.route`, `*.*.route`, or
+  `*.get`/`.post`/`.put`/`.patch`/`.delete`/`.head`/`.options`/`.websocket`,
+  one or two segments deep) is recorded with `framework: "heuristic"`,
+  `confidence: "heuristic"` and rule id `heuristic.http-route` /
+  `heuristic.http-verb`, whether or not any framework was detected or any
+  framework rule knows the library. Route and methods come from the arguments
+  the same way as framework rules; a node a framework rule already matched gets
+  no heuristic record. Shipped as a `heuristics:` block in `rules.yml`,
+  disableable by id like every other rule. `*` now keeps its meaning inside a
+  `{a,b}` alternation.
 - `BodyNode.id` and `PyCallableParameter.id` in `analysis.json` (#176). A body
   node's `id` is the global ordinal `<callable-id>@<local>` the Neo4j projection
   already merges `:PyBodyNode` on, present at every level the node exists; a
@@ -37,6 +48,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The odoo entrypoint rule's default methods are `[GET, POST]`, not `[GET]`:
+  Odoo serves both on a route unless `methods=` narrows it, and json-typed
+  routes are POST.
 - **BREAKING (graph contract 3.0.0):** every destructive Neo4j statement is
   scoped on the `can://` id prefix, and the internal `_module` property retires
   from every node, from the catalog and from its six per-label indexes (#173,
@@ -65,6 +79,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `can://` id; anything else lands on an `@external` ghost with the same id
   shape call targets use. Relative imports resolve through `resolved_module`
   for entrypoint base matching too.
+- `PyEntrypointReport.unresolved` no longer counts what is nameable: Python
+  builtins (`object`, `Exception`, `str`), subscripted generics
+  (`typing.Generic[T]`, `dict[K, V]`) and any spelling whose head is an
+  imported name or a declared class. On Odoo it listed 24 `Exception` and 20
+  `object` bases as unresolved.
 - `PyEntrypointReport.unresolved` is now written (#177). It had no writer at
   all, so it read `{}` on every run; it now counts, per written spelling, the
   decorators and base classes that neither Jedi nor the import table could

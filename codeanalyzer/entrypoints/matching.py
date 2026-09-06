@@ -64,7 +64,8 @@ def _compile(pattern: str) -> str:
         if ch == "{":
             j = pattern.index("}", i)
             alts = pattern[i + 1 : j].split(",")
-            out.append("(?:" + "|".join(re.escape(a.strip()) for a in alts) + ")")
+            # `*` keeps its meaning inside an alternative, so `{route,*.route}` works.
+            out.append("(?:" + "|".join(_compile(a.strip()) for a in alts) + ")")
             i = j + 1
         elif ch == "*":
             out.append(r"[^.\s]*")
@@ -119,15 +120,21 @@ def entrypoints_from_decorators(
     framework: str,
     rules: Iterable["DecoratorRule"],
     resolve: Optional[Callable[[str], str]] = None,
+    on_written: bool = False,
 ) -> List[PyEntrypoint]:
     """``resolve`` is the module's import-table resolver (#177): when Jedi could
     not resolve a decorator (the framework is not importable in the analysis
     environment -- every ``--no-venv`` run), ``@http.route`` still resolves to
     ``odoo.http.route`` from ``from odoo import http`` alone, the same way base
-    classes already do. Jedi's definition path wins when it exists."""
+    classes already do. Jedi's definition path wins when it exists.
+
+    ``on_written`` is the heuristic tier: rules match the decorator's spelling
+    as WRITTEN (``http.route``, ``router.post``), no resolution at all, so a
+    shape that reads as an HTTP entrypoint is recorded whether or not any
+    framework rule knows the library behind it."""
     out: List[PyEntrypoint] = []
     for dec in getattr(node, "decorators", []) or []:
-        qualified = decorator_qualified_name(dec, resolve)
+        qualified = dec.name if on_written else decorator_qualified_name(dec, resolve)
         for rule in rules:
             if not match_pattern(rule.match, qualified):
                 continue

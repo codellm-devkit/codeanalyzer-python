@@ -61,3 +61,27 @@ def test_unresolved_decorator_never_matches():
     fn.decorators.append(PyDecorator(name="app.route", qualified_name=None))
     rule = DecoratorRule(id="flask.route", match="flask.Flask.route")
     assert entrypoints_from_decorators(fn, "flask", [rule]) == []
+
+
+def test_wildcard_inside_alternation_expands():
+    from codeanalyzer.entrypoints.matching import match_pattern
+    assert match_pattern("{route,*.route,*.*.route}", "route")
+    assert match_pattern("{route,*.route,*.*.route}", "http.route")
+    assert match_pattern("{route,*.route,*.*.route}", "odoo.http.route")
+    assert not match_pattern("{route,*.route,*.*.route}", "a.b.c.route")
+
+
+def test_heuristic_rules_match_the_written_spelling_without_a_framework():
+    from codeanalyzer.entrypoints.matching import entrypoints_from_decorators
+    from codeanalyzer.entrypoints.rules import load_rules
+    from codeanalyzer.schema.py_schema import PyCallable, PyDecorator
+    fn = PyCallable(name="f", path="a.py", signature="a.f")
+    fn.decorators.append(PyDecorator(name="http.route", qualified_name=None,
+                                     positional_arguments=['"/x"']))
+    fn.decorators.append(PyDecorator(name="router.post", qualified_name=None,
+                                     positional_arguments=['"/y"']))
+    eps = entrypoints_from_decorators(fn, "heuristic", load_rules().heuristics, None, on_written=True)
+    assert [(e.rule, e.route, e.http_methods, e.confidence, e.evidence) for e in eps] == [
+        ("heuristic.http-route", "/x", [], "heuristic", "http.route"),
+        ("heuristic.http-verb", "/y", ["POST"], "heuristic", "router.post"),
+    ]
