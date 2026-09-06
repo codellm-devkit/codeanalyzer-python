@@ -28,7 +28,7 @@ def test_module_is_lifted_off_emitted_props_and_can_nodes_carry_the_marker():
     assert MARKER_LABELS == [CAN_NODE]
     assert any(f"FOR (n:{CAN_NODE}) ON (n.id)" in stmt for stmt in INDEXES)
     assert not any("_module" in stmt for stmt in INDEXES)
-    assert SCHEMA_VERSION == "3.0.0"
+    assert SCHEMA_VERSION == "2.0.0"  # the v2 line is unreleased; no consumer pins the graph contract
 
 
 def test_attribute_and_variable_ids_hang_under_their_owner_can_id():

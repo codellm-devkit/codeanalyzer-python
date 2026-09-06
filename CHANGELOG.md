@@ -51,7 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The odoo entrypoint rule's default methods are `[GET, POST]`, not `[GET]`:
   Odoo serves both on a route unless `methods=` narrows it, and json-typed
   routes are POST.
-- **BREAKING (graph contract 3.0.0):** every destructive Neo4j statement is
+- **BREAKING (graph contract, version stays 2.0.0 — the v2 line has no released consumer):** every destructive Neo4j statement is
   scoped on the `can://` id prefix, and the internal `_module` property retires
   from every node, from the catalog and from its six per-label indexes (#173,
   epic codellm-devkit/.github#50). The per-module purge matches the module by

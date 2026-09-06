@@ -472,5 +472,7 @@ Reference implementation: codeanalyzer-java#220.
 - **No bare-signature ids remain.** `_call_endpoint`'s last-resort ghost now
   mints `<app>/@external/<module>/<name>` (the `_home_external_symbols` shape),
   so java's "legacy ids cannot be prefix-scoped" case has no python analogue.
-- Graph contract `2.0.0 → 3.0.0` (a property removed). `analysis.json` is
+- Graph contract stays `2.0.0` although a property was removed: the v2 line
+  has no released consumer pinning the graph contract, so the number does not
+  move until one exists (ruled 2026-09-05). `analysis.json` is
   untouched; `_module` never appeared there.
