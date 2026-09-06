@@ -48,6 +48,7 @@ from codeanalyzer.schema import (
     PyModule,
     PyVariableDeclaration,
 )
+from codeanalyzer.schema import model_dump
 from codeanalyzer.schema.ids import application_id, global_ordinal, purl_pypi
 from codeanalyzer.schema.py_schema import PyDecorator
 
@@ -76,7 +77,7 @@ def project(app: PyApplication, app_name: str, sig_to_id: dict,
                 # pass found nothing". Always present, even when empty.
                 "entrypoint_frameworks": list(app.entrypoint_report.frameworks_detected),
                 "entrypoint_report_json": json.dumps(
-                    app.entrypoint_report.model_dump(), sort_keys=True
+                    model_dump(app.entrypoint_report, mode="json"), sort_keys=True
                 ),
             }
         ),
