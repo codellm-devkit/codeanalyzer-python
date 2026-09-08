@@ -100,8 +100,11 @@ jobs:
         continue-on-error: true
         run: uv run pytest
 
+      # MUST be `outcome`, not `conclusion`: continue-on-error rewrites `conclusion` to
+      # `success`, so a `conclusion == 'failure'` guard never fires and a red test run
+      # publishes anyway. codeanalyzer-typescript 1.5.1 shipped that way.
       - name: Delete tag on failure
-        if: steps.test.conclusion == 'failure'
+        if: steps.test.outcome == 'failure'
         run: |
           echo "Tests failed. Deleting tag ${GITHUB_REF#refs/tags/}..."
           git config --global user.name "github-actions[bot]"
