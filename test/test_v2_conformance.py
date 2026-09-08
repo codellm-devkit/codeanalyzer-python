@@ -16,10 +16,10 @@ def test_ids_assigned_down_the_tree():
     mod = PyModule(file_path="pkg/m.py", module_name="m", types={"m.Hasher": cl})
     app = PyApplication(symbol_table={"pkg/m.py": mod})
     assign_ids(app, "myapp")
-    assert app.id == "can://python/myapp"
-    assert mod.id == "can://python/myapp/pkg/m.py"
-    assert cl.id == "can://python/myapp/pkg/m.py/Hasher"
-    assert fn.id == "can://python/myapp/pkg/m.py/Hasher/hash()"
+    assert app.id == "can://myapp"
+    assert mod.id == "can://myapp/python/pkg/m.py"
+    assert cl.id == "can://myapp/python/pkg/m.py/Hasher"
+    assert fn.id == "can://myapp/python/pkg/m.py/Hasher/hash()"
 
 
 def test_cli_emits_v2_envelope(tmp_path: Path):

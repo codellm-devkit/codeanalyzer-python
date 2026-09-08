@@ -1,3 +1,31 @@
+import re
+
+# ``can://<app>`` — the application root: scheme plus exactly one segment. The
+# language sits INSIDE it, so an old-shape ``can://python/<app>`` id fails here
+# (it has two segments) rather than flowing through as if nothing had moved.
+_APP_ID = re.compile(r"^can://[^/]+$")
+
+
+def _assert_id_grammar(app: dict) -> None:
+    """Every durable id is ``can://<app>/...`` — code under ``python/``, and the
+    two language-neutral reserved segments ``@external`` and ``artifact`` directly
+    under the app. Asserted on the payload, not on the minting functions, so a
+    hand-built or cached id cannot slip past."""
+    app_id = app["id"]
+    assert _APP_ID.match(app_id), f"application id must be can://<app>, got {app_id!r}"
+    code = f"{app_id}/python/"
+    for key, mod in app["symbol_table"].items():
+        assert mod["id"].startswith(code), f"module {key} id {mod['id']!r} is not under {code!r}"
+    for _, c in _iter_callables(app):
+        assert c["id"].startswith(code), f"callable id {c['id']!r} is not under {code!r}"
+    ext = f"{app_id}/@external/"
+    for ext_id in (app.get("external_symbols") or {}):
+        assert ext_id.startswith(ext), f"external id {ext_id!r} is not under {ext!r}"
+    art = f"{app_id}/artifact/"
+    for path, a in (app.get("artifacts") or {}).items():
+        assert a["id"].startswith(art), f"artifact {path} id {a['id']!r} is not under {art!r}"
+
+
 def _assert_no_nulls(obj, path="$"):
     if obj is None:
         raise AssertionError(f"unexpected null at {path} (exclude_none must drop it)")
@@ -35,6 +63,7 @@ def assert_conformant(payload: dict, max_level: int) -> None:
     _assert_no_nulls(payload)
     assert payload["schema_version"] == "2.0.0"
     app = payload["application"]
+    _assert_id_grammar(app)
     for key, mod in app["symbol_table"].items():
         assert not key.startswith("/") and ".." not in key, f"non-relative key {key}"
         assert isinstance(mod.get("source"), str) and mod["source"], f"module {key} missing source"

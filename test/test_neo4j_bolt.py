@@ -170,11 +170,19 @@ def test_a_full_run_prunes_a_module_whose_source_vanished(driver, cfg):
     assert _num(driver, "MATCH (n:PyCanNode) WHERE n.id = $mid OR n.id STARTS WITH $pre RETURN count(n)",
                 mid=victim_id, pre=victim_id + "/") == 0
 
-    # The surviving module-owned graph matches the reduced projection. (:PyExternal /
-    # :PyPackage / :PyDecorator are MERGE-only and never pruned, so compare only rows
-    # that have an owning module.)
-    module_scoped = sum(1 for n in rows.nodes if n.module is not None)
-    assert _num(driver, "MATCH (n:PyCanNode) WHERE NOT n.id CONTAINS '/@external/' RETURN count(n)") == module_scoped
+    # The surviving graph matches the reduced projection exactly. :PyExternal is
+    # MERGE-only and never pruned, so it is excluded; :PyPackage / :PyDecorator are
+    # name-keyed and are not :PyCanNode at all. Since the app moved outermost, the
+    # application root and the app's :Artifact / :ConfigKey rows ARE can nodes —
+    # module-less, MERGE-only, and correctly still here — so the expectation is
+    # every can node the reduced projection emits, not just the module-owned ones.
+    expected = sum(
+        1 for n in rows.nodes
+        if n.value.startswith("can://") and "/@external/" not in n.value
+    )
+    assert _num(driver, "MATCH (n:PyCanNode) WHERE NOT n.id CONTAINS '/@external/' RETURN count(n)") == expected
+    assert sum(1 for n in rows.nodes if n.module is not None) == 0, \
+        "the sample app has one module; dropping it must leave no module-owned rows"
 
 
 def test_a_push_never_touches_a_sibling_analyzers_nodes(driver, cfg):
@@ -222,12 +230,12 @@ def test_a_lazy_push_deletes_nothing(driver, cfg):
 def test_eager_push_of_a_second_python_app_with_a_colliding_module_path_leaves_the_first_intact(driver, cfg):
     """#173: two python applications sharing a module path carry identical labels, so only
     the id prefix separates them. Both the per-module purge and the orphan prune must
-    stay inside `can://python/<app>/`."""
+    stay inside `can://<app>/`."""
     file_key = "appb/main.py"
     app_a, sig_a = _single_module_app(file_key)
     app_a_rows = project(app_a, "app-a", assign_ids(app_a, "app-a"))
     bolt_writer(app_a_rows, cfg, full_run=True, eager=True)
-    a_nodes = _num(driver, "MATCH (n:PyCanNode) WHERE n.id STARTS WITH 'can://python/app-a/' RETURN count(n)")
+    a_nodes = _num(driver, "MATCH (n:PyCanNode) WHERE n.id STARTS WITH 'can://app-a/python/' RETURN count(n)")
     assert a_nodes > 0
 
     app_b, sig_b = _single_module_app(file_key)
@@ -235,19 +243,21 @@ def test_eager_push_of_a_second_python_app_with_a_colliding_module_path_leaves_t
     # ...and again, so app-b's purge runs against a graph that already holds app-b too.
     bolt_writer(project(app_b, "app-b", sig_b), cfg, full_run=True, eager=True)
 
-    assert _num(driver, "MATCH (n:PyCanNode) WHERE n.id STARTS WITH 'can://python/app-a/' RETURN count(n)") == a_nodes
+    assert _num(driver, "MATCH (n:PyCanNode) WHERE n.id STARTS WITH 'can://app-a/python/' RETURN count(n)") == a_nodes
     assert _num(driver, "MATCH (:PyApplication {name:'app-a'})-[:PY_HAS_MODULE]->(m) RETURN count(m)") == 1
     assert _num(driver, "MATCH (:PyApplication {name:'app-b'})-[:PY_HAS_MODULE]->(m) RETURN count(m)") == 1
 
 
 def test_external_nodes_sit_inside_the_application_prefix(driver, cfg):
     """#179: `:PyExternal` ids carry the application segment, so an external→app call
-    edge is reachable by the same prefix predicate as every other node."""
+    edge is reachable by the same prefix predicate as every other node. The
+    `@external` home is language-NEUTRAL, so the prefix is the application's, with
+    no language segment — the same shape as `artifact`."""
     app, sig_to_id = make_sample_app()
     bolt_writer(project(app, "sample-app", sig_to_id), cfg, full_run=True, eager=True)
     total = _num(driver, "MATCH (e:PyExternal) RETURN count(e)")
     assert total >= 1
-    inside = _num(driver, "MATCH (e:PyExternal:PyCanNode) WHERE e.id STARTS WITH 'can://python/sample-app/' RETURN count(e)")
+    inside = _num(driver, "MATCH (e:PyExternal:PyCanNode) WHERE e.id STARTS WITH 'can://sample-app/@external/' RETURN count(e)")
     assert inside == total
 
 

@@ -49,7 +49,7 @@ from codeanalyzer.schema import (
     PyVariableDeclaration,
 )
 from codeanalyzer.schema import model_dump
-from codeanalyzer.schema.ids import application_id, global_ordinal, purl_pypi
+from codeanalyzer.schema.ids import application_id, external_id, global_ordinal, purl_pypi
 from codeanalyzer.schema.py_schema import PyDecorator
 
 
@@ -60,12 +60,17 @@ def project(app: PyApplication, app_name: str, sig_to_id: dict,
     passes it through so the :PyApplication node carries it as props."""
     b = RowBuilder()
 
+    # Keyed on the ``can://<app>`` id, not on ``--app-name``: two applications
+    # analyzed under the same free-text name used to MERGE onto one root, with
+    # no diagnostic. ``name`` survives as a display property.
     app_ref = b.node(
         ["PyApplication"],
-        "name",
-        app_name,
+        "id",
+        application_id(app_name),
         prune(
             {
+                "id": application_id(app_name),
+                "name": app_name,
                 "schema_version": SCHEMA_VERSION,
                 "analyzer_name": analyzer.name if analyzer else None,
                 "analyzer_version": analyzer.version if analyzer else None,
@@ -290,7 +295,7 @@ def _import_ghost(b: RowBuilder, app_can_id: str, name: str) -> NodeRef:
     projected too, both rows collapse onto this one node — correctly, since
     they name the same real-world symbol."""
     return b.node(
-        ["PySymbol", "PyExternal"], "id", f"{app_can_id}/@external/{name}", {"name": name}
+        ["PySymbol", "PyExternal"], "id", external_id(app_can_id, None, name), {"name": name}
     )
 
 
@@ -503,7 +508,7 @@ def _external_ghost(b: RowBuilder, app_can_id: str, signature: str) -> NodeRef:
     ``_home_external_symbols`` uses — ``<app>/@external/<module>/<name>`` — so it
     sits inside the application prefix (#173) and MERGEs with a homed twin."""
     module, name = signature.rsplit(".", 1) if "." in signature else (None, signature)
-    ext_id = f"{app_can_id}/@external/{module}/{name}" if module else f"{app_can_id}/@external/{name}"
+    ext_id = external_id(app_can_id, module, name)
     return b.node(["PySymbol", "PyExternal"], "id", ext_id, prune({"name": name, "module": module}))
 
 

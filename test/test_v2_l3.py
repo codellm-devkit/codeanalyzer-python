@@ -26,15 +26,15 @@ class _PDG:
 def test_local_and_global_ids_for_entry_exit_and_statements():
     nodes = [_Node(0, 1, 0, "entry"), _Node(1, 2, 4, "statement"), _Node(2, 3, 4, "exit")]
     pdg = _PDG(_CFG(nodes, entry_id=0, exit_id=2))
-    im = IdentityMap.for_function("can://python/app/m.py/f()", pdg)
+    im = IdentityMap.for_function("can://app/python/m.py/f()", pdg)
     # LOCAL ids: intra-callable keys (match l1_body's "line:col" format).
     assert im.local(0) == "@entry"
     assert im.local(1) == "2:4"
     assert im.local(2) == "@exit"
     # GLOBAL id: fully addressable form for Neo4j / cross-callable use.
-    assert im.global_id(0) == "can://python/app/m.py/f()@entry"   # entry (single @, no double)
-    assert im.global_id(1) == "can://python/app/m.py/f()@2:4"     # statement
-    assert im.global_id(2) == "can://python/app/m.py/f()@exit"    # exit
+    assert im.global_id(0) == "can://app/python/m.py/f()@entry"   # entry (single @, no double)
+    assert im.global_id(1) == "can://app/python/m.py/f()@2:4"     # statement
+    assert im.global_id(2) == "can://app/python/m.py/f()@exit"    # exit
     assert set(im.node_ids()) == {0, 1, 2}
 
 

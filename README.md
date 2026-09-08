@@ -484,11 +484,11 @@ just populate more of the same tree:
   "k_limit": 3,                   // access-path depth bound (--graph-field-depth); L3+ only
   "analyzer": { "name": "codeanalyzer-python", "version": "1.0.0" },
   "application": {
-    "id": "can://python/<app>",
+    "id": "can://<app>",
     "kind": "application",
     "symbol_table": {             // relative POSIX path → module
       "pkg/mod.py": {
-        "id": "can://python/<app>/pkg/mod.py",
+        "id": "can://<app>/python/pkg/mod.py",
         "kind": "module",
         "source": "…full file text, stored once per module…",
         "types":     { "<Class>": { "id": "…", "kind": "class", "callables": { /* methods */ } } },
@@ -498,8 +498,8 @@ just populate more of the same tree:
     "call_graph": [ { "src": "can://…/main(a)", "dst": "can://…/helper(x)",
                       "weight": 1, "prov": ["defuse", "jedi"] } ],
     "external_symbols": {         // imported/builtin call targets, keyed by id
-      "can://python/<app>/@external/os/getcwd":
-        { "id": "can://python/<app>/@external/os/getcwd", "kind": "external",
+      "can://<app>/@external/os/getcwd":
+        { "id": "can://<app>/@external/os/getcwd", "kind": "external",
           "name": "getcwd", "module": "os" }
     },
     "param_in":  [ { "src": "can://…/main(a)@6:4/actual_in:0", "dst": "can://…/helper(x)@formal_in:0" } ],
@@ -535,7 +535,7 @@ The application envelope also contains three substrate sections:
 - **`artifacts`** — discovered non-code files (manifests, configs, Docker files, CI workflows,
   packaging files, scripts, docs, and legal files) with extraction status (`none`, `partial`, or
   `full`; default `none`), keyed by relative path; each artifact carries the
-  `can://artifact/<app>/<path>` id namespace. Config files carry extracted `config_keys`
+  `can://<app>/artifact/<path>` id namespace. Config files carry extracted `config_keys`
   (keys, values, namespaces, and references) and `DEFINES_CONFIG` Neo4j edges.
 - **`dependencies`** — declared packages with kind (`runtime`/`dev`/`optional`/`build`), spec,
   locked version, and provenance (`prov`): where each binding came from (manifest file, lock file,
@@ -546,7 +546,7 @@ The application envelope also contains three substrate sections:
 Notable properties:
 
 - **Durable `can://` ids** identify every node at callable granularity and above
-  (`can://python/<app>/<file>/<callable-sig>`); nodes below a callable use ordinal ids
+  (`can://<app>/python/<file>/<callable-sig>`); nodes below a callable use ordinal ids
   (`@entry`, `@exit`, `line:col`, `@formal_in:N`, `line:col/actual_in:N`).
 - **`source` lives once per module**; every node's text is the `module.source[span.bytes]` slice.
 - **Cross-function edges** — `call_graph`, `param_in`, `param_out`, `config_uses` — live at **application** scope;
@@ -668,7 +668,7 @@ RETURN src.id, d.var, d.prov
 
 // interprocedural flow through a parameter (level 4)
 MATCH (a:PyBodyNode)-[:PY_PARAM_IN]->(f:PyBodyNode)
-WHERE f.id STARTS WITH "can://python/myapp/src/api.py"
+WHERE f.id STARTS WITH "can://myapp/python/src/api.py"
 RETURN a.id, f.id
 ```
 
@@ -697,3 +697,25 @@ RETURN f.id, l.version
 ## License
 
 Apache 2.0 — see [LICENSE](./LICENSE).
+
+## Polyglot applications: all languages, or none
+
+A `--emit neo4j` push is **destructive**. It sweeps everything under `can://<app>/` that this
+analyzer marked, then rewrites what it found. Since the id grammar puts the application outermost,
+every analyzer over the same `<app>` shares that prefix — so a push reclaims stale rows belonging to
+*this* analyzer and, in the shared namespaces, sweeps rows a sibling wrote.
+
+For most of what is shared that is harmless: the artifact walk is a whole-repo inventory, so an
+`:Artifact` a sibling wrote is re-created by this push (with a thinner view of it — `roles` falls
+back to `unknown` and its config keys and dependency edges are gone until that sibling pushes
+again). `@external` ghosts are not inventoried that way: they are per-language, so a sibling's
+ghosts are swept and not restored.
+
+**So for an application analysed in more than one language, run every analyzer or none.** Running
+one in isolation leaves the others' derived rows missing until they run again. Running them
+together is always correct, in any order, because the last push restores everything the batch
+swept.
+
+Nothing here corrupts a graph: what is lost is derived and regenerates. But a partial run leaves a
+partial answer, and nothing in the data says so.
+

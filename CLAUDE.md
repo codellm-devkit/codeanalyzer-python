@@ -79,7 +79,7 @@ set parses every analyzer's output. (The historical `classes`/`methods`/
 
 **No dangling edge endpoints.** Every `call_graph` endpoint joins the id space:
 declared callables by their `can://` tree id, imported/builtin targets by a
-`can://python/<app>/@external/<module>/<name>` id homed in
+`can://<app>/@external/<module>/<name>` id homed in
 `application.external_symbols` (keyed by that id, `kind:"external"`).
 
 ### Identity
@@ -88,9 +88,14 @@ declared callables by their `can://` tree id, imported/builtin targets by a
   above a callable:
 
   ```
-  can://python/<app>/<file>/<type-path>/<callable-sig>
+  can://<app>/python/<file>/<type-path>/<callable-sig>
   ```
 
+  `<app>` is the **outermost** segment and the language sits inside it, so
+  `can://<app>` is a prefix of every id this analyzer mints for that
+  application — code, `@external` homes, and artifacts
+  (`can://<app>/artifact/<path>`) alike. Never read the language off the first
+  segment: an application named `python` yields `can://python/python/…`.
   `<app>` = `--app-name` (default: input dir name); `<file>` = the symbol-table
   key (relative POSIX path, and it *contains* `/`); `<type-path>` = nested class
   names joined by `/`; `<callable-sig>` = `name(argnames)`. Ids are **opaque

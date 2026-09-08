@@ -41,8 +41,8 @@ Nodes are MERGE-upserted, never blindly deleted, so a declaration another
 MERGE-only.
 
 **Every destructive statement is scoped on the ``can://`` id prefix** (#173). The id is a
-path — ``can://python/<app>/<file>/...`` — so ``id = <module-id> OR id STARTS WITH
-<module-id> + '/'`` is containment, and it is one language, one application and one
+path — ``can://<app>/python/<file>/...`` — so ``id = <module-id> OR id STARTS WITH
+<module-id> + '/'`` is containment, and it is one application, one language and one
 module at once. That is what neither a label anchor nor the retired ``_module`` property
 could give: two python applications sharing ``src/foo.py`` carry identical labels and an
 identical file key, and only the id tells them apart. ``:PyCanNode`` anchors the predicate
@@ -115,10 +115,16 @@ def bolt_writer(rows: GraphRows, cfg: BoltConfig, full_run: bool, eager: bool = 
                 s.run(stmt)
 
         # The application anchor. Every destructive statement below is scoped to
-        # ``can://python/<app>/``; an empty application id is refused up front rather
-        # than becoming ``STARTS WITH ''`` (every node in the database).
+        # ``can://<app>/``; an empty application is refused up front rather than
+        # becoming ``STARTS WITH ''`` (every node in the database). The root row is
+        # keyed on its ``can://`` id now, so the name comes off its props — reading
+        # ``n.value`` here would build ``can://can://<app>/``.
         app_name = next(
-            (n.value for n in rows.nodes if n.labels and n.labels[0] == "PyApplication"),
+            (
+                n.props.get("name")
+                for n in rows.nodes
+                if n.labels and n.labels[0] == "PyApplication"
+            ),
             None,
         )
         app_prefix = application_prefix(app_name)
@@ -195,7 +201,7 @@ def bolt_writer(rows: GraphRows, cfg: BoltConfig, full_run: bool, eager: bool = 
         _upsert_edges(session, neo4j, edges)
 
         # 6. orphan prune — only safe on a full run (a targeted run can't tell deleted from untargeted).
-        # Scoped to ``can://python/<app>/`` so a full run for application B never deletes
+        # Scoped to ``can://<app>/`` so a full run for application B never deletes
         # application A's modules from a shared database — even when both are python and
         # share a module path.
         if full_run and eager:

@@ -57,7 +57,7 @@ class RelType:
 
 
 # Labels layered onto a node in addition to its primary/specific label.
-# ``PyCanNode`` (#173) rides every node keyed by a ``can://python/`` id — an index
+# ``PyCanNode`` (#173) rides every node keyed by a ``can://`` id — an index
 # anchor for the prefix-scoped destructive statements (see ``rows.CAN_NODE``).
 MARKER_LABELS: List[str] = ["PyCanNode"]
 
@@ -68,8 +68,9 @@ NODE_LABELS: List[NodeLabel] = [
     NodeLabel(
         "PyApplication",
         "PyApplication",
-        "name",
+        "id",
         {
+            "id": "string",
             "name": "string",
             "schema_version": "string",
             "analyzer_name": "string",

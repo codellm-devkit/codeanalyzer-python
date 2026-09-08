@@ -28,9 +28,9 @@ def test_class_is_flagged_and_only_defined_methods_dispatch():
 
 def test_methods_point_back_at_the_routed_class_via():
     cls = _cls("get")
-    cls.id = "can://python/app/a.py/V"
+    cls.id = "can://app/python/a.py/V"
     _, method_eps = entrypoints_from_bases(cls, "drf", [RULE], lambda b: b)
-    assert method_eps["get"][0].via == "can://python/app/a.py/V"
+    assert method_eps["get"][0].via == "can://app/python/a.py/V"
 
 
 def test_transitive_base_resolves_one_hop():

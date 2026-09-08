@@ -48,7 +48,7 @@ def _app(tmp_path, tag, mod_source, files, level):
 # callable lives in its own tiny module so span byte-offsets never need to
 # account for another callable's text sharing the same `source` string.
 
-_EXT_ID = "can://python/app/@external/os/getenv"
+_EXT_ID = "can://app/@external/os/getenv"
 _ENV_RULE = Rule(id="os.getenv", module="os", callable="getenv", key_arg=0, namespaces=("env",))
 
 
@@ -85,7 +85,7 @@ def _hand_app(modules: dict, call_graph=(), artifacts=None) -> PyApplication:
 
 
 def _env_artifact(*keys: str) -> dict:
-    art_id = "can://artifact/app/.env"
+    art_id = "can://app/artifact/.env"
     return {".env": PyArtifact(
         id=art_id, path=".env", format="env",
         config_keys=[PyConfigKey(id=f"{art_id}@key/{k}", key=k, namespace="env") for k in keys],

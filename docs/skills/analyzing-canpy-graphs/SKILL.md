@@ -33,7 +33,7 @@ Neo4j is always projected full-depth for the level analyzed.
 - `PyBodyNode.id` is the GLOBAL ordinal `"<callable-id>@<local>"`; locals are
   `"line:col"`, `"@entry"`, `"@exit"`, `"@formal_in:<i>"`, `"@formal_out"`,
   `"<callsite>/actual_in:<i>"`, `"<callsite>/actual_out"`.
-- `Artifact.id` is language-neutral (`can://artifact/<app>/<path>`);
+- `Artifact.id` is language-neutral (`can://<app>/artifact/<path>`);
   `Package.id` is a purl (`pkg:pypi/<name>`) — cross-language merge keys.
 
 ## The standing traps

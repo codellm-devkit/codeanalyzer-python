@@ -8,8 +8,9 @@
     {
       "label": "PyApplication",
       "merge_label": "PyApplication",
-      "key": "name",
+      "key": "id",
       "properties": {
+        "id": "string",
         "name": "string",
         "schema_version": "string",
         "analyzer_name": "string",
@@ -492,7 +493,7 @@
     }
   ],
   "constraints": [
-    "CREATE CONSTRAINT pyapplication_name IF NOT EXISTS FOR (x:PyApplication) REQUIRE x.name IS UNIQUE",
+    "CREATE CONSTRAINT pyapplication_id IF NOT EXISTS FOR (x:PyApplication) REQUIRE x.id IS UNIQUE",
     "CREATE CONSTRAINT pymodule_id IF NOT EXISTS FOR (x:PyModule) REQUIRE x.id IS UNIQUE",
     "CREATE CONSTRAINT pysymbol_id IF NOT EXISTS FOR (x:PySymbol) REQUIRE x.id IS UNIQUE",
     "CREATE CONSTRAINT pypackage_name IF NOT EXISTS FOR (x:PyPackage) REQUIRE x.name IS UNIQUE",

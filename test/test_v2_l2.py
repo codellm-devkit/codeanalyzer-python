@@ -14,12 +14,12 @@ def _app_with_one_call(callee_sig):
 
 def test_declared_callee_resolves_to_can_id():
     app, fn = _app_with_one_call("m.g")
-    backfill_callees(app, {"m.g": "can://python/app/m.py/g()"})
-    assert fn.body["2:4"].callee == "can://python/app/m.py/g()"
+    backfill_callees(app, {"m.g": "can://app/python/m.py/g()"})
+    assert fn.body["2:4"].callee == "can://app/python/m.py/g()"
 
 def test_external_callee_keeps_dotted_signature():
     app, fn = _app_with_one_call("requests.get")
-    backfill_callees(app, {"m.g": "can://python/app/m.py/g()"})  # requests.get not declared
+    backfill_callees(app, {"m.g": "can://app/python/m.py/g()"})  # requests.get not declared
     assert fn.body["2:4"].callee == "requests.get"
 
 def test_unresolved_callsite_leaves_callee_absent():
@@ -30,16 +30,16 @@ def test_unresolved_callsite_leaves_callee_absent():
 def test_call_graph_endpoints_reidentified():
     edge = PyCallEdge(src="m.f", dst="m.g")
     app = PyApplication(symbol_table={}, call_graph=[edge])
-    reidentify_call_graph(app, {"m.f": "can://python/app/m.py/f()",
-                                "m.g": "can://python/app/m.py/g()"})
-    assert app.call_graph[0].src == "can://python/app/m.py/f()"
-    assert app.call_graph[0].dst == "can://python/app/m.py/g()"
+    reidentify_call_graph(app, {"m.f": "can://app/python/m.py/f()",
+                                "m.g": "can://app/python/m.py/g()"})
+    assert app.call_graph[0].src == "can://app/python/m.py/f()"
+    assert app.call_graph[0].dst == "can://app/python/m.py/g()"
 
 def test_call_graph_external_target_unchanged():
     edge = PyCallEdge(src="m.f", dst="requests.get")
     app = PyApplication(symbol_table={}, call_graph=[edge])
-    reidentify_call_graph(app, {"m.f": "can://python/app/m.py/f()"})
-    assert app.call_graph[0].src == "can://python/app/m.py/f()"
+    reidentify_call_graph(app, {"m.f": "can://app/python/m.py/f()"})
+    assert app.call_graph[0].src == "can://app/python/m.py/f()"
     assert app.call_graph[0].dst == "requests.get"
 
 

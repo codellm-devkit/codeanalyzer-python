@@ -19,6 +19,7 @@ from codeanalyzer.schema import (
     model_validate_json,
 )
 from codeanalyzer.schema.assign_ids import assign_ids
+from codeanalyzer.schema.ids import external_id
 from codeanalyzer.schema.l1_body import populate_l1_body
 from codeanalyzer.schema.l2_callees import backfill_callees
 from codeanalyzer.schema.call_graph_ids import reidentify_call_graph
@@ -564,8 +565,7 @@ class Codeanalyzer:
                 if sig in sig_to_id:
                     continue
                 module, name = sig.rsplit(".", 1) if "." in sig else (None, sig)
-                ext_id = f"{app_id}/@external/{module}/{name}" if module else \
-                    f"{app_id}/@external/{name}"
+                ext_id = external_id(app_id, module, name)
                 sig_to_id[sig] = ext_id
                 externals[ext_id] = PyExternalSymbol(
                     id=ext_id, name=name, module=module

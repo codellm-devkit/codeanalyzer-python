@@ -38,6 +38,7 @@ from codeanalyzer.neo4j.rows import (
     cypher_value,
 )
 from codeanalyzer.neo4j.schema import CONSTRAINTS, INDEXES
+from codeanalyzer.schema.ids import application_id
 
 BATCH = 500
 
@@ -68,17 +69,24 @@ def render_cypher(rows: GraphRows, app_name: str) -> str:
 
 
 def _wipe(app_name: str) -> str:
-    """Everything under ``can://python/<app>/`` plus the application anchor (#173).
-    Scoped by id prefix, so it is one language and one application by construction —
-    a second python app sharing a module path, a sibling analyzer's graph, and the
-    cross-language :Artifact / :Package nodes are all outside it."""
+    """The application root by equality plus everything under ``can://<app>/`` (#173).
+    Scoped by id prefix, so it is one application by construction — a second python
+    app sharing a module path, and a sibling analyzer's :Py* graph, are outside it.
+    :Package nodes (``pkg:`` purls) stay outside too.
+
+    Two things moved with the app-outermost grammar. The root is matched by its
+    ``can://<app>`` id rather than by the free-text ``--app-name``, so two apps
+    sharing a name no longer wipe each other's root; and the app's :Artifact /
+    :ConfigKey nodes are now *inside* the prefix, so the snapshot rebuilds them
+    instead of leaving them to accumulate. That is deliberate, and it is the one
+    behavioural widening here: a cross-language edge into a shared :Artifact is
+    dropped by a python snapshot and restored on that analyzer's next push."""
     prefix = cypher_value(application_prefix(app_name))
-    name = cypher_value(app_name)
+    app_id = cypher_value(application_id(app_name))
     return "\n".join(
         [
-            f"MATCH (x:{CAN_NODE}) WHERE x.id STARTS WITH {prefix}",
+            f"MATCH (x:{CAN_NODE}) WHERE x.id = {app_id} OR x.id STARTS WITH {prefix}",
             "CALL { WITH x DETACH DELETE x } IN TRANSACTIONS OF 1000 ROWS;",
-            f"MATCH (a:PyApplication {{name: {name}}}) DETACH DELETE a;",
         ]
     )
 

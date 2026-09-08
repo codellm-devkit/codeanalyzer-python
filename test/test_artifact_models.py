@@ -8,7 +8,7 @@ from codeanalyzer.schema.py_schema import (
 
 def test_artifact_id_is_language_neutral():
     assert artifact_id("myapp", "deploy/docker-compose.yml") == \
-        "can://artifact/myapp/deploy/docker-compose.yml"
+        "can://myapp/artifact/deploy/docker-compose.yml"
 
 
 def test_purl_pypi():
