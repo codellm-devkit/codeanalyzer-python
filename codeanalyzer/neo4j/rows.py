@@ -28,6 +28,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Union
 
+from codeanalyzer.schema.ids import SCHEME, application_id
+
 # A property value: a primitive, or a homogeneous list of primitives.
 Scalar = Union[str, int, float, bool]
 Prop = Union[Scalar, List[str], List[int], List[float], List[bool]]
@@ -57,28 +59,37 @@ class NodeRow:
     module: Optional[str] = None
 
 
-# The marker label on every node keyed by a ``can://python/`` id (#173). It is an
+# The marker label on every node keyed by a ``can://`` id (#173). It is an
 # INDEX ANCHOR, nothing more: Neo4j property indexes are label-scoped, so the
 # prefix predicate ``id STARTS WITH $p`` needs a label to seek on. Safety comes
-# from the prefix, which carries language, application and module.
+# from the prefix, which carries application, language and module.
+#
+# The test is the SCHEME, never a language segment: since the app moved outermost
+# an id no longer begins with the language, and ``can://python/`` now means "the
+# application is called python". Testing that here would have quietly stripped the
+# marker off every graph but one, taking the destructive statements' index — and
+# their reach — with it.
 CAN_NODE = "PyCanNode"
-_PY_CAN_PREFIX = "can://python/"
 
 
 def descendant_prefix(can_id: str) -> str:
     """The prefix that matches a node's descendants and nothing else. The separator
-    is the point: ``can://python/app/src/foo.py`` is also a prefix of
-    ``can://python/app/src/foo.pyX``, so descendants match on ``id + '/'`` and the
+    is the point: ``can://app/python/src/foo.py`` is also a prefix of
+    ``can://app/python/src/foo.pyX``, so descendants match on ``id + '/'`` and the
     node itself by equality."""
     return f"{can_id}/"
 
 
 def application_prefix(app_name: Optional[str]) -> str:
-    """``can://python/<app>/`` — the scope of every destructive statement. Refuses an
-    empty application: ``STARTS WITH ''`` would match every node in the database."""
+    """``can://<app>/`` — the scope of every destructive statement. Refuses an
+    empty application: ``STARTS WITH ''`` would match every node in the database.
+
+    Since the app is the outermost segment this now covers the application's
+    artifacts and config keys too, which the old language-first prefix left
+    outside every scope and so never cleaned up."""
     if not app_name:
         raise ValueError("neo4j: refusing a destructive statement without an application id")
-    return descendant_prefix(f"{_PY_CAN_PREFIX}{app_name}")
+    return descendant_prefix(application_id(app_name))
 
 
 @dataclass
@@ -131,7 +142,7 @@ class RowBuilder:
         node_id = f"{labels[0]} {value}"
         props = dict(props)
         module = props.pop("_module", None)  # lifted off the graph (#173)
-        if key_prop == "id" and value.startswith(_PY_CAN_PREFIX) and CAN_NODE not in labels:
+        if key_prop == "id" and value.startswith(SCHEME) and CAN_NODE not in labels:
             labels = [*labels, CAN_NODE]
         existing = self._nodes.get(node_id)
         if existing is not None:

@@ -481,7 +481,7 @@ class PyExternalSymbol(BaseModel):
     builtin member. An edge-endpoint id home, not a tree node: keyed in
     ``PyApplication.external_symbols`` by its ``can://…/@external/…`` id."""
 
-    id: str = ""  # can://python/<app>/@external/<module>/<name>
+    id: str = ""  # can://<app>/python/@external/<module>/<name>
     kind: str = "external"
     name: str  # the member/short name, e.g. "get" for "requests.get"
     module: Optional[str] = None  # best-effort owning module, e.g. "requests"
@@ -510,7 +510,7 @@ class PyArtifact(BaseModel):
     plain data/binary) -- never dropped from the walk. Captured broadly (node
     + verbatim ``source``); *meaning* is extracted narrowly -- only
     ``dependency-manifest`` roles feed ``dependencies`` today. ``id`` is
-    language-neutral (``can://artifact/<app>/<path>``)."""
+    language-neutral (``can://<app>/artifact/<path>``)."""
 
     id: str = ""
     kind: str = "artifact"
