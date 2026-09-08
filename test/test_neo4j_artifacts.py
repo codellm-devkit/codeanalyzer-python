@@ -26,11 +26,11 @@ def test_rows_projected(tmp_path):
     rows = project(app, "p", assign_ids(app, "p"))
 
     nodes = {(n.labels[0], n.value) for n in rows.nodes}
-    assert ("Artifact", "can://artifact/p/pyproject.toml") in nodes
+    assert ("Artifact", "can://p/artifact/pyproject.toml") in nodes
     assert ("Package", "pkg:pypi/requests") in nodes
     pyproject_node = next(
         n for n in rows.nodes
-        if n.labels[0] == "Artifact" and n.value == "can://artifact/p/pyproject.toml"
+        if n.labels[0] == "Artifact" and n.value == "can://p/artifact/pyproject.toml"
     )
     rel_types = {e.type for e in rows.edges}
     assert {"HAS_ARTIFACT", "DECLARES_DEPENDENCY", "PY_PROVIDES"} <= rel_types
@@ -64,7 +64,7 @@ def test_locks_and_provides_dedup_across_multi_manifest_declarations(tmp_path):
     declares = [e for e in rows.edges if e.type == "DECLARES_DEPENDENCY"]
 
     assert len(locks) == 1, f"expected exactly one LOCKS row, got {len(locks)}"
-    assert locks[0].from_ref.value == "can://artifact/p/poetry.lock"
+    assert locks[0].from_ref.value == "can://p/artifact/poetry.lock"
     assert locks[0].to_ref.value == "pkg:pypi/requests"
 
     assert len(provides) == 1, f"expected exactly one PY_PROVIDES row, got {len(provides)}"

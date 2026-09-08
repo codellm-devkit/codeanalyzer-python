@@ -34,7 +34,7 @@ def test_discovers_known_shapes(tmp_path):
     ]
     assert arts["notes.md"].roles == ["docs"]
     py = arts["pyproject.toml"]
-    assert py.id == "can://artifact/myapp/pyproject.toml"
+    assert py.id == "can://myapp/artifact/pyproject.toml"
     assert py.format == "toml" and "dependency-manifest" in py.roles
     assert arts["Dockerfile"].roles == ["container-image"]
     assert arts["svc/Dockerfile"].roles == ["container-image"]

@@ -227,7 +227,7 @@ def test_eager_push_of_a_second_python_app_with_a_colliding_module_path_leaves_t
     app_a, sig_a = _single_module_app(file_key)
     app_a_rows = project(app_a, "app-a", assign_ids(app_a, "app-a"))
     bolt_writer(app_a_rows, cfg, full_run=True, eager=True)
-    a_nodes = _num(driver, "MATCH (n:PyCanNode) WHERE n.id STARTS WITH 'can://python/app-a/' RETURN count(n)")
+    a_nodes = _num(driver, "MATCH (n:PyCanNode) WHERE n.id STARTS WITH 'can://app-a/python/' RETURN count(n)")
     assert a_nodes > 0
 
     app_b, sig_b = _single_module_app(file_key)
@@ -235,7 +235,7 @@ def test_eager_push_of_a_second_python_app_with_a_colliding_module_path_leaves_t
     # ...and again, so app-b's purge runs against a graph that already holds app-b too.
     bolt_writer(project(app_b, "app-b", sig_b), cfg, full_run=True, eager=True)
 
-    assert _num(driver, "MATCH (n:PyCanNode) WHERE n.id STARTS WITH 'can://python/app-a/' RETURN count(n)") == a_nodes
+    assert _num(driver, "MATCH (n:PyCanNode) WHERE n.id STARTS WITH 'can://app-a/python/' RETURN count(n)") == a_nodes
     assert _num(driver, "MATCH (:PyApplication {name:'app-a'})-[:PY_HAS_MODULE]->(m) RETURN count(m)") == 1
     assert _num(driver, "MATCH (:PyApplication {name:'app-b'})-[:PY_HAS_MODULE]->(m) RETURN count(m)") == 1
 
@@ -247,7 +247,7 @@ def test_external_nodes_sit_inside_the_application_prefix(driver, cfg):
     bolt_writer(project(app, "sample-app", sig_to_id), cfg, full_run=True, eager=True)
     total = _num(driver, "MATCH (e:PyExternal) RETURN count(e)")
     assert total >= 1
-    inside = _num(driver, "MATCH (e:PyExternal:PyCanNode) WHERE e.id STARTS WITH 'can://python/sample-app/' RETURN count(e)")
+    inside = _num(driver, "MATCH (e:PyExternal:PyCanNode) WHERE e.id STARTS WITH 'can://sample-app/python/' RETURN count(e)")
     assert inside == total
 
 

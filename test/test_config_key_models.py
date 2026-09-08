@@ -5,13 +5,13 @@ from codeanalyzer.schema.py_schema import PyApplication, PyArtifact, PyConfigKey
 
 
 def test_config_key_id_shape():
-    assert config_key_id("can://artifact/a/pyproject.toml", "project.name") == \
-        "can://artifact/a/pyproject.toml@key/project.name"
+    assert config_key_id("can://a/artifact/pyproject.toml", "project.name") == \
+        "can://a/artifact/pyproject.toml@key/project.name"
 
 
 def test_config_key_id_numeric_array_segment():
-    assert config_key_id("can://artifact/a/compose.yml", "services.web.ports.0") == \
-        "can://artifact/a/compose.yml@key/services.web.ports.0"
+    assert config_key_id("can://a/artifact/compose.yml", "services.web.ports.0") == \
+        "can://a/artifact/compose.yml@key/services.web.ports.0"
 
 
 def test_models_round_trip():

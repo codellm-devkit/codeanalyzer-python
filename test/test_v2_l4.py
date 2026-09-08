@@ -43,7 +43,7 @@ def test_identity_map_param_vertex_local_and_global_ids():
         ParamNode(id=12, kind="actual_in", var="arg0", call_node=3),
         ParamNode(id=13, kind="actual_out", var="<return>", call_node=3),
     ]
-    cid = "can://python/app/m.py/f(a)"
+    cid = "can://app/python/m.py/f(a)"
     im = IdentityMap.for_function(cid, pdg, param_nodes=params)
 
     # LOCAL ids
@@ -79,7 +79,7 @@ def test_identity_map_param_vertices_multiplicity_gets_idx_suffix():
         ParamNode(id=26, kind="actual_out", var="<return>", call_node=3),
         ParamNode(id=27, kind="actual_out", var="a", call_node=3),
     ]
-    im = IdentityMap.for_function("can://python/app/m.py/f(a,b)", pdg, param_nodes=params)
+    im = IdentityMap.for_function("can://app/python/m.py/f(a,b)", pdg, param_nodes=params)
 
     assert im.local(20) == "@formal_in:0"
     assert im.local(21) == "@formal_in:1"

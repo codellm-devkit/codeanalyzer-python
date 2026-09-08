@@ -12,14 +12,14 @@ def _fields(model_cls):
 def test_envelope_round_trips():
     fn = PyCallable(
         name="f", path="m.py", signature="m.f",
-        id="can://python/app/m.py/f()", kind="function",
+        id="can://app/python/m.py/f()", kind="function",
         span=Span(start=(1, 0), end=(2, 12), bytes=(0, 21)),
         body={"@entry": BodyNode(kind="entry")},
     )
     mod = PyModule(file_path="m.py", module_name="m",
-                   id="can://python/app/m.py", kind="module",
+                   id="can://app/python/m.py", kind="module",
                    source="def f():\n    return 1\n", functions={"f": fn})
-    app = PyApplication(id="can://python/app", kind="application",
+    app = PyApplication(id="can://app", kind="application",
                         symbol_table={"m.py": mod})
     analysis = Analysis(max_level=1, k_limit=3, application=app)
     blob = model_dump_json(analysis)

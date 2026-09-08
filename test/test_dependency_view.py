@@ -32,7 +32,7 @@ def test_records_lock_and_binding(tmp_path):
     by = {d.name: d for d in deps}
     assert by["requests"].prov == ["declared", "lockfile"]
     assert by["requests"].locked_version == "2.32.3"
-    assert by["requests"].declared_in == "can://artifact/app/pyproject.toml"
+    assert by["requests"].declared_in == "can://app/artifact/pyproject.toml"
     # pyyaml's prov gains "heuristic" via the alias-table binding below (same
     # cause as the dropped provides_imports==[] assert); see test_known_alias_binding.
     assert by["pyyaml"].locked_version is None
