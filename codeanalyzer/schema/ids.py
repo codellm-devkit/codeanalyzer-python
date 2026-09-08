@@ -37,12 +37,18 @@ def ordinal_id(callable_id: str, tag: str) -> str:
 
 
 def external_id(app_id: str, module: Optional[str], name: str) -> str:
-    """``can://<app>/python/@external/<module>/<name>`` — the home of a call-graph
+    """``can://<app>/@external/<module>/<name>`` — the home of a call-graph
     endpoint that is not declared in the symbol table (an imported library or
     builtin member). ``module`` is ``None`` for a dot-less signature, which drops
-    the segment. Language-scoped like every code id: two analyzers' notions of
-    ``os.getcwd`` are not the same node."""
-    base = f"{app_id}/{LANG}/@external"
+    the segment.
+
+    Language-NEUTRAL, like ``artifact``: ``@external`` sits in the position the
+    language occupies for code nodes, so sibling analyzers over the same ``<app>``
+    name a library symbol identically and it is one node in a merged graph. The
+    cost is real and was accepted deliberately — two analyzers' notions of
+    ``os.getcwd`` are not necessarily the same thing, and merging them says they
+    are. TypeScript's form; java follows it."""
+    base = f"{app_id}/@external"
     return f"{base}/{module}/{name}" if module else f"{base}/{name}"
 
 

@@ -79,7 +79,7 @@ set parses every analyzer's output. (The historical `classes`/`methods`/
 
 **No dangling edge endpoints.** Every `call_graph` endpoint joins the id space:
 declared callables by their `can://` tree id, imported/builtin targets by a
-`can://<app>/python/@external/<module>/<name>` id homed in
+`can://<app>/@external/<module>/<name>` id homed in
 `application.external_symbols` (keyed by that id, `kind:"external"`).
 
 ### Identity

@@ -498,8 +498,8 @@ just populate more of the same tree:
     "call_graph": [ { "src": "can://…/main(a)", "dst": "can://…/helper(x)",
                       "weight": 1, "prov": ["defuse", "jedi"] } ],
     "external_symbols": {         // imported/builtin call targets, keyed by id
-      "can://<app>/python/@external/os/getcwd":
-        { "id": "can://<app>/python/@external/os/getcwd", "kind": "external",
+      "can://<app>/@external/os/getcwd":
+        { "id": "can://<app>/@external/os/getcwd", "kind": "external",
           "name": "getcwd", "module": "os" }
     },
     "param_in":  [ { "src": "can://…/main(a)@6:4/actual_in:0", "dst": "can://…/helper(x)@formal_in:0" } ],

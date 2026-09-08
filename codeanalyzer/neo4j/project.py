@@ -288,7 +288,7 @@ def _import_ghost(b: RowBuilder, app_can_id: str, name: str) -> NodeRef:
     *only* case for an unresolved import — has no existing ghost to MERGE onto.
     This builds one with the same id shape ``_call_endpoint``/``_home_external_
     symbols`` use for a dot-less (no ``.`` in the signature) call target:
-    ``<app can:// id>/python/@external/<name>``, ``module=None``. Same two-label
+    ``<app can:// id>/@external/<name>``, ``module=None``. Same two-label
     ``["PySymbol", "PyExternal"]`` idiom as ``_call_endpoint`` -- the schema
     declares :PyExternal's merge label as PySymbol, and RowBuilder MERGEs by
     ``(labels[0], value)``, so if a call to that same bare name is ever
@@ -505,7 +505,7 @@ def _base_ref_resolver(
 
 def _external_ghost(b: RowBuilder, app_can_id: str, signature: str) -> NodeRef:
     """A :PyExternal ghost for a dotted signature nobody homed, with the id shape
-    ``_home_external_symbols`` uses — ``<app>/python/@external/<module>/<name>`` — so it
+    ``_home_external_symbols`` uses — ``<app>/@external/<module>/<name>`` — so it
     sits inside the application prefix (#173) and MERGEs with a homed twin."""
     module, name = signature.rsplit(".", 1) if "." in signature else (None, signature)
     ext_id = external_id(app_can_id, module, name)

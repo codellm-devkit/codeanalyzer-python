@@ -178,7 +178,7 @@ bake into the SDK's shared `cpg` models:
    Declared endpoints re-identify to their `can://` tree id; imported/builtin
    targets are homed as `can://python/<app>/@external/<module>/<name>` entries
    in `application.external_symbols` — keyed by that id, `kind:"external"`
-   (id shape superseded 2026-09-07: `can://<app>/python/@external/…`)
+   (id shape superseded 2026-09-07: `can://<app>/@external/…`)
    (mirrors TS `homeExternals`). The homed ids also enter `sig_to_id`, so L2
    `callee` backfill resolves external callees too.
 3. **Containment vocabulary.** `PyModule.types`/`.functions`,
@@ -501,14 +501,22 @@ codeanalyzer-typescript. Terms coined once and shared: `SCHEME`, `LANG`,
   cross-language edge into them) and rebuilds its own; the other analyzer
   restores its edges on its next push. Previously they were unreachable by any
   destructive statement and simply accumulated.
-- **Reserved pseudo-segments are app-scoped, and `@external` keeps the
-  language.** `can://<app>/python/@external/<module>/<name>` — parity with
-  java's `can://<app>/java/@external/<binary-type>/<signature>`. Dropping the
-  language segment there was tempting (externals are library symbols) and is
-  wrong: two analyzers' notions of a symbol are not the same node, and the
-  minting is now centralised in `ids.external_id` rather than two f-strings.
-  `@formal_in:N` / `@entry` / `@exit` compose off a callable id and are
-  shape-agnostic; they did not move.
+- **`@external` is app-scoped and language-NEUTRAL**:
+  `can://<app>/@external/<module>/<name>` — the reserved segment sits where the
+  language sits for code nodes, exactly like `artifact`. TypeScript's form;
+  java follows it, so all three agree and a library symbol is one node in a
+  merged graph over the same `<app>`.
+
+  The counter-argument was raised and overruled (maintainer, 2026-09-08): two
+  analyzers' notions of `os.getcwd` are not necessarily the same thing, and a
+  shared id asserts that they are. That risk is accepted. Note the asymmetry it
+  leaves — an `@external` ghost is now cross-analyzer shared while the
+  declared callable it shadows is not — and see the artifact-wipe question
+  below, which is the same sharing question with teeth.
+
+  Minting is centralised in `ids.external_id`; it used to be two hand-written
+  f-strings (`core.py`, `neo4j/project.py`). `@formal_in:N` / `@entry` /
+  `@exit` compose off a callable id and are shape-agnostic; they did not move.
 - **Nothing may identify an id by its language prefix.** `RowBuilder.node`
   attached `:PyCanNode` to values starting with `can://python/`; under the new
   grammar that predicate means "the application is named `python`", so every

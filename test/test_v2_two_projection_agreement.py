@@ -318,11 +318,11 @@ def test_py_extends_targets_declared_base_by_can_id_and_external_by_ghost(tmp_pa
     rows = project(app, "app", sig_to_id)
     ext = {(e.from_ref.value, e.to_ref.value) for e in rows.edges if e.type == "PY_EXTENDS"}
     assert (by_name["Child"].id, by_name["Base"].id) in ext
-    assert (by_name["Ext"].id, "can://app/python/@external/lib.core/Thing") in ext
-    assert (by_name["Dotted"].id, "can://app/python/@external/lib.views/View") in ext
+    assert (by_name["Ext"].id, "can://app/@external/lib.core/Thing") in ext
+    assert (by_name["Dotted"].id, "can://app/@external/lib.views/View") in ext
     assert len(ext) == 3
     ghosts = {n.value for n in rows.nodes if "PyExternal" in n.labels}
-    assert "can://app/python/@external/lib.core/Thing" in ghosts
+    assert "can://app/@external/lib.core/Thing" in ghosts
 
 
 def test_pyapplication_carries_the_entrypoint_report():

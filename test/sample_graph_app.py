@@ -190,7 +190,7 @@ def make_sample_app() -> Tuple[PyApplication, Dict[str, str]]:
 
     # Identity + L1 bodies, then the intraprocedural (syntactic) L3 overlay.
     sig_to_id = assign_ids(app, "sample-app")
-    ext_id = "can://sample-app/python/@external/os/getcwd"
+    ext_id = "can://sample-app/@external/os/getcwd"
     app.external_symbols = {
         ext_id: PyExternalSymbol(id=ext_id, name="getcwd", module="os")
     }
@@ -207,7 +207,7 @@ def make_sample_app() -> Tuple[PyApplication, Dict[str, str]]:
     # like call_graph/artifacts above -- addresses `read_config`'s two real
     # `os.getenv` call sites (so the projector has authentic GLOBAL ordinal
     # ids) against the manifest's own flattened config key from Task 6 above.
-    getenv_ext_id = "can://sample-app/python/@external/os/getenv"
+    getenv_ext_id = "can://sample-app/@external/os/getenv"
     app.external_symbols[getenv_ext_id] = PyExternalSymbol(
         id=getenv_ext_id, name="getenv", module="os"
     )

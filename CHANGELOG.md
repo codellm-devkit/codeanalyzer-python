@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   | --- | --- | --- |
   | application | `can://python/<app>` | `can://<app>` |
   | module / type / callable | `can://python/<app>/<file>/…` | `can://<app>/python/<file>/…` |
-  | external home | `can://python/<app>/@external/<mod>/<name>` | `can://<app>/python/@external/<mod>/<name>` |
+  | external home | `can://python/<app>/@external/<mod>/<name>` | `can://<app>/@external/<mod>/<name>` |
   | artifact | `can://artifact/<app>/<path>` | `can://<app>/artifact/<path>` |
   | config key | `<artifact-id>@key/<dotted.key>` | unchanged (composes) |
   | ordinal | `<callable-id>@<line>:<col>` | unchanged (composes) |

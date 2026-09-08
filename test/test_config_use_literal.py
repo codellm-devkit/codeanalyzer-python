@@ -62,7 +62,7 @@ def _hand_app(module: str, callable_name: str, arguments, artifacts=None) -> PyA
     `module.callable_name` at its detector-rule key-argument position(s) --
     the minimal substrate `detect_config_reads`/`resolve_uses` need, with no
     analyzer pipeline involved."""
-    ext_id = f"can://app/python/@external/{module}/{callable_name}"
+    ext_id = f"can://app/@external/{module}/{callable_name}"
     fn = PyCallable(
         name="f", path="mod.py", signature="mod.f", id="can://app/python/mod.py/f()",
         body={"1:0": BodyNode(kind="call", callee=ext_id, arguments=list(arguments))},

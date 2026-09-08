@@ -48,7 +48,7 @@ def _app(tmp_path, tag, mod_source, files, level):
 # callable lives in its own tiny module so span byte-offsets never need to
 # account for another callable's text sharing the same `source` string.
 
-_EXT_ID = "can://app/python/@external/os/getenv"
+_EXT_ID = "can://app/@external/os/getenv"
 _ENV_RULE = Rule(id="os.getenv", module="os", callable="getenv", key_arg=0, namespaces=("env",))
 
 

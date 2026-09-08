@@ -16,10 +16,10 @@ def test_child_and_ordinal_ids_compose():
     assert ids.ordinal_id(fn, "15:4") == fn + "@15:4"
     assert ids.ordinal_id(fn, "entry") == fn + "@entry"
 
-def test_external_id_is_app_then_language():
+def test_external_id_is_app_scoped_and_language_neutral():
     app = ids.application_id("myapp")
-    assert ids.external_id(app, "os", "getcwd") == "can://myapp/python/@external/os/getcwd"
-    assert ids.external_id(app, None, "print") == "can://myapp/python/@external/print"
+    assert ids.external_id(app, "os", "getcwd") == "can://myapp/@external/os/getcwd"
+    assert ids.external_id(app, None, "print") == "can://myapp/@external/print"
 
 def test_artifact_id_nests_under_the_app_instead_of_a_parallel_scheme():
     # Was can://artifact/<app>/<path> — a second outermost shape. Now one rule.

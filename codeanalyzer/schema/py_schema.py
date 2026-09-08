@@ -481,7 +481,7 @@ class PyExternalSymbol(BaseModel):
     builtin member. An edge-endpoint id home, not a tree node: keyed in
     ``PyApplication.external_symbols`` by its ``can://…/@external/…`` id."""
 
-    id: str = ""  # can://<app>/python/@external/<module>/<name>
+    id: str = ""  # can://<app>/@external/<module>/<name>
     kind: str = "external"
     name: str  # the member/short name, e.g. "get" for "requests.get"
     module: Optional[str] = None  # best-effort owning module, e.g. "requests"

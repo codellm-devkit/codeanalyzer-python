@@ -7,9 +7,10 @@ _APP_ID = re.compile(r"^can://[^/]+$")
 
 
 def _assert_id_grammar(app: dict) -> None:
-    """Every durable id is ``can://<app>/<python|artifact>/...`` and therefore
-    sits under the application prefix. Asserted on the payload, not on the
-    minting functions, so a hand-built or cached id cannot slip past."""
+    """Every durable id is ``can://<app>/...`` — code under ``python/``, and the
+    two language-neutral reserved segments ``@external`` and ``artifact`` directly
+    under the app. Asserted on the payload, not on the minting functions, so a
+    hand-built or cached id cannot slip past."""
     app_id = app["id"]
     assert _APP_ID.match(app_id), f"application id must be can://<app>, got {app_id!r}"
     code = f"{app_id}/python/"
@@ -17,7 +18,7 @@ def _assert_id_grammar(app: dict) -> None:
         assert mod["id"].startswith(code), f"module {key} id {mod['id']!r} is not under {code!r}"
     for _, c in _iter_callables(app):
         assert c["id"].startswith(code), f"callable id {c['id']!r} is not under {code!r}"
-    ext = f"{code}@external/"
+    ext = f"{app_id}/@external/"
     for ext_id in (app.get("external_symbols") or {}):
         assert ext_id.startswith(ext), f"external id {ext_id!r} is not under {ext!r}"
     art = f"{app_id}/artifact/"

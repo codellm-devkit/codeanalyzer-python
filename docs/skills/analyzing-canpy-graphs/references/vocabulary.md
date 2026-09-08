@@ -31,7 +31,8 @@ Every node keyed by a `can://` id also carries the marker label `PyCanNode`, ind
 `MATCH (x:PyCanNode) WHERE x.id STARTS WITH 'can://<app>/'` (append `python/<file>/` for one
 module). `PyAttribute` ids are `<class-id>/<name>`; `PyVariable` ids are
 `<owner-id>/<name>@<line>` with the owner a module or a callable. `:PyExternal` ids are
-`can://<app>/python/@external/<module>/<name>`, inside the application prefix.
+`can://<app>/@external/<module>/<name>` — language-neutral like `artifact`, inside the
+application prefix.
 
 `PyBodyNode.kind`: `entry`, `exit`, `statement`, `branch`, `loop`, `return`,
 `raise`, `handler`, `call`, `formal_in`, `formal_out`, `actual_in`, `actual_out`.
