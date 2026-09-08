@@ -250,12 +250,14 @@ def test_eager_push_of_a_second_python_app_with_a_colliding_module_path_leaves_t
 
 def test_external_nodes_sit_inside_the_application_prefix(driver, cfg):
     """#179: `:PyExternal` ids carry the application segment, so an external→app call
-    edge is reachable by the same prefix predicate as every other node."""
+    edge is reachable by the same prefix predicate as every other node. The
+    `@external` home is language-NEUTRAL, so the prefix is the application's, with
+    no language segment — the same shape as `artifact`."""
     app, sig_to_id = make_sample_app()
     bolt_writer(project(app, "sample-app", sig_to_id), cfg, full_run=True, eager=True)
     total = _num(driver, "MATCH (e:PyExternal) RETURN count(e)")
     assert total >= 1
-    inside = _num(driver, "MATCH (e:PyExternal:PyCanNode) WHERE e.id STARTS WITH 'can://sample-app/python/' RETURN count(e)")
+    inside = _num(driver, "MATCH (e:PyExternal:PyCanNode) WHERE e.id STARTS WITH 'can://sample-app/@external/' RETURN count(e)")
     assert inside == total
 
 
