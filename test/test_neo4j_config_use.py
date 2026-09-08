@@ -16,6 +16,7 @@ from codeanalyzer.neo4j.project import project
 from codeanalyzer.neo4j.schema import REL_TYPES
 from codeanalyzer.options import AnalysisOptions
 from codeanalyzer.schema.assign_ids import assign_ids
+from codeanalyzer.schema.ids import application_id
 
 
 def test_catalog_has_config_use_rels():
@@ -72,7 +73,8 @@ def test_undefined_key_read_projects_as_ghost_edge_with_key_and_reason(tmp_path)
 
     rows = project(app, "p", assign_ids(app, "p"))
     (row,) = [e for e in rows.edges if e.type == "PY_READS_CONFIG_UNRESOLVED"]
-    assert row.from_ref.label == "PyApplication" and row.from_ref.value == "p"
+    # The root is keyed on its can:// id now, not on --app-name.
+    assert row.from_ref.label == "PyApplication" and row.from_ref.value == application_id("p")
     assert row.to_ref.label == "PySymbol" and row.to_ref.value == read.callee
     assert row.props == {"key": "MISSING", "reason": "undefined-key", "prov": ["literal"]}
     assert row.key == "MISSING|undefined-key"

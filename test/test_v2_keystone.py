@@ -133,7 +133,7 @@ def test_external_symbols_are_id_homed(tmp_path: Path):
     app_id = app["id"]
     for key, ext in externals.items():
         assert key == ext["id"], "external_symbols must be keyed by id"
-        assert ext["id"].startswith(f"{app_id}/@external/"), ext["id"]
+        assert ext["id"].startswith(f"{app_id}/python/@external/"), ext["id"]
         assert ext["kind"] == "external"
         assert ext["name"]
 

@@ -178,6 +178,7 @@ bake into the SDK's shared `cpg` models:
    Declared endpoints re-identify to their `can://` tree id; imported/builtin
    targets are homed as `can://python/<app>/@external/<module>/<name>` entries
    in `application.external_symbols` — keyed by that id, `kind:"external"`
+   (id shape superseded 2026-09-07: `can://<app>/python/@external/…`)
    (mirrors TS `homeExternals`). The homed ids also enter `sig_to_id`, so L2
    `callee` backfill resolves external callees too.
 3. **Containment vocabulary.** `PyModule.types`/`.functions`,
@@ -339,7 +340,9 @@ Schema v2 gains non-code coverage: `application.artifacts` (sibling map,
 `application.unresolved_imports`. All three are L1 data — emitted identically
 at every level, like entrypoints.
 
-- **Artifact ids are language-neutral**: `can://artifact/<app>/<path>`. The
+- **Artifact ids are language-neutral**: `can://artifact/<app>/<path>` —
+  *shape superseded 2026-09-07 by `can://<app>/artifact/<path>`; the
+  language-neutrality rationale below still holds.* The
   first `can://` segment is now a namespace — a language for code nodes, the
   literal `artifact` for files — so sibling analyzers over the same repo emit
   the same artifact id (one node in a merged graph). Precondition: `<app>`
