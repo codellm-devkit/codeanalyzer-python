@@ -49,7 +49,7 @@ from codeanalyzer.schema import (
     PyVariableDeclaration,
 )
 from codeanalyzer.schema import model_dump
-from codeanalyzer.schema.ids import application_id, global_ordinal, purl_pypi
+from codeanalyzer.schema.ids import application_id, external_id, global_ordinal, purl_pypi
 from codeanalyzer.schema.py_schema import PyDecorator
 
 
@@ -60,12 +60,17 @@ def project(app: PyApplication, app_name: str, sig_to_id: dict,
     passes it through so the :PyApplication node carries it as props."""
     b = RowBuilder()
 
+    # Keyed on the ``can://<app>`` id, not on ``--app-name``: two applications
+    # analyzed under the same free-text name used to MERGE onto one root, with
+    # no diagnostic. ``name`` survives as a display property.
     app_ref = b.node(
         ["PyApplication"],
-        "name",
-        app_name,
+        "id",
+        application_id(app_name),
         prune(
             {
+                "id": application_id(app_name),
+                "name": app_name,
                 "schema_version": SCHEMA_VERSION,
                 "analyzer_name": analyzer.name if analyzer else None,
                 "analyzer_version": analyzer.version if analyzer else None,
@@ -283,14 +288,14 @@ def _import_ghost(b: RowBuilder, app_can_id: str, name: str) -> NodeRef:
     *only* case for an unresolved import — has no existing ghost to MERGE onto.
     This builds one with the same id shape ``_call_endpoint``/``_home_external_
     symbols`` use for a dot-less (no ``.`` in the signature) call target:
-    ``<app can:// id>/@external/<name>``, ``module=None``. Same two-label
+    ``<app can:// id>/python/@external/<name>``, ``module=None``. Same two-label
     ``["PySymbol", "PyExternal"]`` idiom as ``_call_endpoint`` -- the schema
     declares :PyExternal's merge label as PySymbol, and RowBuilder MERGEs by
     ``(labels[0], value)``, so if a call to that same bare name is ever
     projected too, both rows collapse onto this one node — correctly, since
     they name the same real-world symbol."""
     return b.node(
-        ["PySymbol", "PyExternal"], "id", f"{app_can_id}/@external/{name}", {"name": name}
+        ["PySymbol", "PyExternal"], "id", external_id(app_can_id, None, name), {"name": name}
     )
 
 
@@ -500,10 +505,10 @@ def _base_ref_resolver(
 
 def _external_ghost(b: RowBuilder, app_can_id: str, signature: str) -> NodeRef:
     """A :PyExternal ghost for a dotted signature nobody homed, with the id shape
-    ``_home_external_symbols`` uses — ``<app>/@external/<module>/<name>`` — so it
+    ``_home_external_symbols`` uses — ``<app>/python/@external/<module>/<name>`` — so it
     sits inside the application prefix (#173) and MERGEs with a homed twin."""
     module, name = signature.rsplit(".", 1) if "." in signature else (None, signature)
-    ext_id = f"{app_can_id}/@external/{module}/{name}" if module else f"{app_can_id}/@external/{name}"
+    ext_id = external_id(app_can_id, module, name)
     return b.node(["PySymbol", "PyExternal"], "id", ext_id, prune({"name": name, "module": module}))
 
 
