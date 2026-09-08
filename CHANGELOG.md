@@ -5,6 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **BREAKING — the `can://` identity grammar puts the application outermost.**
+  `can://<lang>/<app>/…` becomes `can://<app>/<lang>/…`, so `can://<app>` is a
+  prefix of every id this analyzer mints for that application:
+
+  | | before | after |
+  | --- | --- | --- |
+  | application | `can://python/<app>` | `can://<app>` |
+  | module / type / callable | `can://python/<app>/<file>/…` | `can://<app>/python/<file>/…` |
+  | external home | `can://python/<app>/@external/<mod>/<name>` | `can://<app>/python/@external/<mod>/<name>` |
+  | artifact | `can://artifact/<app>/<path>` | `can://<app>/artifact/<path>` |
+  | config key | `<artifact-id>@key/<dotted.key>` | unchanged (composes) |
+  | ordinal | `<callable-id>@<line>:<col>` | unchanged (composes) |
+
+  `--app-name` keeps its name and its default. Ids stay opaque handles: **do not
+  read the language off the first segment** — an application named `python` now
+  yields `can://python/python/…`, and the marker-label rule that made exactly
+  that mistake is fixed here.
+- **`:PyApplication` merges on `id` (`can://<app>`), not on `name`.** Two
+  applications analyzed under the same `--app-name` used to collapse onto one
+  root node with no diagnostic; they are now two roots. `name` survives as a
+  display property, and the uniqueness constraint moves to
+  `pyapplication_id`. Graph `schema_version` stays `2.0.0`.
+- The application's `:Artifact` and `:ConfigKey` nodes are inside the
+  application id prefix now, so they carry `:PyCanNode` and the `graph.cypher`
+  wipe rebuilds them instead of leaving them to accumulate. A cross-language
+  edge into a shared `:Artifact` is dropped by a python snapshot apply and
+  restored on the other analyzer's next push.
+- `analysis.json`'s `schema_version` stays `2.0.0`: consumers gate on the
+  **analyzer version**, which moves with this release, not on `schema_version`.
+
+### Migration
+
+Old and new ids do not collide, so re-pushing an existing database produces a
+second, disconnected copy rather than an update — and the prefix-scoped delete
+cannot remove the old copy, because it scopes on the new prefix. Wipe the
+database, or delete the old nodes explicitly, before the first push from this
+release:
+
+```cypher
+MATCH (x:PyCanNode) WHERE x.id STARTS WITH 'can://python/' DETACH DELETE x;
+MATCH (x:PyCanNode) WHERE x.id STARTS WITH 'can://artifact/' DETACH DELETE x;
+MATCH (a:PyApplication) WHERE a.id IS NULL DETACH DELETE a;
+```
+
+The third statement is the one that is easy to miss: pre-release application
+roots have no `id` at all, so neither prefix match reaches them. The first is
+safe to run **only** if no application of yours is called `python`.
+
+No cache action is needed: `_cache_analyzer_matches` already discards an
+`analysis_cache.json` written by a different analyzer version, and the version
+moves with this release. `--rebuild-analysis` forces it anyway.
+
 ## [1.4.1] - 2026-09-05
 
 ### Added

@@ -476,3 +476,52 @@ Reference implementation: codeanalyzer-java#220.
   has no released consumer pinning the graph contract, so the number does not
   move until one exists (ruled 2026-09-05). `analysis.json` is
   untouched; `_module` never appeared there.
+
+## 2026-09-07 — The application becomes the outermost `can://` segment
+
+Cross-repo change; the same flip lands in codeanalyzer-java (plan
+`docs/design/plans/2026-09-07-can-uri-app-outermost.md` there) and
+codeanalyzer-typescript. Terms coined once and shared: `SCHEME`, `LANG`,
+`external_id`, and the reserved `artifact` segment.
+
+- **`can://<lang>/<app>/…` → `can://<app>/<lang>/…`.** The point is that
+  `can://<app>` is now a prefix of *everything* the application emits, so the
+  prefix-scoped destructive statements (#173) are complete rather than
+  complete-except-artifacts. `--app-name` is unchanged; there is no `<service>`
+  concept — this is a reorder, not a rename.
+- **Artifact ids stop being a parallel scheme.** `can://artifact/<app>/<path>`
+  → `can://<app>/artifact/<path>`. `artifact` is a reserved segment occupying
+  the position the language occupies for code nodes, so the id is still
+  language-neutral and sibling analyzers over the same `<app>` still agree on
+  it — but it is now inside the application prefix. Consequence, accepted: a
+  `graph.cypher` wipe removes the app's `:Artifact`/`:ConfigKey` nodes (and any
+  cross-language edge into them) and rebuilds its own; the other analyzer
+  restores its edges on its next push. Previously they were unreachable by any
+  destructive statement and simply accumulated.
+- **Reserved pseudo-segments are app-scoped, and `@external` keeps the
+  language.** `can://<app>/python/@external/<module>/<name>` — parity with
+  java's `can://<app>/java/@external/<binary-type>/<signature>`. Dropping the
+  language segment there was tempting (externals are library symbols) and is
+  wrong: two analyzers' notions of a symbol are not the same node, and the
+  minting is now centralised in `ids.external_id` rather than two f-strings.
+  `@formal_in:N` / `@entry` / `@exit` compose off a callable id and are
+  shape-agnostic; they did not move.
+- **Nothing may identify an id by its language prefix.** `RowBuilder.node`
+  attached `:PyCanNode` to values starting with `can://python/`; under the new
+  grammar that predicate means "the application is named `python`", so every
+  other graph would silently have lost the marker, the index the destructive
+  statements seek on, and their reach. It tests `SCHEME` now. This is the one
+  class of bug the flip introduces, and `ids.py`'s module docstring says so.
+- **`:PyApplication` merges on `id`, not `name`.** Two applications analyzed
+  under the same `--app-name` collapsed onto one root with no diagnostic. The
+  uniqueness constraint moves to `pyapplication_id`; `name` stays as a display
+  property, and `bolt.py` reads the name from the props rather than from the
+  merge value.
+- **No version moves.** Payload `schema_version` and graph `SCHEMA_VERSION`
+  both stay `2.0.0` until the 2.0.0 line leaves release-candidate (ruled
+  2026-09-07, all three analyzers). Consumers gate on the **analyzer version**
+  — the python-sdk Neo4j backends carry an analyzer floor and refuse anything
+  below it at attach — and that floor moves with this release. The cache needs
+  no new gate either: `_cache_analyzer_matches` already discards a cache
+  written by a different analyzer version, which is exactly the migration
+  boundary here.
