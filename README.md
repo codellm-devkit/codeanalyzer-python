@@ -697,3 +697,25 @@ RETURN f.id, l.version
 ## License
 
 Apache 2.0 — see [LICENSE](./LICENSE).
+
+## Polyglot applications: all languages, or none
+
+A `--emit neo4j` push is **destructive**. It sweeps everything under `can://<app>/` that this
+analyzer marked, then rewrites what it found. Since the id grammar puts the application outermost,
+every analyzer over the same `<app>` shares that prefix — so a push reclaims stale rows belonging to
+*this* analyzer and, in the shared namespaces, sweeps rows a sibling wrote.
+
+For most of what is shared that is harmless: the artifact walk is a whole-repo inventory, so an
+`:Artifact` a sibling wrote is re-created by this push (with a thinner view of it — `roles` falls
+back to `unknown` and its config keys and dependency edges are gone until that sibling pushes
+again). `@external` ghosts are not inventoried that way: they are per-language, so a sibling's
+ghosts are swept and not restored.
+
+**So for an application analysed in more than one language, run every analyzer or none.** Running
+one in isolation leaves the others' derived rows missing until they run again. Running them
+together is always correct, in any order, because the last push restores everything the batch
+swept.
+
+Nothing here corrupts a graph: what is lost is derived and regenerates. But a partial run leaves a
+partial answer, and nothing in the data says so.
+
