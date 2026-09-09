@@ -5,7 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.5.1] - 2026-09-09
+
+### Fixed
+
+- `param_in[].var` / `param_out[].var` in `analysis.json`, and the same `var` on
+  `PY_PARAM_IN` / `PY_PARAM_OUT` in Neo4j (#195): the callee-side formal the edge
+  binds — the parameter name, or `<return>` for the return port — present on every
+  edge. The graph catalog had declared `var` on both relationship types while the
+  projection wrote none, so a Cypher predicate on `r.var` went three-valued across
+  every call boundary and silently excluded the path. The SDG assembler always knew
+  the variable; `emit_l4` dropped it building the JSON edge. codeanalyzer-java and
+  codeanalyzer-typescript carried the same gap and fixed it in the same train.
+  Additive: `schema_version` and the graph contract are unchanged, and a consumer
+  reading graphs from 1.5.0 or earlier still has to tolerate the property's absence.
+
+## [1.5.0] - 2026-09-08
 
 ### Changed
 
