@@ -224,6 +224,76 @@ jobs:
   # own job (needs: release) so a tap-push failure -- e.g. a missing
   # HOMEBREW_TAP_TOKEN -- is isolated from the PyPI and GitHub Release steps above.
   # The non-Rust equivalent of what cargo-dist does for you.
+
+      # Record this release's schema artifacts in the shared contract repo
+      # (codellm-devkit/codeanalyzer-schema): the Neo4j graph contract, and the JSON
+      # samples that repo documents as "unedited analyzer output on the analyzers' own
+      # test fixtures". Delivered as a pull request rather than a push, so two analyzers
+      # releasing close together cannot race and a contract change stays reviewable.
+      #
+      # The destination line is derived from the emitted `schema_version` rather than
+      # hard-coded, and the two projections carry that version independently -- today
+      # every analyzer reads 2.0.0 on both, so everything lands under v2/.
+      - name: Record schemas in codeanalyzer-schema
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          # The org PAT already used for the cross-repo announcement in this workflow. It
+          # needs contents:write plus pull-requests:write on codeanalyzer-schema; if this
+          # step 403s, CLDK_AUTH_TOKEN is the PAT documented as carrying repo scope.
+          GH_TOKEN: ${{ secrets.ORG_DISCUSSIONS_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          STAGE="$RUNNER_TEMP/schema-stage"
+          WORK="$RUNNER_TEMP/schema-repo"
+          mkdir -p "$STAGE"
+          # Samples are unedited analyzer output on this repo's own fixtures, staged under
+          # the exact filenames the contract repo keeps them under.
+          LANG=python
+          uv run canpy -i test/fixtures/whole_applications/manifests_app        -o "$STAGE/run-l4" -a 4 --no-venv --skip-tests --app-name manifests_app
+          uv run canpy -i test/fixtures/single_functionalities/dataflow          -o "$STAGE/run-df" -a 4 --no-venv --skip-tests --app-name dataflow
+          uv run canpy -i test/fixtures/single_functionalities/entrypoints_local -o "$STAGE/run-ep" -a 2 --no-venv --skip-tests --app-name entrypoints_local
+          cp "$STAGE/run-l4/analysis.json" "$STAGE/analysis.l4.sample.json"
+          cp "$STAGE/run-df/analysis.json" "$STAGE/analysis.dataflow.sample.json"
+          cp "$STAGE/run-ep/analysis.json" "$STAGE/analysis.entrypoints.sample.json"
+          uv run canpy --emit schema > "$STAGE/schema.neo4j.json"
+
+          # One line per projection: analysis.json and the graph contract carry their
+          # schema_version independently, so each destination is derived from its own document.
+          JSON_LINE="v$(jq -r '.schema_version | split(".")[0]' "$STAGE/analysis.l4.sample.json")"
+          NEO_LINE="v$(jq -r '.schema_version | split(".")[0]' "$STAGE/schema.neo4j.json")"
+          echo "analysis.json -> $JSON_LINE/json/$LANG/ ; graph contract -> $NEO_LINE/neo4j/$LANG/"
+
+          if ! git clone --depth 1 \
+              "https://x-access-token:${GH_TOKEN}@github.com/codellm-devkit/codeanalyzer-schema.git" "$WORK"; then
+            echo "::error::cannot clone codeanalyzer-schema. Does ORG_DISCUSSIONS_TOKEN carry contents:write on it? CLDK_AUTH_TOKEN is the PAT documented with repo scope."
+            exit 1
+          fi
+
+          mkdir -p "$WORK/$JSON_LINE/json/$LANG" "$WORK/$NEO_LINE/neo4j/$LANG"
+          cp "$STAGE"/*.sample.json "$WORK/$JSON_LINE/json/$LANG/"
+          cp "$STAGE/schema.neo4j.json" "$WORK/$NEO_LINE/neo4j/$LANG/schema.neo4j.json"
+
+          cd "$WORK"
+          BRANCH="uptake/$LANG-v${VERSION}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "codeanalyzer-schema already records these artifacts; nothing to open."
+            exit 0
+          fi
+          git commit -m "chore($LANG): record codeanalyzer-$LANG v${VERSION} schemas"
+          if ! git push -f origin "$BRANCH"; then
+            echo "::error::cannot push to codeanalyzer-schema. The token needs contents:write there."
+            exit 1
+          fi
+          gh pr create --repo codellm-devkit/codeanalyzer-schema \
+            --head "$BRANCH" --base main \
+            --title "chore($LANG): record codeanalyzer-$LANG v${VERSION} schemas" \
+            --body "Emitted by the codeanalyzer-$LANG v${VERSION} release workflow. Graph contract to \`$NEO_LINE/neo4j/$LANG/\`, JSON samples to \`$JSON_LINE/json/$LANG/\`; both paths come from the schema_version in the emitted documents rather than being hard-coded. The samples are unedited analyzer output on this analyzer's own test fixtures, the provenance that repo's README documents. Validate with \`python3 scripts/check.py\`." \
+            || echo "::notice::a PR for $BRANCH already exists; its branch was updated in place."
   homebrew:
     needs: release
     if: startsWith(github.ref, 'refs/tags/')
