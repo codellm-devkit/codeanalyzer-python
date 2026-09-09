@@ -61,6 +61,7 @@ jobs:
       # `importorskip` and the decorator-rule regression they exist to catch would
       # ship green. The `compat` job above keeps 3.10 covered.
       - name: Set up Python 3.12
+        id: py312
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -99,6 +100,15 @@ jobs:
         id: test
         continue-on-error: true
         run: uv run pytest
+        env:
+          # Same reason as the `compat` job above, and it has to be repeated per job:
+          # the venv-building CLI tests must find a base interpreter that can create
+          # virtual environments, and inside uv's own venv the discovery walk has no
+          # anchor on the runner. Must be this job's own setup step -- `steps.py310`
+          # belongs to `compat` and would expand to an empty string here. Must be an
+          # absolute path, because the override is checked with `Path(...).exists()`
+          # and never searches PATH.
+          SYSTEM_PYTHON: ${{ steps.py312.outputs.python-path }}
 
       # MUST be `outcome`, not `conclusion`: continue-on-error rewrites `conclusion` to
       # `success`, so a `conclusion == 'failure'` guard never fires and a red test run
