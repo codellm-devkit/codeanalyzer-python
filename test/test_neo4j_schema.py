@@ -154,3 +154,21 @@ def test_checked_in_schema_matches_catalog():
     on_disk = json.loads(on_disk_path.read_text())
     fresh = build_schema_document()
     assert on_disk == fresh
+
+
+def test_param_edges_carry_every_declared_property():
+    """#195: the catalog declared `var` on PY_PARAM_IN/PY_PARAM_OUT and the projection
+    wrote none, so a predicate on `r.var` went three-valued across every call boundary.
+    Every emitted edge of those types now carries every declared property — present on
+    all of them, not some, because a partially-present property is the same trap."""
+    app, sig_to_id = make_sample_app()
+    rows = project(app, "sample-app", sig_to_id)
+    for rel in ("PY_PARAM_IN", "PY_PARAM_OUT"):
+        edges = [e for e in rows.edges if e.type == rel]
+        assert edges, f"precondition: the L4 sample must emit {rel}"
+        declared = set(_REL_BY_TYPE[rel].properties)
+        for e in edges:
+            missing = declared - set(e.props)
+            assert not missing, f"{rel} {e.from_ref.value} -> {e.to_ref.value} lacks {missing}"
+            assert e.props["var"], f"{rel} var must be non-empty"
+

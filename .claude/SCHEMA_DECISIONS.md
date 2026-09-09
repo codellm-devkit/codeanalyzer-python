@@ -536,3 +536,24 @@ codeanalyzer-typescript. Terms coined once and shared: `SCHEME`, `LANG`,
   no new gate either: `_cache_analyzer_matches` already discards a cache
   written by a different analyzer version, which is exactly the migration
   boundary here.
+
+## 2026-09-09 — `param_in`/`param_out` edges carry `var` (issue #195)
+
+- **Both projections, same value.** `ParamEdge.var` in `analysis.json` and the
+  `var` property on `PY_PARAM_IN`/`PY_PARAM_OUT` are the callee-side formal's
+  variable: the parameter name for `param_in` and for by-reference `param_out`,
+  `<return>` for the return port. It is what `assemble_sdg` already set on every
+  `SDGEdge` of those types (`dataflow/sdg.py`, four construction sites) and what
+  the formal vertex itself carries as `var`/`of`; `emit_l4` was dropping it when
+  it built the JSON edge, and the projector wrote no properties at all while the
+  catalog declared one. Present on **every** edge, never partial — a partially
+  present property is the same three-valued trap one step along.
+- **Why write rather than drop the declaration.** codeanalyzer-typescript emits
+  `param_in[].var` in JSON and writes it to the graph; java declares it and
+  writes nothing (same divergence python had, filed separately). The keystone
+  table lists no attributes on `param_in`/`param_out` and is behind both
+  analyzers — a keystone follow-on. Dropping would have foreclosed the
+  variable-granular interprocedural cut the SDK's taint surface wants.
+- Additive field, `schema_version` unchanged. A 1.5.0 `analysis.json` still
+  parses (`var` defaults to `None`); consumers should tolerate its absence for
+  one generation of cached graphs.

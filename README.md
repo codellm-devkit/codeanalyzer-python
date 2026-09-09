@@ -502,7 +502,8 @@ just populate more of the same tree:
         { "id": "can://<app>/@external/os/getcwd", "kind": "external",
           "name": "getcwd", "module": "os" }
     },
-    "param_in":  [ { "src": "can://…/main(a)@6:4/actual_in:0", "dst": "can://…/helper(x)@formal_in:0" } ],
+    "param_in":  [ { "src": "can://…/main(a)@6:4/actual_in:0", "dst": "can://…/helper(x)@formal_in:0",
+                     "var": "x" } ],                                    // var = the callee formal
     "param_out": [ { "src": "can://…/helper(x)@formal_out",   "dst": "can://…/main(a)@6:4/actual_out" } ]
   }
 }

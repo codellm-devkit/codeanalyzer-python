@@ -257,17 +257,23 @@ def _project_program_graphs(
     # endpoint functions' identity maps), so they land on the very PyBodyNode ids
     # projected above — a formal_in global id equals _global_ordinal(callee.id,
     # "@formal_in:0"). No dangling references.
+    # `var` (#195): the callee-side formal's variable, set on every edge by the
+    # SDG assembler and carried on `ParamEdge.var`. The catalog declared it and
+    # nothing wrote it, so `r.var` predicates went three-valued across every
+    # call boundary.
     for e in app.param_in or []:
         b.edge(
             "PY_PARAM_IN",
             NodeRef("PyBodyNode", "id", e.src),
             NodeRef("PyBodyNode", "id", e.dst),
+            prune({"var": e.var}),
         )
     for e in app.param_out or []:
         b.edge(
             "PY_PARAM_OUT",
             NodeRef("PyBodyNode", "id", e.src),
             NodeRef("PyBodyNode", "id", e.dst),
+            prune({"var": e.var}),
         )
 
 

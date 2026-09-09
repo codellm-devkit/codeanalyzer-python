@@ -428,3 +428,25 @@ def test_cli_a4_default_graphs_succeeds(tmp_path: Path):
     assert result.returncode == 0, f"Expected exit 0, got {result.returncode}. stderr: {result.stderr}"
     # Verify output was written
     assert (output_dir / "analysis.json").exists()
+
+
+def test_param_edges_carry_the_formal_variable(tmp_path):
+    """#195: `param_in`/`param_out` name the callee-side formal's variable on every
+    edge — the parameter name, or `<return>` for the return port — matching the
+    `var` the formal vertex itself carries and the value typescript emits."""
+    import sys
+    sys.path.insert(0, str(__import__("pathlib").Path(__file__).parent))
+    from sample_graph_app import make_sample_app
+    app, _ = make_sample_app()
+    assert app.param_in and app.param_out
+    formals = {}
+    for mod in app.symbol_table.values():
+        stack = list(mod.functions.values()) + [m for c in mod.types.values() for m in c.callables.values()]
+        for c in stack:
+            for k, n in c.body.items():
+                if n.kind in ("formal_in", "formal_out"):
+                    formals[n.id] = n.of
+    for e in app.param_in:
+        assert e.var and e.var == formals[e.dst], (e.src, e.dst, e.var)
+    for e in app.param_out:
+        assert e.var and e.var == formals[e.src], (e.src, e.dst, e.var)

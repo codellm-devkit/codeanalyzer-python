@@ -565,6 +565,7 @@ def emit_l4(
             edge = ParamEdge(
                 src=src_im.global_id(e.source_node),
                 dst=dst_im.global_id(e.target_node),
+                var=e.var,
             )
             (app.param_in if e.type == "PARAM_IN" else app.param_out).append(edge)
 

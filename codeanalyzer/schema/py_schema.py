@@ -171,7 +171,12 @@ class SummaryEdge(BaseModel):
 
 @builder
 class ParamEdge(BaseModel):
+    """A `param_in` (actual_in → formal_in) or `param_out` (formal_out → actual_out)
+    edge at application scope. `var` is the callee-side formal's variable — the
+    parameter name, or `<return>` for the return port — always set (#195), the
+    same value codeanalyzer-typescript carries on its `param_in[].var`."""
     src: str; dst: str
+    var: Optional[str] = None
 
 
 @builder
