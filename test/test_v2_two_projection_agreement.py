@@ -340,3 +340,168 @@ def test_pyapplication_carries_the_entrypoint_report():
     rows = project(PyApplication(symbol_table={}), "app", {})
     node = next(n for n in rows.nodes if n.labels[0] == "PyApplication")
     assert "entrypoint_report_json" in node.props
+
+
+# ----------------------------------------------------------------------------------------------
+# JSON == Graph parity (#202, #203); spec docs/design/specs/2026-09-10-neo4j-json-parity.md
+# ----------------------------------------------------------------------------------------------
+
+_SPAN_KEYS = ("start_line", "end_line", "start_column", "end_column", "start_byte", "end_byte")
+
+
+def _sample_rows():
+    from sample_graph_app import make_sample_app
+
+    app, sig_to_id = make_sample_app()
+    return app, project(app, "sample-app", sig_to_id)
+
+
+def test_module_node_carries_source_and_its_hash_matches_content_hash():
+    """#202: the module's whole-file text is on the graph, intact. The hash check is
+    what proves it survived serialization rather than merely being present."""
+    import hashlib
+
+    app, rows = _sample_rows()
+    mods = [n for n in rows.nodes if "PyModule" in n.labels]
+    assert mods, "no :PyModule rows projected"
+    by_id = {m.id: m for m in app.symbol_table.values()}
+    for row in mods:
+        mod = by_id.get(row.value)
+        if mod is None:
+            continue  # a :PyModule ref minted for an unresolved import target
+        assert "source" in row.props, f"{row.value} carries no source"
+        assert row.props["source"] == mod.source
+        assert (
+            hashlib.sha256(row.props["source"].encode("utf-8")).hexdigest()
+            == mod.content_hash
+        )
+
+
+def test_source_is_present_even_when_empty():
+    """An empty file yields "", never an absent property — otherwise a consumer
+    cannot tell "not carried" from "empty"."""
+    mod = PyModule(file_path="e.py", module_name="e", source="")
+    app = PyApplication(symbol_table={"e.py": mod})
+    sig_to_id = assign_ids(app, "myapp")
+    rows = project(app, "myapp", sig_to_id)
+    row = next(n for n in rows.nodes if "PyModule" in n.labels)
+    assert row.props["source"] == ""
+
+
+def test_every_span_bearing_node_carries_all_six_span_properties():
+    """#202: `_SPAN` means one thing on every label that spreads it — a consumer
+    never has to know which labels are sliceable."""
+    _, rows = _sample_rows()
+    spanned = [n for n in rows.nodes if any(k in n.props for k in _SPAN_KEYS)]
+    assert spanned, "no span-bearing rows projected"
+    for row in spanned:
+        # :PyAttribute is the declared exception -- PyClassAttribute carries no
+        # columns in JSON, so no byte offsets are derivable. Asserted explicitly so
+        # the exception cannot widen silently.
+        if "PyAttribute" in row.labels:
+            assert set(row.props) & set(_SPAN_KEYS) == {"start_line", "end_line"}
+            continue
+        missing = [k for k in _SPAN_KEYS if k not in row.props]
+        assert not missing, f"{row.labels} {row.value} missing {missing}"
+    # the computed-byte label must actually be exercised by the fixture
+    labels = {lbl for row in spanned for lbl in row.labels}
+    assert "PyVariable" in labels and "PyAttribute" in labels
+
+
+def test_byte_offsets_slice_the_module_source_to_the_nodes_own_text():
+    """#202: proof the offsets are real rather than declared."""
+    app, rows = _sample_rows()
+    source_by_module = {m.id: m.source for m in app.symbol_table.values()}
+    checked = 0
+    for row in rows.nodes:
+        code = row.props.get("code")
+        if code is None or "start_byte" not in row.props:
+            continue
+        source = next(
+            (s for mid, s in source_by_module.items() if row.value.startswith(mid)), None
+        )
+        assert source is not None, f"no owning module source for {row.value}"
+        sliced = source.encode("utf-8")[
+            row.props["start_byte"] : row.props["end_byte"]
+        ].decode("utf-8")
+        assert sliced == code, f"{row.value}: byte span does not slice to its code"
+        checked += 1
+    assert checked, "no node carried both code and byte offsets"
+
+
+def test_body_node_callee_signature_equals_the_matching_callsite():
+    """#203: carried by a positional join from `call_sites`, asserted per call site
+    rather than by presence — a positional join can miss silently."""
+    from codeanalyzer.semantic_analysis.call_graph import _walk_module_callables
+
+    app, rows = _sample_rows()
+    by_id = {n.value: n for n in rows.nodes if "PyBodyNode" in n.labels}
+    expected = 0
+    for mod in app.symbol_table.values():
+        for c in _walk_module_callables(mod):
+            for cs in c.call_sites or []:
+                if not cs.callee_signature:
+                    continue
+                expected += 1
+                row = by_id.get(_global_ordinal(c.id, f"{cs.start_line}:{cs.start_column}"))
+                assert row is not None, (
+                    f"no body node at {cs.start_line}:{cs.start_column} in {c.id}"
+                )
+                assert row.props.get("callee_signature") == cs.callee_signature
+    assert expected, "fixture has no call site with a callee_signature"
+
+
+def test_variable_value_json_round_trips_to_the_json_value():
+    """#203: `value` is Optional[Any] and Neo4j takes scalars or arrays of scalars,
+    so it is always JSON-encoded — one shape for every value, dict included. Built
+    directly rather than off the shared fixture, whose literal evaluator captures
+    only `ast.Constant` and so never populates a dict `value`."""
+    import json as _json
+    from codeanalyzer.schema.py_schema import PyVariableDeclaration
+
+    scalar = PyVariableDeclaration(name="PORT", initializer="8080", value=8080,
+                                   start_line=1, start_column=0, end_line=1, end_column=11)
+    nested = PyVariableDeclaration(name="CONF", initializer="{'a': [1, 2]}",
+                                   value={"a": [1, 2]},
+                                   start_line=2, start_column=0, end_line=2, end_column=20)
+    mod = PyModule(file_path="m.py", module_name="m",
+                   source="PORT = 8080\nCONF = {'a': [1, 2]}\n",
+                   variables=[scalar, nested])
+    app = PyApplication(symbol_table={"m.py": mod})
+    rows = project(app, "myapp", assign_ids(app, "myapp"))
+    by_name = {n.props["name"]: n for n in rows.nodes if "PyVariable" in n.labels}
+    assert _json.loads(by_name["PORT"].props["value_json"]) == 8080
+    assert _json.loads(by_name["CONF"].props["value_json"]) == {"a": [1, 2]}
+    # initializer stays the raw source text, value_json the evaluated result
+    assert by_name["CONF"].props["initializer"] == "{'a': [1, 2]}"
+
+
+def test_decorator_span_rides_the_relationship_not_the_shared_node():
+    """#203: :PyDecorator is merged on qualified_name and never pruned, so a
+    per-application fact on it would accumulate across every project in the DB."""
+    _, rows = _sample_rows()
+    decorated = [e for e in rows.edges if e.type == "PY_DECORATED_BY"]
+    assert decorated, "fixture projects no PY_DECORATED_BY edge"
+    for e in decorated:
+        missing = [k for k in _SPAN_KEYS if k not in (e.props or {})]
+        assert not missing, f"PY_DECORATED_BY missing {missing}"
+    for n in rows.nodes:
+        if "PyDecorator" in n.labels:
+            assert not any(k in n.props for k in _SPAN_KEYS), \
+                "the shared :PyDecorator node must carry no per-application span"
+
+
+def test_py_imports_carries_a_position_for_every_spelling():
+    """#203: the edge pre-aggregates per (module, target) and emits `spellings`
+    sorted, so positions key on the spelling — index alignment is already lost."""
+    import json as _json
+
+    _, rows = _sample_rows()
+    imports = [e for e in rows.edges if e.type == "PY_IMPORTS"]
+    assert imports, "fixture projects no PY_IMPORTS edge"
+    for e in imports:
+        positions = _json.loads(e.props["positions_json"])
+        assert set(positions) == set(e.props["spellings"]), \
+            "every spelling on the edge needs a position"
+        for pos in positions.values():
+            assert len(pos) == 4  # start_line, start_column, end_line, end_column

@@ -1,20 +1,25 @@
 {
   "schema_version": "2.0.0",
   "generator": "codeanalyzer-python",
-  "marker_labels": [],
+  "marker_labels": [
+    "PyCanNode"
+  ],
   "node_labels": [
     {
       "label": "PyApplication",
       "merge_label": "PyApplication",
-      "key": "name",
+      "key": "id",
       "properties": {
+        "id": "string",
         "name": "string",
         "schema_version": "string",
         "analyzer_name": "string",
         "analyzer_version": "string",
         "repo_uri": "string",
         "source_revision": "string",
-        "repo_dirty": "boolean"
+        "repo_dirty": "boolean",
+        "entrypoint_frameworks": "string[]",
+        "entrypoint_report_json": "string"
       }
     },
     {
@@ -25,10 +30,10 @@
         "id": "string",
         "file_key": "string",
         "module_name": "string",
+        "source": "string",
         "content_hash": "string",
         "last_modified": "float",
-        "file_size": "integer",
-        "_module": "string"
+        "file_size": "integer"
       }
     },
     {
@@ -41,10 +46,16 @@
         "name": "string",
         "code": "string",
         "base_classes": "string[]",
+        "decorators": "string[]",
         "docstring": "string",
         "start_line": "integer",
         "end_line": "integer",
-        "_module": "string"
+        "start_column": "integer",
+        "end_column": "integer",
+        "start_byte": "integer",
+        "end_byte": "integer",
+        "is_entrypoint": "boolean",
+        "entrypoint_frameworks": "string[]"
       }
     },
     {
@@ -62,11 +73,17 @@
         "code_start_line": "integer",
         "start_line": "integer",
         "end_line": "integer",
+        "start_column": "integer",
+        "end_column": "integer",
+        "start_byte": "integer",
+        "end_byte": "integer",
         "docstring": "string",
         "decorators": "string[]",
+        "modifiers": "string[]",
         "parameters_json": "string",
         "accessed_symbols_json": "string",
-        "_module": "string"
+        "is_entrypoint": "boolean",
+        "entrypoint_frameworks": "string[]"
       }
     },
     {
@@ -92,28 +109,8 @@
       "merge_label": "PyDecorator",
       "key": "name",
       "properties": {
-        "name": "string"
-      }
-    },
-    {
-      "label": "PyCallSite",
-      "merge_label": "PyCallSite",
-      "key": "id",
-      "properties": {
-        "id": "string",
-        "method_name": "string",
-        "receiver_expr": "string",
-        "receiver_type": "string",
-        "argument_types": "string[]",
-        "arguments_json": "string",
-        "return_type": "string",
-        "callee_signature": "string",
-        "is_constructor_call": "boolean",
-        "start_line": "integer",
-        "start_column": "integer",
-        "end_line": "integer",
-        "end_column": "integer",
-        "_module": "string"
+        "name": "string",
+        "qualified_name": "string"
       }
     },
     {
@@ -127,8 +124,7 @@
         "initializer": "string",
         "docstring": "string",
         "start_line": "integer",
-        "end_line": "integer",
-        "_module": "string"
+        "end_line": "integer"
       }
     },
     {
@@ -140,24 +136,81 @@
         "name": "string",
         "type": "string",
         "initializer": "string",
+        "value_json": "string",
         "scope": "string",
         "start_line": "integer",
         "end_line": "integer",
-        "_module": "string"
+        "start_column": "integer",
+        "end_column": "integer",
+        "start_byte": "integer",
+        "end_byte": "integer"
       }
     },
     {
-      "label": "PyCFGNode",
-      "merge_label": "PyCFGNode",
+      "label": "PyBodyNode",
+      "merge_label": "PyBodyNode",
       "key": "id",
       "properties": {
         "id": "string",
         "kind": "string",
         "var": "string",
         "call_node": "string",
+        "method_name": "string",
+        "receiver_expr": "string",
+        "receiver_type": "string",
+        "return_type": "string",
+        "is_constructor_call": "boolean",
+        "arguments_json": "string",
+        "callee_signature": "string",
         "start_line": "integer",
         "end_line": "integer",
-        "_module": "string"
+        "start_column": "integer",
+        "end_column": "integer",
+        "start_byte": "integer",
+        "end_byte": "integer"
+      }
+    },
+    {
+      "label": "Artifact",
+      "merge_label": "Artifact",
+      "key": "id",
+      "properties": {
+        "id": "string",
+        "path": "string",
+        "format": "string",
+        "roles": "string[]",
+        "size_bytes": "integer",
+        "sha256": "string",
+        "source": "string",
+        "extraction": "string"
+      }
+    },
+    {
+      "label": "Package",
+      "merge_label": "Package",
+      "key": "id",
+      "properties": {
+        "id": "string",
+        "ecosystem": "string",
+        "name": "string"
+      }
+    },
+    {
+      "label": "ConfigKey",
+      "merge_label": "ConfigKey",
+      "key": "id",
+      "properties": {
+        "id": "string",
+        "key": "string",
+        "namespace": "string",
+        "value": "string",
+        "references": "string[]",
+        "start_line": "integer",
+        "end_line": "integer",
+        "start_column": "integer",
+        "end_column": "integer",
+        "start_byte": "integer",
+        "end_byte": "integer"
       }
     }
   ],
@@ -217,19 +270,9 @@
       "properties": {}
     },
     {
-      "type": "PY_HAS_CALLSITE",
-      "from": [
-        "PyCallable"
-      ],
-      "to": [
-        "PyCallSite"
-      ],
-      "properties": {}
-    },
-    {
       "type": "PY_RESOLVES_TO",
       "from": [
-        "PyCallSite"
+        "PyBodyNode"
       ],
       "to": [
         "PyCallable",
@@ -274,36 +317,48 @@
       "properties": {
         "spellings": "string[]",
         "imported_names": "string[]",
-        "aliases": "string[]"
+        "aliases": "string[]",
+        "positions_json": "string"
       }
     },
     {
       "type": "PY_DECORATED_BY",
       "from": [
-        "PyCallable"
+        "PyCallable",
+        "PyClass"
       ],
       "to": [
         "PyDecorator"
       ],
-      "properties": {}
+      "properties": {
+        "expression": "string",
+        "positional_arguments": "string[]",
+        "keyword_arguments_json": "string",
+        "start_line": "integer",
+        "end_line": "integer",
+        "start_column": "integer",
+        "end_column": "integer",
+        "start_byte": "integer",
+        "end_byte": "integer"
+      }
     },
     {
-      "type": "PY_HAS_CFG_NODE",
+      "type": "PY_HAS_BODY_NODE",
       "from": [
         "PyCallable"
       ],
       "to": [
-        "PyCFGNode"
+        "PyBodyNode"
       ],
       "properties": {}
     },
     {
       "type": "PY_CFG_NEXT",
       "from": [
-        "PyCFGNode"
+        "PyBodyNode"
       ],
       "to": [
-        "PyCFGNode"
+        "PyBodyNode"
       ],
       "properties": {
         "kind": "string",
@@ -313,20 +368,20 @@
     {
       "type": "PY_CDG",
       "from": [
-        "PyCFGNode"
+        "PyBodyNode"
       ],
       "to": [
-        "PyCFGNode"
+        "PyBodyNode"
       ],
       "properties": {}
     },
     {
       "type": "PY_DDG",
       "from": [
-        "PyCFGNode"
+        "PyBodyNode"
       ],
       "to": [
-        "PyCFGNode"
+        "PyBodyNode"
       ],
       "properties": {
         "var": "string",
@@ -337,10 +392,10 @@
     {
       "type": "PY_PARAM_IN",
       "from": [
-        "PyCFGNode"
+        "PyBodyNode"
       ],
       "to": [
-        "PyCFGNode"
+        "PyBodyNode"
       ],
       "properties": {
         "var": "string"
@@ -349,10 +404,10 @@
     {
       "type": "PY_PARAM_OUT",
       "from": [
-        "PyCFGNode"
+        "PyBodyNode"
       ],
       "to": [
-        "PyCFGNode"
+        "PyBodyNode"
       ],
       "properties": {
         "var": "string"
@@ -361,28 +416,129 @@
     {
       "type": "PY_SUMMARY",
       "from": [
-        "PyCFGNode"
+        "PyBodyNode"
       ],
       "to": [
-        "PyCFGNode"
+        "PyBodyNode"
       ],
       "properties": {}
+    },
+    {
+      "type": "HAS_ARTIFACT",
+      "from": [
+        "PyApplication"
+      ],
+      "to": [
+        "Artifact"
+      ],
+      "properties": {}
+    },
+    {
+      "type": "DEFINES_CONFIG",
+      "from": [
+        "Artifact"
+      ],
+      "to": [
+        "ConfigKey"
+      ],
+      "properties": {}
+    },
+    {
+      "type": "DECLARES_DEPENDENCY",
+      "from": [
+        "Artifact"
+      ],
+      "to": [
+        "Package"
+      ],
+      "properties": {
+        "spec": "string",
+        "kind": "string",
+        "extras": "string[]",
+        "prov": "string[]",
+        "direct": "boolean",
+        "_k": "string"
+      }
+    },
+    {
+      "type": "LOCKS",
+      "from": [
+        "Artifact"
+      ],
+      "to": [
+        "Package"
+      ],
+      "properties": {
+        "version": "string"
+      }
+    },
+    {
+      "type": "PY_PROVIDES",
+      "from": [
+        "Package"
+      ],
+      "to": [
+        "PyExternal"
+      ],
+      "properties": {}
+    },
+    {
+      "type": "PY_UNRESOLVED_IMPORT",
+      "from": [
+        "PyApplication"
+      ],
+      "to": [
+        "PyExternal"
+      ],
+      "properties": {
+        "prov": "string[]"
+      }
+    },
+    {
+      "type": "PY_USES_CONFIG",
+      "from": [
+        "PyBodyNode"
+      ],
+      "to": [
+        "ConfigKey"
+      ],
+      "properties": {
+        "prov": "string[]"
+      }
+    },
+    {
+      "type": "PY_READS_CONFIG_UNRESOLVED",
+      "from": [
+        "PyApplication"
+      ],
+      "to": [
+        "PyExternal"
+      ],
+      "properties": {
+        "key": "string",
+        "reason": "string",
+        "prov": "string[]",
+        "_k": "string"
+      }
     }
   ],
   "constraints": [
-    "CREATE CONSTRAINT pyapplication_name IF NOT EXISTS FOR (x:PyApplication) REQUIRE x.name IS UNIQUE",
+    "CREATE CONSTRAINT pyapplication_id IF NOT EXISTS FOR (x:PyApplication) REQUIRE x.id IS UNIQUE",
     "CREATE CONSTRAINT pymodule_id IF NOT EXISTS FOR (x:PyModule) REQUIRE x.id IS UNIQUE",
     "CREATE CONSTRAINT pysymbol_id IF NOT EXISTS FOR (x:PySymbol) REQUIRE x.id IS UNIQUE",
     "CREATE CONSTRAINT pypackage_name IF NOT EXISTS FOR (x:PyPackage) REQUIRE x.name IS UNIQUE",
     "CREATE CONSTRAINT pydecorator_name IF NOT EXISTS FOR (x:PyDecorator) REQUIRE x.name IS UNIQUE",
-    "CREATE CONSTRAINT pycallsite_id IF NOT EXISTS FOR (x:PyCallSite) REQUIRE x.id IS UNIQUE",
     "CREATE CONSTRAINT pyattribute_id IF NOT EXISTS FOR (x:PyAttribute) REQUIRE x.id IS UNIQUE",
     "CREATE CONSTRAINT pyvariable_id IF NOT EXISTS FOR (x:PyVariable) REQUIRE x.id IS UNIQUE",
-    "CREATE CONSTRAINT pycfgnode_id IF NOT EXISTS FOR (x:PyCFGNode) REQUIRE x.id IS UNIQUE"
+    "CREATE CONSTRAINT pybodynode_id IF NOT EXISTS FOR (x:PyBodyNode) REQUIRE x.id IS UNIQUE",
+    "CREATE CONSTRAINT artifact_id IF NOT EXISTS FOR (x:Artifact) REQUIRE x.id IS UNIQUE",
+    "CREATE CONSTRAINT package_id IF NOT EXISTS FOR (x:Package) REQUIRE x.id IS UNIQUE",
+    "CREATE CONSTRAINT configkey_id IF NOT EXISTS FOR (x:ConfigKey) REQUIRE x.id IS UNIQUE"
   ],
   "indexes": [
     "CREATE INDEX py_callable_name IF NOT EXISTS FOR (c:PyCallable) ON (c.name)",
     "CREATE INDEX py_class_name IF NOT EXISTS FOR (c:PyClass) ON (c.name)",
-    "CREATE FULLTEXT INDEX py_code_fts IF NOT EXISTS FOR (c:PyCallable) ON EACH [c.code, c.docstring]"
+    "CREATE FULLTEXT INDEX py_code_fts IF NOT EXISTS FOR (c:PyCallable) ON EACH [c.code, c.docstring]",
+    "CREATE INDEX py_can_node_id IF NOT EXISTS FOR (n:PyCanNode) ON (n.id)"
   ]
 }

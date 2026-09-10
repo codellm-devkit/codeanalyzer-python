@@ -28,6 +28,13 @@ SCHEMA_VERSION is the contract version: bump MAJOR on a breaking change (renamed
 relationship or key), MINOR on an additive change (new label/rel/property). It is stamped onto
 the :PyApplication node of every emitted graph so any consumer can detect a producer/consumer
 mismatch at runtime.
+
+**The additive-MINOR rule is suspended for the 2.0.0 line.** Per the 2026-09-07 ruling (all three
+analyzers), payload ``schema_version`` and this version both hold at ``2.0.0`` until the 2.0.0 line
+leaves release-candidate, so the additive properties of #202/#203 ship without a bump and are
+detectable only by presence. Consumers gate on the **analyzer version** instead -- the python-sdk
+Neo4j backends carry an analyzer floor and refuse anything below it at attach. The rule above
+resumes at the coordinated re-baseline.
 """
 
 from __future__ import annotations
@@ -61,7 +68,18 @@ class RelType:
 # anchor for the prefix-scoped destructive statements (see ``rows.CAN_NODE``).
 MARKER_LABELS: List[str] = ["PyCanNode"]
 
-_SPAN = {"start_line": "integer", "end_line": "integer"}
+# The flattened span. ``start_column``/``end_column``/``start_byte``/``end_byte``
+# are adopted **verbatim** from codeanalyzer-java#255, which coined them: a term
+# coined twice is permanently wrong under the cross-language parity clause. The
+# byte pair makes every span sliceable out of :PyModule.source -- for the labels
+# whose JSON model carries flat ast positions and no ``Span`` (:PyAttribute,
+# :PyVariable) the projector computes it, so this dict means one thing on every
+# label that spreads it (#202).
+_SPAN = {
+    "start_line": "integer", "end_line": "integer",
+    "start_column": "integer", "end_column": "integer",
+    "start_byte": "integer", "end_byte": "integer",
+}
 
 
 NODE_LABELS: List[NodeLabel] = [
@@ -90,6 +108,10 @@ NODE_LABELS: List[NodeLabel] = [
             "id": "string",
             "file_key": "string",
             "module_name": "string",
+            # The primary text: schema v2 stores source once per module and every
+            # narrower node's text is a byte slice of it. Always present -- an empty
+            # file yields "", so "not carried" is never confusable with "empty" (#202).
+            "source": "string",
             "content_hash": "string",
             "last_modified": "float",
             "file_size": "integer",
@@ -158,7 +180,13 @@ NODE_LABELS: List[NodeLabel] = [
             "type": "string",
             "initializer": "string",
             "docstring": "string",
-            **_SPAN,
+            # The one _SPAN exception: ``PyClassAttribute`` carries start/end LINE only
+            # -- no columns, hence no derivable byte offsets. Emitting a fabricated
+            # column 0 would make the span unsliceable while claiming otherwise, so the
+            # line pair is declared honestly instead. Filed for the JSON model to gain
+            # columns; until then this label is line-granular (#203).
+            "start_line": "integer",
+            "end_line": "integer",
         },
     ),
     NodeLabel(
@@ -170,6 +198,11 @@ NODE_LABELS: List[NodeLabel] = [
             "name": "string",
             "type": "string",
             "initializer": "string",
+            # ``PyVariableDeclaration.value`` -- the literal-evaluated result, always
+            # JSON-encoded because it is ``Optional[Any]`` and a Neo4j property is a
+            # scalar or an array of scalars (the ``arguments_json`` precedent, #203).
+            # ``initializer`` stays the raw source text.
+            "value_json": "string",
             "scope": "string",
             **_SPAN,
         },
@@ -197,6 +230,12 @@ NODE_LABELS: List[NodeLabel] = [
             "return_type": "string",
             "is_constructor_call": "boolean",
             "arguments_json": "string",
+            # What distinguishes overload targets at a resolved call site. Joined
+            # from ``PyCallable.call_sites`` at projection time, since ``BodyNode``
+            # does not carry it in JSON (#203). ``argument_types`` is deliberately
+            # NOT here: it is the legacy field #86 split into ``PyCallArgument``,
+            # already carried as ``arguments_json``.
+            "callee_signature": "string",
             **_SPAN,
         },
     ),
@@ -247,16 +286,26 @@ REL_TYPES: List[RelType] = [
         "PY_IMPORTS",
         ["PyModule"],
         ["PyModule", "PyPackage"],
-        {"spellings": "string[]", "imported_names": "string[]", "aliases": "string[]"},
+        # ``positions_json`` keys on the spelling, not on an index: this edge
+        # pre-aggregates per (module, target) and emits ``spellings`` sorted, so
+        # parallel position arrays have already lost their alignment (#203).
+        {"spellings": "string[]", "imported_names": "string[]", "aliases": "string[]",
+         "positions_json": "string"},
     ),
     RelType(
         "PY_DECORATED_BY",
         ["PyCallable", "PyClass"],
         ["PyDecorator"],
+        # The span rides here, not on :PyDecorator: that node is merged on the
+        # resolved ``qualified_name`` and carries no ``_module``, so it is never
+        # pruned and any per-application fact on it would accumulate across every
+        # project in the database -- the same reason ``expression`` and the
+        # arguments already ride the relationship (#203).
         {
             "expression": "string",
             "positional_arguments": "string[]",
             "keyword_arguments_json": "string",
+            **_SPAN,
         },
     ),
     # Level-3 CPG overlay (-a 3 only): the cross-language dataflow vocabulary,

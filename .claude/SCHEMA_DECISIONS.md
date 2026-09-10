@@ -568,10 +568,16 @@ Sibling halves: codeanalyzer-java#255/#256, codeanalyzer-typescript#201/#202.
   it. The four spellings are **adopted verbatim from codeanalyzer-java#255**, which
   coined them — java has not landed them yet, and adoption follows the decision, not
   the merge order.
-- **Bytes are computed where the model has none.** Attribute, variable and
-  `ConfigKey` carry flat line/column, so the projector calls the existing
-  `byte_offsets()` rather than declaring four properties it populates on only half
-  the labels. `_SPAN` keeps meaning one thing.
+- **Bytes are computed where the model has none.** `PyVariableDeclaration` carries
+  flat line/column, so the projector calls the existing `byte_offsets()` rather than
+  declaring four properties it populates on only half the labels. `PyConfigKey`
+  already carries a real `Span`.
+- **`:PyAttribute` is the one `_SPAN` exception** (found in implementation, spec
+  amended). `PyClassAttribute` carries `start_line`/`end_line` and no columns, so no
+  byte offsets are derivable; a fabricated column 0 would claim a sliceable span that
+  is not one. The label declares the line pair explicitly and the conformance test
+  asserts exactly that, so the exception cannot widen unnoticed. Giving the JSON model
+  columns is follow-on work.
 - **`callee_signature` by projection-time join**, `PyCallable.call_sites` → body node
   on `(start_line, start_column)`. `BodyNode` has no such field in JSON and the JSON
   projection is out of scope; the join is asserted per call site, since a positional

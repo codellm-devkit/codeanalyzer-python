@@ -41,11 +41,21 @@ bad one.
    of writing) — adoption follows the decision, not the merge order.
 
 3. **Byte offsets are computed at projection time where the JSON model has no
-   `Span`.** `PyClassAttribute`, `PyVariableDeclaration` and `PyConfigKey` carry
-   flat line/column only. `byte_offsets()` (`schema/py_schema.py:104`) already
-   converts ast positions to utf-8 offsets and the module source is in hand, so all
-   four properties are populated uniformly rather than present on some labels and
-   pruned on others. `_SPAN` keeps meaning one thing.
+   `Span`.** `PyVariableDeclaration` carries flat line/column and no `Span`;
+   `byte_offsets()` (`schema/py_schema.py:104`) already converts ast positions to
+   utf-8 offsets and the module source is in hand, so `:PyVariable` gets all six
+   properties like every other label. `PyConfigKey` needs nothing — it carries a real
+   `Span` already.
+
+   **Amended during implementation: `:PyAttribute` is the one exception.**
+   `PyClassAttribute` (`py_schema.py:409`) carries `start_line`/`end_line` and *no
+   columns at all* — this spec originally lumped it with `PyVariableDeclaration`,
+   which was wrong. With no columns there is nothing to derive byte offsets from, and
+   emitting a fabricated column 0 would make the span unsliceable while claiming
+   otherwise. So `:PyAttribute` declares the line pair honestly instead of spreading
+   `_SPAN`, the exception is asserted in the conformance test so it cannot widen
+   silently, and giving `PyClassAttribute` columns in the JSON model is left as
+   follow-on work (a JSON-contract change, out of scope here).
 
 4. **`callee_signature` reaches `:PyBodyNode` by a projection-time join** from
    `PyCallable.call_sites`, keyed on `(start_line, start_column)`. `BodyNode` does

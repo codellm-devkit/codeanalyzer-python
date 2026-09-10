@@ -30,6 +30,7 @@
         "id": "string",
         "file_key": "string",
         "module_name": "string",
+        "source": "string",
         "content_hash": "string",
         "last_modified": "float",
         "file_size": "integer"
@@ -49,6 +50,10 @@
         "docstring": "string",
         "start_line": "integer",
         "end_line": "integer",
+        "start_column": "integer",
+        "end_column": "integer",
+        "start_byte": "integer",
+        "end_byte": "integer",
         "is_entrypoint": "boolean",
         "entrypoint_frameworks": "string[]"
       }
@@ -68,6 +73,10 @@
         "code_start_line": "integer",
         "start_line": "integer",
         "end_line": "integer",
+        "start_column": "integer",
+        "end_column": "integer",
+        "start_byte": "integer",
+        "end_byte": "integer",
         "docstring": "string",
         "decorators": "string[]",
         "modifiers": "string[]",
@@ -127,9 +136,14 @@
         "name": "string",
         "type": "string",
         "initializer": "string",
+        "value_json": "string",
         "scope": "string",
         "start_line": "integer",
-        "end_line": "integer"
+        "end_line": "integer",
+        "start_column": "integer",
+        "end_column": "integer",
+        "start_byte": "integer",
+        "end_byte": "integer"
       }
     },
     {
@@ -147,8 +161,13 @@
         "return_type": "string",
         "is_constructor_call": "boolean",
         "arguments_json": "string",
+        "callee_signature": "string",
         "start_line": "integer",
-        "end_line": "integer"
+        "end_line": "integer",
+        "start_column": "integer",
+        "end_column": "integer",
+        "start_byte": "integer",
+        "end_byte": "integer"
       }
     },
     {
@@ -187,7 +206,11 @@
         "value": "string",
         "references": "string[]",
         "start_line": "integer",
-        "end_line": "integer"
+        "end_line": "integer",
+        "start_column": "integer",
+        "end_column": "integer",
+        "start_byte": "integer",
+        "end_byte": "integer"
       }
     }
   ],
@@ -294,7 +317,8 @@
       "properties": {
         "spellings": "string[]",
         "imported_names": "string[]",
-        "aliases": "string[]"
+        "aliases": "string[]",
+        "positions_json": "string"
       }
     },
     {
@@ -309,7 +333,13 @@
       "properties": {
         "expression": "string",
         "positional_arguments": "string[]",
-        "keyword_arguments_json": "string"
+        "keyword_arguments_json": "string",
+        "start_line": "integer",
+        "end_line": "integer",
+        "start_column": "integer",
+        "end_column": "integer",
+        "start_byte": "integer",
+        "end_byte": "integer"
       }
     },
     {

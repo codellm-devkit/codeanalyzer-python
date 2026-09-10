@@ -172,3 +172,15 @@ def test_param_edges_carry_every_declared_property():
             assert not missing, f"{rel} {e.from_ref.value} -> {e.to_ref.value} lacks {missing}"
             assert e.props["var"], f"{rel} var must be non-empty"
 
+
+def test_handoff_schema_snapshot_matches_the_root_one():
+    """The handoff bundle ships its own copy of the contract
+    (``docs/handoff/schema.neo4j.json``, referenced by ``docs/handoff/README.md``) so
+    it stays self-contained. Nothing guarded it, and it had already drifted two node
+    labels behind the root snapshot before #202/#203 touched either. Regenerate both
+    with ``canpy --emit schema``."""
+    root = Path(__file__).resolve().parents[1] / "schema.neo4j.json"
+    handoff = Path(__file__).resolve().parents[1] / "docs" / "handoff" / "schema.neo4j.json"
+    assert json.loads(handoff.read_text()) == json.loads(root.read_text()), (
+        "docs/handoff/schema.neo4j.json is stale — regenerate both copies"
+    )
