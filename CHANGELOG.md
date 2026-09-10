@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.2] - 2026-09-10
+
+### Fixed
+
+- The Neo4j projection now carries the facts `analysis.json` carries (#202, #203).
+  The two projections are both first-class, so a fact in one and not the other is a
+  bug in the graph: a consumer that ported a JSON traversal to Cypher lost data with
+  no error. Re-expressing a JSON field as an edge or a flattened property is fine;
+  dropping it is not. What was missing, and is now emitted:
+
+  - `:PyModule.source` — the module's whole-file text, the anchor every `span` slices
+    into. Without it a graph consumer could read a node's offsets and had nothing to
+    apply them to.
+  - **Full spans everywhere a span is declared.** Every label and relationship that
+    carries a span now carries all six properties — `start_line`, `start_column`,
+    `end_line`, `end_column`, `start_byte`, `end_byte` — matching `Span` in the
+    payload (`start`/`end` as `[line, col]` plus `bytes:[lo, hi]`). Previously only
+    the two line numbers reached the graph, so `module.source[start_byte:end_byte]`
+    had no graph equivalent. The property names are the ones codeanalyzer-java#255
+    coined, adopted verbatim.
+  - `:PyVariable.value_json` — the variable's initializer value, JSON-encoded because
+    Neo4j properties are scalars or arrays of scalars and the payload's `value` is
+    arbitrary (`8080`, `{"a": [1, 2]}`). Same treatment `arguments_json` already had.
+  - `:PyBodyNode.callee_signature` — the call site's resolved callee signature, joined
+    to the body node by position.
+  - `PY_IMPORTS.positions_json` — one position per imported spelling. The edge
+    pre-aggregates per `(module, target)` and its `spellings` list is sorted, so the
+    positions are keyed by spelling rather than aligned by index.
+  - A span on `PY_DECORATED_BY` — where the decorator is *applied*. The `:PyDecorator`
+    node is merged on `qualified_name` and shared across every use, so the applied
+    position belongs on the relationship, not the node.
+
+  One documented exception: `:PyAttribute` declares a line-only span, because the
+  payload's `PyClassAttribute` has no column fields to project.
+
+  Additive — `schema_version` and the graph `SCHEMA_VERSION` both stay `2.0.0` under
+  the hold on the 2.0.0 line; gate on the analyzer version instead. Consumers reading
+  graphs from 1.5.1 or earlier still have to tolerate these properties' absence.
+  Comment nodes remain out of the graph by design and are not part of this fix.
+
+- `schema.neo4j.json` and its `docs/handoff/` copy had drifted apart; they are
+  regenerated, identical, and a test now pins them together.
+
 ## [1.5.1] - 2026-09-09
 
 ### Fixed
