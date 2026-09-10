@@ -50,7 +50,7 @@ from codeanalyzer.schema import (
 )
 from codeanalyzer.schema import model_dump
 from codeanalyzer.schema.ids import application_id, external_id, global_ordinal, purl_pypi
-from codeanalyzer.schema.py_schema import PyDecorator
+from codeanalyzer.schema.py_schema import PyDecorator, byte_offsets
 
 
 def project(app: PyApplication, app_name: str, sig_to_id: dict,
@@ -182,6 +182,15 @@ def _project_program_graphs(
             if not c.id:
                 continue  # unstamped callable — assign_ids must run first
             owner = _sym(c.id)  # the :PyCallable node, keyed by its can:// id
+            # ``callee_signature`` lives on ``PyCallable.call_sites``, not on the body
+            # node, so the graph joins the two on the call site's position (#203).
+            # ``argument_types`` is deliberately not joined: it is the legacy field #86
+            # split into ``PyCallArgument``, already carried as ``arguments_json``.
+            sig_by_pos = {
+                (cs.start_line, cs.start_column): cs.callee_signature
+                for cs in (c.call_sites or [])
+                if cs.callee_signature
+            }
             for local_key, node in (c.body or {}).items():
                 span = node.span
                 # L4 param vertices carry the variable they model (``of``) and
@@ -194,8 +203,11 @@ def _project_program_graphs(
                     prune(
                         {
                             "kind": node.kind,
-                            "start_line": span.start[0] if span else None,
-                            "end_line": span.end[0] if span else None,
+                            **_span_props(span),
+                            "callee_signature": (
+                                sig_by_pos.get((span.start[0], span.start[1]))
+                                if span else None
+                            ),
                             "var": node.of,
                             "call_node": node.parent,
                             # Call-site detail (#120). The JSON emits one node per
@@ -346,8 +358,7 @@ def _project_artifacts(b: RowBuilder, app: PyApplication, app_name: str, app_ref
                         "namespace": ck.namespace,
                         "value": ck.value,
                         "references": list(ck.references or []),
-                        "start_line": ck.span.start[0] if ck.span else None,
-                        "end_line": ck.span.end[0] if ck.span else None,
+                        **_span_props(ck.span),
                     }
                 ),
             )
@@ -569,7 +580,7 @@ def _project_module_body(
         _project_class(b, file_key, mod_ref, "PY_DECLARES", cl, externals, sig_to_id,
                        mod.source, base_ref)
     for v in mod.variables or []:
-        _project_variable(b, file_key, mod_ref, v)
+        _project_variable(b, file_key, mod_ref, v, mod.source or "")
     _project_imports(b, mod_ref, mod, module_id_by_key)
 
 
@@ -597,9 +608,15 @@ def _project_imports(b: RowBuilder, mod_ref: NodeRef, mod: PyModule,
             continue
         key = im.resolved_module or im.module
         a = agg.setdefault(
-            key, {"spellings": set(), "names": set(), "aliases": set(), "resolved": im.resolved_module}
+            key,
+            {"spellings": set(), "names": set(), "aliases": set(), "positions": {},
+             "resolved": im.resolved_module},
         )
         a["spellings"].add(im.module)
+        # Keyed by spelling, never by index: ``spellings`` is emitted sorted, so a
+        # parallel position array has already lost its alignment (#203).
+        a["positions"][im.module] = [im.start_line, im.start_column,
+                                     im.end_line, im.end_column]
         if im.name:
             a["names"].add(im.name)
         if im.alias:
@@ -623,6 +640,7 @@ def _project_imports(b: RowBuilder, mod_ref: NodeRef, mod: PyModule,
                     "spellings": sorted(a["spellings"]),
                     "imported_names": sorted(a["names"]) or None,
                     "aliases": sorted(a["aliases"]) or None,
+                    "positions_json": json.dumps(a["positions"], sort_keys=True),
                 }
             ),
         )
@@ -675,7 +693,7 @@ def _project_callable(
         _project_decorator(b, ref, d)
 
     for v in c.local_variables or []:
-        _project_variable(b, file_key, ref, v)
+        _project_variable(b, file_key, ref, v, source)
     for ic in (c.callables or {}).values():
         _project_callable(b, file_key, ref, "PY_DECLARES", ic, externals, sig_to_id,
                           source, base_ref)
@@ -700,12 +718,14 @@ def _project_variable(
     file_key: str,
     owner: NodeRef,
     v: PyVariableDeclaration,
+    source: str,
 ) -> None:
     # ``<owner can:// id>/<name>@<line>`` (#173) — the owner is the module or the
     # callable, so a module-level variable sits under ``<module-id>/`` like every
     # other declaration and the module's prefix purge reaches it.
     var_id = f"{owner.value}/{v.name}@{v.start_line}"
-    ref = b.node(["PyVariable"], "id", var_id, _variable_props(v, var_id, file_key))
+    ref = b.node(["PyVariable"], "id", var_id,
+                 _variable_props(v, var_id, file_key, source))
     b.edge("PY_DECLARES_VAR", owner, ref)
 
 
@@ -737,6 +757,7 @@ def _project_decorator(b: RowBuilder, on: NodeRef, decorator: PyDecorator) -> No
             "keyword_arguments_json": json.dumps(
                 dict(decorator.keyword_arguments or {}), sort_keys=True
             ),
+            **_span_props(decorator.span),
         },
     )
 
@@ -752,12 +773,45 @@ def _module_props(mod: PyModule, file_key: str) -> Props:
             "id": mod.id,
             "file_key": file_key,
             "module_name": mod.module_name,
+            # Always present, never pruned: "" for an empty file, so a consumer can
+            # never confuse "not carried" with "empty" (#202).
+            "source": mod.source or "",
             "content_hash": mod.content_hash,
             "last_modified": mod.last_modified,
             "file_size": mod.file_size,
             "_module": file_key,
         }
     )
+
+
+def _span_props(span) -> Props:
+    """The six flattened span properties from a v2 ``Span`` (#202). Lines and columns
+    come straight off the model; ``bytes`` is already utf-8 and is what makes the span
+    sliceable out of ``:PyModule.source``."""
+    if span is None:
+        return {}
+    return {
+        "start_line": span.start[0], "start_column": span.start[1],
+        "end_line": span.end[0], "end_column": span.end[1],
+        "start_byte": span.bytes[0], "end_byte": span.bytes[1],
+    }
+
+
+def _flat_span_props(source: str, start_line: int, start_column: int,
+                     end_line: int, end_column: int) -> Props:
+    """The same six for a model carrying flat ast positions and no ``Span``
+    (:PyAttribute, :PyVariable). The byte pair is computed here rather than left
+    absent, so ``_SPAN`` means one thing on every label that spreads it (#202)."""
+    if start_line < 0 or end_line < 0 or not source:
+        return {}
+    start_column = max(start_column, 0)
+    end_column = max(end_column, 0)
+    lo, hi = byte_offsets(source, start_line, start_column, end_line, end_column)
+    return {
+        "start_line": start_line, "start_column": start_column,
+        "end_line": end_line, "end_column": end_column,
+        "start_byte": lo, "end_byte": hi,
+    }
 
 
 def _span_code(source: str, span) -> str | None:
@@ -781,8 +835,8 @@ def _class_props(cl: PyClass, file_key: str, source: str) -> Props:
             "base_classes": list(cl.base_classes or []),
             "decorators": [d.qualified_name or d.name for d in (cl.decorators or [])],
             "docstring": _docstring_of(cl.comments),
-            "start_line": cl.start_line,
-            "end_line": cl.end_line,
+            **(_span_props(cl.span) or {"start_line": cl.start_line,
+                                        "end_line": cl.end_line}),
             "_module": file_key,
             "is_entrypoint": bool(cl.entrypoints),
             "entrypoint_frameworks": sorted({e.framework for e in (cl.entrypoints or [])}),
@@ -801,8 +855,8 @@ def _callable_props(c: PyCallable, file_key: str, source: str) -> Props:
             "cyclomatic_complexity": c.cyclomatic_complexity,
             "code": _span_code(source, c.span),
             "code_start_line": c.code_start_line,
-            "start_line": c.start_line,
-            "end_line": c.end_line,
+            **(_span_props(c.span) or {"start_line": c.start_line,
+                                       "end_line": c.end_line}),
             "docstring": _docstring_of(c.comments),
             "decorators": [d.qualified_name or d.name for d in (c.decorators or [])],
             "modifiers": list(c.modifiers or []),
@@ -823,6 +877,8 @@ def _attribute_props(a: PyClassAttribute, attr_id: str, file_key: str) -> Props:
             "type": a.type,
             "initializer": a.initializer,
             "docstring": _docstring_of(a.comments),
+            # Line-only: PyClassAttribute has no columns, so there is nothing to
+            # derive bytes from. See the note on :PyAttribute in schema.py.
             "start_line": a.start_line,
             "end_line": a.end_line,
             "_module": file_key,
@@ -830,16 +886,21 @@ def _attribute_props(a: PyClassAttribute, attr_id: str, file_key: str) -> Props:
     )
 
 
-def _variable_props(v: PyVariableDeclaration, var_id: str, file_key: str) -> Props:
+def _variable_props(v: PyVariableDeclaration, var_id: str, file_key: str,
+                    source: str) -> Props:
     return prune(
         {
             "id": var_id,
             "name": v.name,
             "type": v.type,
             "initializer": v.initializer,
+            # ``value`` is Optional[Any] and a Neo4j property is a scalar or an array
+            # of scalars, so a dict/list value needs a serialization rather than a raw
+            # put -- always encoded, one shape for every value (#203).
+            "value_json": _stringify_if(v.value) if v.value is not None else None,
             "scope": v.scope,
-            "start_line": v.start_line,
-            "end_line": v.end_line,
+            **_flat_span_props(source, v.start_line, v.start_column,
+                              v.end_line, v.end_column),
             "_module": file_key,
         }
     )

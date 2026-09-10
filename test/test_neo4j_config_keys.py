@@ -13,7 +13,11 @@ def test_catalog_has_config_key_label_and_rel():
     assert config_key.properties == {
         "id": "string", "key": "string", "namespace": "string",
         "value": "string", "references": "string[]",
+        # The shared _SPAN, widened to columns + utf-8 byte offsets in #202 so a
+        # key's position slices out of the artifact text like any other node's.
         "start_line": "integer", "end_line": "integer",
+        "start_column": "integer", "end_column": "integer",
+        "start_byte": "integer", "end_byte": "integer",
     }
     rels = {r.type: r for r in REL_TYPES}
     defines = rels["DEFINES_CONFIG"]

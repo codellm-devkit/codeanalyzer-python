@@ -557,3 +557,55 @@ codeanalyzer-typescript. Terms coined once and shared: `SCHEME`, `LANG`,
 - Additive field, `schema_version` unchanged. A 1.5.0 `analysis.json` still
   parses (`var` defaults to `None`); consumers should tolerate its absence for
   one generation of cached graphs.
+
+## 2026-09-10 — The Neo4j projection carries the JSON's facts (issues #202, #203)
+
+Spec: `docs/design/specs/2026-09-10-neo4j-json-parity.md`.
+Sibling halves: codeanalyzer-java#255/#256, codeanalyzer-typescript#201/#202.
+
+- **Graph-only change.** `:PyModule` gains `source`; `_SPAN` gains
+  `start_column`/`end_column`/`start_byte`/`end_byte` on all six labels that spread
+  it. The four spellings are **adopted verbatim from codeanalyzer-java#255**, which
+  coined them — java has not landed them yet, and adoption follows the decision, not
+  the merge order.
+- **Bytes are computed where the model has none.** `PyVariableDeclaration` carries
+  flat line/column, so the projector calls the existing `byte_offsets()` rather than
+  declaring four properties it populates on only half the labels. `PyConfigKey`
+  already carries a real `Span`.
+- **`:PyAttribute` is the one `_SPAN` exception** (found in implementation, spec
+  amended). `PyClassAttribute` carries `start_line`/`end_line` and no columns, so no
+  byte offsets are derivable; a fabricated column 0 would claim a sliceable span that
+  is not one. The label declares the line pair explicitly and the conformance test
+  asserts exactly that, so the exception cannot widen unnoticed. Giving the JSON model
+  columns is follow-on work.
+- **`callee_signature` by projection-time join**, `PyCallable.call_sites` → body node
+  on `(start_line, start_column)`. `BodyNode` has no such field in JSON and the JSON
+  projection is out of scope; the join is asserted per call site, since a positional
+  join can miss silently. Traversal to the callee's signature was rejected: 20-28% of
+  call sites never resolve, which is where the field is the only source.
+- **`argument_types` deliberately not carried.** It is the legacy field #86 split
+  into `PyCallArgument{ast_kind, inferred_type}`, already on the graph as
+  `arguments_json`. Carrying it would store one fact twice in two vocabularies, one
+  of them deprecated. #203's goal is satisfied by the successor.
+- **`value_json`, always encoded.** `PyVariableDeclaration.value` is `Optional[Any]`;
+  Neo4j takes scalars and scalar arrays. One shape for every value, per the
+  `arguments_json` precedent. `initializer` stays raw source text.
+- **Decorator span on the relationship, not the node.** `:PyDecorator` is merged on
+  `qualified_name`, carries no `_module` and is never pruned, so per-application
+  facts on it accumulate across every project in the database. Same reason
+  `expression` and the arguments already ride `PY_DECORATED_BY`.
+- **`PY_IMPORTS.positions_json` keyed by spelling.** The edge pre-aggregates per
+  `(module, target)` and emits `spellings` `sorted()`, so parallel position arrays
+  have already lost index alignment. The spelling is the only stable key.
+- **Neither version moves**, per the standing 2026-09-07 hold (payload
+  `schema_version` and graph `SCHEMA_VERSION` both `2.0.0` until the 2.0.0 line
+  leaves release-candidate). Consumers gate on the analyzer-version floor, which
+  moves with 1.5.2. `neo4j/schema.py`'s "MINOR on an additive change" note is amended
+  to record the hold — the file must not document a rule it breaks. Both issues cite
+  `.github#50` for the hold; that is a miscitation, #50 mandates a MAJOR for the
+  `_module` removal (#173, closed, bump waived by the same ruling).
+- **Comments are dropped, not deferred.** codeanalyzer-java#257 closed `NOT_PLANNED`
+  on 2026-09-10: comments are globally ignored across the analyzers and `docstring`
+  is where the comment model stops. Its closing comment names #203 as dropping its
+  comment goals for the same reason. `python-sdk`'s `get_all_comments` raising on the
+  Neo4j backend is now the permanent answer, not a workaround.
