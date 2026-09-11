@@ -299,3 +299,29 @@ def _flatten_class(cls: dict) -> list:
     for inner in cls.get("types", {}).values():
         result.extend(_flatten_class(inner))
     return result
+
+def test_output_dir_inside_input_does_not_grow_across_runs(cli_runner, tmp_path):
+    """#207: `-o` inside `-i` made run N ingest run N-1's `analysis.json` whole,
+    so repeated runs compounded until the analyzer was SIGKILLed decoding its own
+    output. Two runs, same flags: identical bytes, and the output directory never
+    appears in the artifact inventory while a sibling file still does."""
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "app.py").write_text("def f(x):\n    return x + 1\n")
+    (proj / "notes.md").write_text("# notes\n")
+    out = proj / ".output"
+
+    sizes = []
+    for i in (1, 2):
+        result = cli_runner.invoke(
+            app,
+            ["-i", str(proj), "-o", str(out), "-a", "1", "--no-venv",
+             "-c", str(tmp_path / f"cache{i}")],
+            env={"NO_COLOR": "1", "TERM": "dumb"},
+        )
+        assert result.exit_code == 0, result.output
+        sizes.append((out / "analysis.json").stat().st_size)
+
+    assert sizes[0] == sizes[1], f"output grew across runs: {sizes}"
+    arts = json.loads((out / "analysis.json").read_text())["application"]["artifacts"]
+    assert sorted(arts) == ["notes.md"]

@@ -39,7 +39,7 @@ def _pin_hash_seed() -> None:
 from codeanalyzer.core import Codeanalyzer
 from codeanalyzer.utils import _set_log_level, logger
 from codeanalyzer.schema import model_dump, model_dump_json, strip_internal_only
-from codeanalyzer.options import AnalysisOptions, EmitTarget
+from codeanalyzer.options import ANALYSIS_JSON, AnalysisOptions, EmitTarget
 
 
 def _version_callback(value: bool) -> None:
@@ -402,7 +402,7 @@ def main(
 
 def _write_output(artifacts, output_dir: Path):
     """Write analysis.json (the single wire format since #118)."""
-    output_file = output_dir / "analysis.json"
+    output_file = output_dir / ANALYSIS_JSON
     # Use Pydantic's model_dump_json() for compact output
     # Strip internal-only fields here rather than with a field-level Pydantic
     # `exclude`: the analysis cache shares the serializer and must keep them.

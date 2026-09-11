@@ -231,3 +231,63 @@ def test_discovers_terraform_flaskenv_properties_and_generic_ini(tmp_path):
     assert arts["mypy.ini"].format == "ini" and arts["mypy.ini"].roles == ["tool-config"]
     # tox.ini keeps matching its own specific (pre-existing) rule, unshadowed.
     assert arts["tox.ini"].format == "ini" and arts["tox.ini"].roles == ["tool-config"]
+
+
+# --- the run's own output is not an input (#207) --------------------------
+
+
+def test_output_dir_inside_the_project_is_excluded(tmp_path):
+    """#207: with `-o` inside `-i`, run N would otherwise ingest run N-1's
+    `analysis.json` whole -- each run embedding the previous one, unbounded.
+    The exclusion covers the directory, not a name: any `-o` target works."""
+    _mk(tmp_path, "notes.md", "hi\n")
+    _mk(tmp_path, "out/analysis.json", '{"schema_version": "2.0.0"}\n')
+    _mk(tmp_path, "out/nested/graph.cypher", "MERGE (n)\n")
+    arts = discover_artifacts(tmp_path, "a", exclude_paths=[tmp_path / "out"])
+    assert sorted(arts) == ["notes.md"]
+
+
+def test_exclusion_is_by_resolved_path_not_by_string(tmp_path):
+    """The output directory arrives relative, or through a symlink, or with a
+    `..` in it. All three name the same tree and must all exclude it."""
+    _mk(tmp_path, "notes.md", "hi\n")
+    _mk(tmp_path, "real/analysis.json", "{}\n")
+    (tmp_path / "link").symlink_to(tmp_path / "real", target_is_directory=True)
+    for given in (
+        tmp_path / "real",
+        tmp_path / "link",                 # symlink to the real output dir
+        tmp_path / "notes.md" / ".." / "real",
+    ):
+        arts = discover_artifacts(tmp_path, "a", exclude_paths=[given])
+        assert sorted(arts) == ["notes.md"], f"{given} did not exclude the tree"
+
+
+def test_exclusion_outside_the_project_drops_nothing(tmp_path):
+    """The normal case -- `-o` somewhere else entirely -- must be inert."""
+    _mk(tmp_path, "proj/notes.md", "hi\n")
+    _mk(tmp_path, "proj/Dockerfile", "FROM python:3.12\n")
+    arts = discover_artifacts(
+        tmp_path / "proj", "a", exclude_paths=[tmp_path / "elsewhere"]
+    )
+    assert sorted(arts) == ["Dockerfile", "notes.md"]
+
+
+def test_a_file_exclusion_drops_only_that_file(tmp_path):
+    """`-o` pointing at the project root cannot be skipped as a directory, so the
+    run's own output file is excluded by name instead (#207)."""
+    _mk(tmp_path, "notes.md", "hi\n")
+    _mk(tmp_path, "analysis.json", '{"schema_version": "2.0.0"}\n')
+    arts = discover_artifacts(
+        tmp_path, "a", exclude_paths=[tmp_path, tmp_path / "analysis.json"]
+    )
+    assert sorted(arts) == ["notes.md"]
+
+
+def test_exclusion_never_empties_the_inventory(tmp_path):
+    """`-o` pointing at the project root (or above it) would exclude the whole
+    project. Dropping every artifact is worse than the bug, so such an
+    exclusion is refused: the inventory survives intact."""
+    _mk(tmp_path, "notes.md", "hi\n")
+    for given in (tmp_path, tmp_path.parent):
+        arts = discover_artifacts(tmp_path, "a", exclude_paths=[given])
+        assert sorted(arts) == ["notes.md"], f"{given} emptied the inventory"
