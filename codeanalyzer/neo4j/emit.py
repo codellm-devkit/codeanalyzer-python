@@ -31,7 +31,7 @@ from codeanalyzer.neo4j.bolt import BoltConfig, bolt_writer
 from codeanalyzer.neo4j.schema import build_schema_document
 from codeanalyzer.neo4j.cypher import render_cypher
 from codeanalyzer.neo4j.project import project
-from codeanalyzer.options import AnalysisOptions
+from codeanalyzer.options import GRAPH_CYPHER, AnalysisOptions
 from codeanalyzer.schema import Analysis
 from codeanalyzer.schema.assign_ids import assign_ids
 from codeanalyzer.utils import logger
@@ -75,6 +75,6 @@ def emit_neo4j(analysis: Analysis, options: AnalysisOptions) -> None:
 
     out_dir = options.output if options.output is not None else Path.cwd()
     out_dir.mkdir(parents=True, exist_ok=True)
-    target = out_dir / "graph.cypher"
+    target = out_dir / GRAPH_CYPHER
     target.write_text(render_cypher(rows, app_name))
     logger.info(f"Neo4j graph written to {target}")

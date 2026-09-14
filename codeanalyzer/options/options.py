@@ -4,6 +4,13 @@ from typing import Optional, Tuple
 from enum import Enum
 
 
+# The files a run writes into its output directory. Named once so artifact
+# discovery can recognize -- and skip -- the run's own output when it lands
+# inside the analyzed project (#207).
+ANALYSIS_JSON = "analysis.json"
+GRAPH_CYPHER = "graph.cypher"
+
+
 class EmitTarget(str, Enum):
     """Output target selected by ``--emit``.
 

@@ -35,7 +35,7 @@ from codeanalyzer.syntactic_analysis.exceptions import SymbolTableBuilderRayErro
 from codeanalyzer.syntactic_analysis.import_resolver import resolve_imports
 from codeanalyzer.syntactic_analysis.symbol_table_builder import SymbolTableBuilder
 from codeanalyzer.utils import ProgressBar
-from codeanalyzer.options import AnalysisOptions
+from codeanalyzer.options import ANALYSIS_JSON, GRAPH_CYPHER, AnalysisOptions, EmitTarget
 from codeanalyzer.provenance import analyzer_info, repository_info
 
 def _artifact_full_text(project_dir: Path, path: str, art) -> str:
@@ -572,6 +572,24 @@ class Codeanalyzer:
                 )
         return externals
 
+    def _own_output_paths(self) -> List[Path]:
+        """Where this run writes: the output and cache directories, plus the
+        output files themselves (#207).
+
+        Artifact discovery skips these, so a run whose ``-o``/``-c`` lands inside
+        ``-i`` does not ingest its own previous output (each run embedding the
+        last until the process is killed decoding it). The file entries carry the
+        degenerate case where the output directory *is* the project root, which
+        cannot be skipped wholesale without emptying the inventory.
+        """
+        paths: List[Path] = [self.cache_dir]
+        if self.options.output is not None:
+            paths += [self.options.output, self.options.output / ANALYSIS_JSON]
+        if self.options.emit is EmitTarget.NEO4J:
+            # No -o means the cypher snapshot lands in the working directory.
+            paths.append((self.options.output or Path.cwd()) / GRAPH_CYPHER)
+        return paths
+
     def analyze(self) -> Analysis:
         """Analyze the project and return the v2 ``Analysis`` envelope.
 
@@ -673,6 +691,7 @@ class Codeanalyzer:
         app.artifacts = discover_artifacts(
             self.project_dir, app_name,
             capture_text=self.options.artifact_text,
+            exclude_paths=self._own_output_paths(),
         )
         app.dependencies, app.unresolved_imports = build_dependency_view(
             app.artifacts,
