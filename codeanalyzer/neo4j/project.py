@@ -49,7 +49,9 @@ from codeanalyzer.schema import (
     PyVariableDeclaration,
 )
 from codeanalyzer.schema import model_dump
-from codeanalyzer.schema.ids import application_id, external_id, global_ordinal, purl_pypi
+from codeanalyzer.schema.ids import (
+    application_id, call_body_keys, external_id, global_ordinal, purl_pypi,
+)
 from codeanalyzer.schema.py_schema import PyDecorator, byte_offsets
 
 
@@ -183,12 +185,14 @@ def _project_program_graphs(
                 continue  # unstamped callable — assign_ids must run first
             owner = _sym(c.id)  # the :PyCallable node, keyed by its can:// id
             # ``callee_signature`` lives on ``PyCallable.call_sites``, not on the body
-            # node, so the graph joins the two on the call site's position (#203).
+            # node, so the graph joins the two on the call site's BODY KEY (#203,
+            # #215) -- re-derived from the same sequence L1 keyed ``body`` with, so
+            # two calls that start at one position keep their own signatures.
             # ``argument_types`` is deliberately not joined: it is the legacy field #86
             # split into ``PyCallArgument``, already carried as ``arguments_json``.
-            sig_by_pos = {
-                (cs.start_line, cs.start_column): cs.callee_signature
-                for cs in (c.call_sites or [])
+            sig_by_key = {
+                key: cs.callee_signature
+                for key, cs in call_body_keys(c.call_sites)
                 if cs.callee_signature
             }
             for local_key, node in (c.body or {}).items():
@@ -204,10 +208,7 @@ def _project_program_graphs(
                         {
                             "kind": node.kind,
                             **_span_props(span),
-                            "callee_signature": (
-                                sig_by_pos.get((span.start[0], span.start[1]))
-                                if span else None
-                            ),
+                            "callee_signature": sig_by_key.get(local_key),
                             "var": node.of,
                             "call_node": node.parent,
                             # Call-site detail (#120). The JSON emits one node per

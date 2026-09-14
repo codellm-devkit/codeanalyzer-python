@@ -130,8 +130,9 @@ class SymbolTableBuilder:
             return None, False
 
     @staticmethod
-    def _callee_anchor(node: ast.Call) -> Tuple[int, int]:
-        """Position of the callee *name* for Jedi inference.
+    def _callee_anchor(node: ast.Call) -> Optional[Tuple[int, int]]:
+        """Position of the callee *name* for Jedi inference, or ``None`` when the
+        callee is not a name at all.
 
         An ``ast.Call``'s own ``lineno``/``col_offset`` is the first
         character of the whole call expression — for an attribute call
@@ -139,11 +140,17 @@ class SymbolTableBuilder:
         would infer the receiver's type instead of the invoked method
         (issue #80). Anchor attribute calls inside the attribute name —
         its last character, so one-character names stay in range; other
-        callee shapes keep the call-expression start.
+        callee shapes keep the call-expression start. A callee that is itself a
+        call has no name to anchor on, so it yields ``None`` (#215).
         """
         func_expr = node.func
         if isinstance(func_expr, ast.Attribute):
             return func_expr.end_lineno, func_expr.end_col_offset - 1
+        if isinstance(func_expr, ast.Call):
+            # `getattr(o, n)(x)`: the callee IS a call, so the expression start is
+            # the INNER call's name and inferring there labels this site a call to
+            # `getattr` -- the thing that produced the callee, not the callee (#215).
+            return None
         return node.lineno, node.col_offset
 
     @staticmethod
@@ -766,11 +773,18 @@ class SymbolTableBuilder:
             func_expr = node.func
 
             method_name = "<unknown>"
-            anchor_line, anchor_col = self._callee_anchor(node)
-            callee_signature, is_constructor = self._infer_callee(
-                script, anchor_line, anchor_col
-            )
-            return_type = self._infer_call_return_type(script, anchor_line, anchor_col)
+            anchor = self._callee_anchor(node)
+            if anchor is None:
+                # A dynamic invocation: the site is recorded, and it resolves to
+                # nothing. Guessing a target here is what produced a graph full of
+                # calls to `builtins.getattr` (#215).
+                callee_signature, is_constructor, return_type = None, False, None
+            else:
+                anchor_line, anchor_col = anchor
+                callee_signature, is_constructor = self._infer_callee(
+                    script, anchor_line, anchor_col
+                )
+                return_type = self._infer_call_return_type(script, anchor_line, anchor_col)
 
             receiver_expr = None
             receiver_type = None

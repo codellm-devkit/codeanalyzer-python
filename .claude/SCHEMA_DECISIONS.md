@@ -609,3 +609,30 @@ Sibling halves: codeanalyzer-java#255/#256, codeanalyzer-typescript#201/#202.
   is where the comment model stops. Its closing comment names #203 as dropping its
   comment goals for the same reason. `python-sdk`'s `get_all_comments` raising on the
   Neo4j backend is now the permanent answer, not a workaround.
+
+## 2026-09-14 — co-positioned call sites get a key disambiguator (#215)
+
+- **A body key may carry `/N`.** `line:col` addressed a *position*, and two nested
+  `ast.Call` nodes can share one (`getattr(o, n)(x)`, `f()()()`), so one of them was
+  dropped from `body` and with it from `cfg`/`cdg`/`ddg` and the Neo4j projection.
+  The key sequence is now `line:col`, then `/2`, `/3`, … per further call site at
+  that position. `schema/ids.py::call_body_keys` is the one definition; L1, L2, the
+  dataflow builder, the defuse linker and the graph projection all re-derive the
+  pairing from it instead of rebuilding a key from a position.
+- **The spelling is codeanalyzer-typescript's, adopted verbatim** (`callBodyKeys`,
+  `src/schema/l1Body.ts`): `/` and a 2-based counter, not `#` and not an
+  end-position key. A term coined twice is permanently wrong.
+- **The outermost call keeps the bare key.** Call sites are recorded pre-order in
+  both analyzers, so this needs no extra rule — but it does change what a colliding
+  key resolves to: `11:18` used to be the inner `getattr`, and is now the
+  invocation. Non-colliding keys are untouched.
+- **codeanalyzer-java is structurally immune.** `BodyNodeBuilder.anchorOfStatement`
+  keys a call at the invoked name token, so its nested calls never share an anchor.
+  Re-anchoring python that way was rejected: it moves every existing call key and
+  does not fix a call-of-call, which has no name token.
+- **A call-of-call resolves to nothing.** `_callee_anchor` returns `None` when
+  `node.func` is an `ast.Call`, so the site carries `callee_signature=None` and
+  `method_name="<unknown>"` instead of claiming to call the inner callee. What the
+  dynamic call reaches is deliberately not inferred.
+- **Neither version moves** — the 2026-09-07 hold stands. The payload shape is
+  unchanged; only the key space below the callable widens.

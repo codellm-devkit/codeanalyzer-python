@@ -1,12 +1,11 @@
 """L1 body population: materialize `call` nodes from existing call sites.
 `callee` is left None here — the sanctioned null→id refinement happens at L2."""
 from __future__ import annotations
-from codeanalyzer.schema.ids import stamp_body_ids
+from codeanalyzer.schema.ids import call_body_keys, stamp_body_ids
 from codeanalyzer.schema.py_schema import PyApplication, PyClass, PyCallable, BodyNode, Span, byte_offsets
 
 def _do_callable(source: str, c: PyCallable) -> None:
-    for cs in c.call_sites or []:
-        key = f"{cs.start_line}:{cs.start_column}"
+    for key, cs in call_body_keys(c.call_sites):
         span = Span(start=(cs.start_line, cs.start_column),
                     end=(cs.end_line, cs.end_column),
                     bytes=byte_offsets(source, cs.start_line, cs.start_column, cs.end_line, cs.end_column)) if source else None

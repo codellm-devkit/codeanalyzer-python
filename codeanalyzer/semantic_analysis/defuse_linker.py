@@ -40,11 +40,14 @@ import ast
 import builtins as _py_builtins
 from typing import Dict, List, Optional, Tuple
 
+from codeanalyzer.schema.ids import call_body_key
 from codeanalyzer.schema.py_schema import PyCallable, PyCallEdge, PyClass, PyModule
 
 __all__ = ["defuse_linker_edges"]
 
-# (caller signature, "line:col" of the call site) -> resolved callee signature
+# (caller signature, the call site's body key) -> resolved callee signature.
+# The key is `call_body_key`, not a bare "line:col": two nested calls can start
+# at one position and only one of them is the resolution being recorded (#215).
 Resolutions = Dict[Tuple[str, str], str]
 
 _MAX_CHAIN = 16  # assignment-chain hops before giving up (cycle safety net)
@@ -1095,7 +1098,7 @@ def defuse_linker_edges(
                 oracle.vote(sig, site)
                 bump(caller.signature, sig)
                 resolutions[
-                    (caller.signature, f"{site.start_line}:{site.start_column}")
+                    (caller.signature, call_body_key(caller, site))
                 ] = sig
 
             # Calls Jedi's extractor never recorded as sites at all (with-
@@ -1398,7 +1401,7 @@ def defuse_linker_edges(
                     oracle.vote(sig, site)
                     bump(caller.signature, sig)
                     resolutions[
-                        (caller.signature, f"{site.start_line}:{site.start_column}")
+                        (caller.signature, call_body_key(caller, site))
                     ] = sig
                     made_progress = True
                 else:
@@ -1452,7 +1455,7 @@ def defuse_linker_edges(
             oracle.vote(sig, site)
             bump(caller.signature, sig)
             resolutions[
-                (caller.signature, f"{site.start_line}:{site.start_column}")
+                (caller.signature, call_body_key(caller, site))
             ] = sig
             made_progress = True
         remaining = still
