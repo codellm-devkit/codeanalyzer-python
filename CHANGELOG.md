@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.3] - 2026-09-14
+
+### Fixed
+
+- **The analyzer no longer ingests its own output** (#207). `discover_artifacts` walked
+  the project with no idea where the run writes, so an `--output` (or `--cache-dir`)
+  inside `--input` made run N inventory run N-1's `analysis.json` and embed it whole.
+  Each run squared the last until the process was killed decoding tens of GB of its own
+  output -- a failure that reads as a flaky, load-sensitive test suite and had been
+  misdiagnosed as one more than once. `core.analyze` now passes discovery the paths the
+  run writes: the output and cache directories, and the output files inside them.
+  Matching is on resolved paths, so a relative, `..`-laden or symlinked target excludes
+  the same tree and a target outside the project excludes nothing. A directory exclusion
+  that would take the project with it is refused -- the file entries cover that case, so
+  `-o <project root>` and a `--emit neo4j` `graph.cypher` in the working directory are
+  stable too. `analysis.json` and `graph.cypher` are named once in `codeanalyzer.options`
+  so discovery and the writers cannot drift apart.
+
+- **One body node per call site, even when two calls start at the same position** (#215).
+  `body` was keyed on the call site's start position, and nested calls can share one:
+  in `getattr(o, n)(x)` the outer application and the inner `getattr` both begin at the
+  `g`, so the map kept the inner call and the dynamic invocation was lost -- from the
+  payload, from the L3/L4 graphs that key off the same format, and from the Neo4j
+  projection. A call key now carries a `/2`, `/3`, ... disambiguator when a position holds
+  more than one call, outermost first; `schema/ids.py::call_body_keys` is the single
+  definition, and L1, L2, the dataflow builder, the defuse linker and the graph
+  projection all re-derive the pairing from it. The spelling is codeanalyzer-typescript's
+  (`callBodyKeys`), adopted verbatim under the parity clause. On the flask fixture this
+  recovers 68 call nodes that were previously dropped.
+
+  Two consequences worth calling out for consumers: a body key that used to collide now
+  resolves to the outer call rather than the inner one (non-colliding keys are
+  untouched), and `python-sdk` needs no change -- `body_key_column` already parses the
+  suffixed key. Alongside it, the Neo4j projection joins `callee_signature` on the body
+  key instead of on `(line, column)`, and a call whose callee is itself a call now
+  carries `callee_signature: null` with `method_name: "<unknown>"` instead of being
+  labelled a call to the inner callee. What such a call reaches is still not inferred,
+  by design.
+
+Both payload `schema_version` and graph `SCHEMA_VERSION` stay `2.0.0` -- the 2026-09-07
+hold stands, and neither fix moves the payload shape.
+
 ## [1.5.2] - 2026-09-10
 
 ### Fixed
