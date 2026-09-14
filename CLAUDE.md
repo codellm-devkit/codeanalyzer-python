@@ -104,7 +104,11 @@ declared callables by their `can://` tree id, imported/builtin targets by a
   intra-callable `cfg`/`cdg`/`ddg`/`summary` edge endpoint: `"line:col"` for real
   statements, `"@entry"`/`"@exit"` for the CFG bookends, `"@formal_in:0"` /
   `"@formal_out"` for formals, and `"<callsite>/actual_in:0"` /
-  `"<callsite>/actual_out"` for actuals (parented to their call site). The
+  `"<callsite>/actual_out"` for actuals (parented to their call site). Two nested
+  calls can *start* at one position (`getattr(o, n)(x)`), so a call key may carry a
+  `/2`, `/3`, … disambiguator — outermost call first, the bare `line:col` (#215).
+  `codeanalyzer/schema/ids.py::call_body_keys` is the single definition of that
+  sequence; the spelling is codeanalyzer-typescript's, adopted verbatim. The
   bijection `(signature, int node_id) ↔ (can:// id, local id)` is built once by
   `codeanalyzer/dataflow/identity.py` and feeds **both** projections, keeping them
   in lockstep.

@@ -10,7 +10,7 @@ and artifacts alike — which is what the prefix-scoped destructive statements
 an application named ``python`` mints ``can://python/python/...``, so a test
 for ``can://python/`` no longer means "a python id"; test the scheme instead."""
 from __future__ import annotations
-from typing import List, Optional
+from typing import Iterable, Iterator, List, Optional, Tuple
 
 SCHEME = "can://"
 
@@ -51,6 +51,42 @@ def external_id(app_id: str, module: Optional[str], name: str) -> str:
     base = f"{app_id}/@external"
     return f"{base}/{module}/{name}" if module else f"{base}/{name}"
 
+
+def call_body_keys(sites: Iterable) -> Iterator[Tuple[str, object]]:
+    """The body key of each call site, in recording order: ``line:col``,
+    disambiguated ``/2``, ``/3``, ... when nested calls share a start position
+    (#215).
+
+    `getattr(o, n)(x)` begins the outer application and the inner `getattr` at the
+    same column, so a bare ``line:col`` key keeps one of the two and the dynamic
+    invocation is lost. Call sites are recorded pre-order, so the bare key goes to
+    the OUTERMOST call and the nested ones take the suffixes. The spelling is
+    codeanalyzer-typescript's (``callBodyKeys``, ``src/schema/l1Body.ts``), adopted
+    verbatim; the ``/`` never collides with a param-vertex segment, which always
+    begins ``actual_``.
+
+    The SINGLE definition of the sequence -- L1 builds ``body`` with it, and L2, the
+    dataflow builder, the defuse linker and the Neo4j projection re-derive the same
+    pairing from it rather than re-deriving a key from a position.
+    """
+    used = set()
+    for cs in sites or []:
+        base = f"{cs.start_line}:{cs.start_column}"
+        key = base
+        k = 2
+        while key in used:
+            key = f"{base}/{k}"
+            k += 1
+        used.add(key)
+        yield key, cs
+
+def call_body_key(callable_, site) -> Optional[str]:
+    """``site``'s body key within ``callable_`` — the pairing of
+    :func:`call_body_keys`, for a caller that holds one site rather than the list."""
+    for key, cs in call_body_keys(callable_.call_sites):
+        if cs is site:
+            return key
+    return None
 
 def global_ordinal(callable_id: str, local_key: str) -> str:
     """The GLOBAL ordinal id of a body node from its LOCAL key: synthetic keys

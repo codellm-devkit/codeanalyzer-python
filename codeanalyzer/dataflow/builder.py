@@ -35,6 +35,7 @@ the result degrades gracefully instead of crashing (contract rule).
 from __future__ import annotations
 
 import ast
+from collections import defaultdict
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
@@ -43,7 +44,7 @@ from codeanalyzer.dataflow.alias import TypeBasedAliasOracle
 from codeanalyzer.dataflow.pdg import build_pdg
 from codeanalyzer.dataflow.sdg import ProgramGraphsIR, assemble_sdg
 from codeanalyzer.dataflow.summaries import CallSite, FunctionInfo, compute_summaries
-from codeanalyzer.schema.ids import stamp_body_ids
+from codeanalyzer.schema.ids import call_body_keys, stamp_body_ids
 from codeanalyzer.schema.py_schema import PyApplication, PyCallable, PyClass, PyModule
 from codeanalyzer.utils import logger
 
@@ -291,6 +292,11 @@ def emit_l3_body(
                     continue
                 pycallable.body[local] = BodyNode(kind=node.kind, span=span)
 
+            keys_at: Dict[str, List[str]] = defaultdict(list)
+            for key, n in pycallable.body.items():
+                if n.kind == "call":
+                    keys_at[key.split("/", 1)[0]].append(key)
+
             # #115: anchor nested call vertices to their statement. A bare-call
             # statement shares its key with its CFG node (handled above); a call
             # nested inside a larger statement (`y = f(x)`) has its own key and
@@ -301,12 +307,16 @@ def emit_l3_body(
                     continue
                 stmt_local = im.local(node.id)
                 for call in _calls_in(node.ast_node):
-                    call_key = f"{call.lineno}:{call.col_offset}"
-                    child = pycallable.body.get(call_key)
-                    if child is None or call_key == stmt_local:
-                        continue
-                    if child.kind == "call":
-                        child.parent = stmt_local
+                    # Every call node at this position, not just one: nested calls
+                    # that share a start column are keyed `line:col`, `line:col/2`,
+                    # ... and each of them needs the anchor (#215).
+                    base = f"{call.lineno}:{call.col_offset}"
+                    for call_key in keys_at.get(base, ()):
+                        child = pycallable.body.get(call_key)
+                        if child is None or call_key == stmt_local:
+                            continue
+                        if child.kind == "call":
+                            child.parent = stmt_local
 
             if want_cfg:
                 pycallable.cfg = [
@@ -378,7 +388,7 @@ def build_program_graphs(
                 calls_by_pos.setdefault(pos, (node.id, call))
                 calls_by_line.setdefault(call.lineno, (node.id, call))
 
-        for site in pycallable.call_sites or []:
+        for site_key, site in call_body_keys(pycallable.call_sites):
             # Prefer the callsite's body-backfilled callee over Jedi's own
             # callee_signature side channel: under cross-test parso/Jedi cache
             # pressure that inference can silently degrade (full-suite-only
@@ -388,7 +398,7 @@ def build_program_graphs(
             # Only a resolved INTERNAL target counts (id_to_sig misses on an
             # external/unresolved callee); falls through to callee_signature
             # exactly as before whenever the body doesn't have an answer.
-            body_node = pycallable.body.get(f"{site.start_line}:{site.start_column}")
+            body_node = pycallable.body.get(site_key)
             target = (id_to_sig.get(body_node.callee) if body_node else None) or site.callee_signature
             if not target:
                 continue
