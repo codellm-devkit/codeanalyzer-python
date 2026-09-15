@@ -104,8 +104,12 @@ def _methods_of(dec, spec: Optional[Dict[str, Any]], qualified: Optional[str] = 
         return []
     source = spec.get("from")
     if source == "match_suffix":
+        # Only a real verb: `heuristic.http-verb` also matches `.websocket`, and a
+        # rule may accept any suffix, but `http_methods` is what a consumer filters
+        # on to enumerate methods -- a value that is not one is worse there than an
+        # empty list (#213). The dispatch path below already filters the same way.
         verb = (qualified or dec.qualified_name or "").rsplit(".", 1)[-1]
-        return [verb.upper()]
+        return [verb.upper()] if verb.lower() in _HTTP_VERBS else []
     if source == "keyword":
         raw = (dec.keyword_arguments or {}).get(spec.get("name", ""))
         value = _literal(raw)

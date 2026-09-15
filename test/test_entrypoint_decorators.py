@@ -85,3 +85,64 @@ def test_heuristic_rules_match_the_written_spelling_without_a_framework():
         ("heuristic.http-route", "/x", [], "heuristic", "http.route"),
         ("heuristic.http-verb", "/y", ["POST"], "heuristic", "router.post"),
     ]
+
+
+# --- http_methods carries HTTP methods only (#213) ---
+
+def _probe(qualified: str, rules):
+    """One decorator through the shipped rules, returning its entrypoints."""
+    fn = PyCallable(name="h", path="a.py", signature="a.h")
+    fn.decorators.append(
+        PyDecorator(
+            name=qualified,
+            qualified_name=qualified,
+            positional_arguments=["'/ws'"],
+        )
+    )
+    return entrypoints_from_decorators(fn, "heuristic", rules)
+
+
+def _heuristics():
+    from codeanalyzer.entrypoints.rules import load_rules
+
+    return load_rules().heuristics
+
+
+def test_a_websocket_suffix_is_not_an_http_method():
+    """`heuristic.http-verb` matches `.websocket` so the entrypoint IS recorded --
+    but WEBSOCKET is not an HTTP method, and `http_methods` is what consumers
+    filter on to enumerate real verbs (#213)."""
+    verb_rules = [r for r in _heuristics() if r.id == "heuristic.http-verb"]
+    (ep,) = _probe("app.websocket", verb_rules)
+    assert ep.rule == "heuristic.http-verb"  # still detected
+    assert ep.route == "/ws"
+    assert ep.http_methods == []
+
+
+def test_a_verb_suffix_still_yields_its_verb():
+    verb_rules = [r for r in _heuristics() if r.id == "heuristic.http-verb"]
+    (ep,) = _probe("app.get", verb_rules)
+    assert ep.http_methods == ["GET"]
+
+
+def test_no_shipped_rule_can_emit_a_non_http_method():
+    """The invariant, not just the one rule that breaks it today: every literal
+    suffix any shipped `match_suffix` rule accepts either yields an HTTP method or
+    yields nothing."""
+    import re
+
+    from codeanalyzer.entrypoints.matching import _HTTP_VERBS
+
+    emitted = set()
+    for rule in _heuristics():
+        spec = rule.methods if isinstance(rule.methods, dict) else None
+        if not spec or spec.get("from") != "match_suffix":
+            continue
+        # The literal alternatives in the pattern's last segment: the suffixes this
+        # rule actually accepts.
+        tail = rule.match.rsplit(".", 1)[-1]
+        for suffix in re.findall(r"[A-Za-z_]+", tail):
+            for ep in _probe(f"app.{suffix}", [rule]):
+                emitted.update(ep.http_methods)
+    assert emitted, "no match_suffix rule exercised -- the test is not testing anything"
+    assert emitted <= {v.upper() for v in _HTTP_VERBS}, sorted(emitted)
