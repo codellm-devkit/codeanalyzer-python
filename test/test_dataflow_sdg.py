@@ -16,6 +16,7 @@ import pytest
 from pathlib import Path
 
 from codeanalyzer.dataflow.builder import _callable_index, build_program_graphs
+from codeanalyzer.dataflow.access_paths import base_of
 from codeanalyzer.dataflow.sdg import CAPTURE_PREFIX, GLOBAL_PREFIX
 from codeanalyzer.options import AnalysisOptions
 from codeanalyzer.core import Codeanalyzer
@@ -108,6 +109,41 @@ def test_param_in_arity_matches_callee_formals(ir):
         formal = next(p for p in callee.param_nodes if p.id == e.target_node)
         assert formal.kind == "formal_in"
         assert formal.var == e.var
+
+
+def test_actual_in_is_fed_from_formal_in_not_entry(ir):
+    """A parameter passed through as an argument reaches the call site's
+    ``actual_in`` port from ``formal_in``, never from the synthetic CFG ENTRY.
+
+    Reaching-def analysis names ENTRY as the definition site of every
+    parameter, so ``build_actuals`` has to remap that source onto the
+    ``formal_in`` vertex. Without the remap the argument port hangs off ENTRY,
+    a forward walk from the parameter never reaches it, and every
+    interprocedural value path breaks at the first call boundary.
+    """
+    sig = _sig(ir, "use_adder")  # def use_adder(n): ... return add5(n)
+    fg = ir.functions[sig]
+    entry_id = fg.pdg.cfg.entry_id
+
+    formal_n = {
+        p.id for p in fg.param_nodes if p.kind == "formal_in" and p.var == "n"
+    }
+    assert formal_n, "no formal_in vertex for parameter n"
+
+    actual_ids = {p.id for p in fg.param_nodes if p.kind == "actual_in"}
+    assert actual_ids, "no actual_in vertex at the add5(n) call site"
+
+    feeding = {
+        e.source
+        for e in fg.extra_edges
+        if e.type == "DDG" and e.target in actual_ids and base_of(e.var or "") == "n"
+    }
+    assert feeding, "no DDG edge carries n into an actual_in port"
+    assert entry_id not in feeding, (
+        "actual_in for n is fed from the CFG ENTRY node; it must be fed from "
+        "formal_in(n), or interprocedural value flow breaks at this call"
+    )
+    assert feeding & formal_n, "actual_in for n is not fed from formal_in(n)"
 
 
 def test_param_out_sources_are_formal_outs(ir):

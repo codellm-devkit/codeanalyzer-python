@@ -142,6 +142,26 @@ class _FunctionAssembler:
 
     # ---------------------------------------------------------------- formals
 
+    def formal_for(self, var: str) -> Optional[int]:
+        """The ``formal_in`` vertex that defines ``var`` in this callable.
+
+        A parameter, a capture and a read global are all defined at a
+        ``formal_in`` port, not at the synthetic CFG ENTRY node. Reaching-def
+        analysis reports ENTRY as the source for all three, so every place that
+        consumes a raw def source has to remap it here, or the SDG loses the
+        hop from the parameter to whatever uses it. Returns ``None`` when
+        ``var`` is not one of this callable's formals, so a caller can keep the
+        original source.
+        """
+        b = base_of(var)
+        if b in self.formal_in:
+            return self.formal_in[b]
+        if CAPTURE_PREFIX + b in self.formal_in:
+            return self.formal_in[CAPTURE_PREFIX + b]
+        if "::" in b and GLOBAL_PREFIX + b in self.formal_in:
+            return self.formal_in[GLOBAL_PREFIX + b]
+        return None
+
     def build_formals(self) -> None:
         scope, summary = self.scope, self.summary
         params = list(scope.params)
@@ -168,14 +188,8 @@ class _FunctionAssembler:
         for e in self.ddg:
             if e.source != entry:
                 continue
-            b = base_of(e.var)
-            if b in self.formal_in:
-                fid = self.formal_in[b]
-            elif CAPTURE_PREFIX + b in self.formal_in:
-                fid = self.formal_in[CAPTURE_PREFIX + b]
-            elif "::" in b and GLOBAL_PREFIX + b in self.formal_in:
-                fid = self.formal_in[GLOBAL_PREFIX + b]
-            else:
+            fid = self.formal_for(e.var)
+            if fid is None:
                 continue
             self.extra.append(PDGEdge(source=fid, target=e.target, type="DDG", var=e.var))
 
@@ -268,6 +282,8 @@ class _FunctionAssembler:
                         for src, var in self._defs_reaching_call_matching(
                             cs.node_id, path
                         ):
+                            if src == self.cfg.entry_id:
+                                src = self.formal_for(var) or src
                             self.extra.append(
                                 PDGEdge(source=src, target=aid, type="DDG", var=var)
                             )
@@ -296,6 +312,8 @@ class _FunctionAssembler:
                         for src, var in self._defs_reaching_call_matching(
                             cs.node_id, g
                         ):
+                            if src == self.cfg.entry_id:
+                                src = self.formal_for(var) or src
                             self.extra.append(
                                 PDGEdge(source=src, target=aid, type="DDG", var=var)
                             )
