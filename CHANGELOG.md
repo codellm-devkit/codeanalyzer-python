@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.4] - 2026-09-16
+
+### Fixed
+
+- **A parameter passed as an argument now links across the call boundary** (#220). The SDG
+  edges were always correct -- `param_in` carried `actual_in -> formal_in` and the summary
+  edges were present -- but the DDG that feeds them was wired wrong on the way in.
+  Reaching-def analysis names the synthetic CFG ENTRY node as the definition site of every
+  parameter, capture and read global. `build_formals` already remapped that source onto the
+  matching `formal_in` vertex, which is what puts a parameter's definition on its port.
+  `build_actuals` runs after it, allocates the `actual_in` ports, and wired them straight
+  from `_defs_reaching_call_matching`, which returns the raw source. For a parameter that
+  source is ENTRY, and nothing remapped it, so the graph got `ENTRY -> actual_in:N` where it
+  needed `formal_in:N -> actual_in:N`. The return direction was wired correctly, and that
+  asymmetry is the tell.
+
+  The consequence reached every interprocedural value query. `resolve_value` returns the
+  `formal_in` vertex, so a forward walk began at a vertex with no path to the argument port,
+  never crossed `PARAM_IN`, and stopped inside the caller. `slice_forward` stayed in one
+  function, `flows_to_call` and `flows_to_argument` answered `False`, `paths_between` returned
+  nothing, and `taint()` reported a clean `exhausted` with `complete: True` and an empty
+  ledger -- a refutation for a flow visible in three lines of source. Absence of evidence was
+  being published as evidence of absence.
+
+  The ENTRY-to-`formal_in` lookup is now a `formal_for(var)` helper on the assembler, used by
+  both `build_formals` and `build_actuals`, for argument ports and global-read ports alike. It
+  falls back to the original source when the variable is not one of the callable's formals, so
+  no edge is lost. On the reproducer in #220 a two-boundary flow now resolves end to end, and
+  `taint` returns the witness instead of a refutation. A regression test in
+  `test/test_dataflow_sdg.py` asserts that an `actual_in` port carrying a parameter is fed from
+  `formal_in` and never from ENTRY; it fails on 1.5.3.
+
 ## [1.5.3] - 2026-09-14
 
 ### Fixed
