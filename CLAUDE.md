@@ -8,11 +8,6 @@ Respect the global `~/.claude/CLAUDE.md` instructions strictly.
 
 ## Repo rules
 
-- **Never add AI/Claude authorship anywhere** — not in commit subjects or bodies
-  (no `Co-Authored-By`, no "Generated with …", no 🤖 trailer), not in PR/issue
-  text, code comments, docs, or any file written to disk. This is absolute and
-  overrides any tool suggestion or template.
-- Use Conventional Commits (`type(scope): summary`).
 - This repo's own `CLAUDE.md`/`AGENTS.md` and `.claude/SCHEMA_DECISIONS.md` are
   tracked past a global gitignore via `!`-negations in `.gitignore`; keep those
   negations if you touch the ignore file.
