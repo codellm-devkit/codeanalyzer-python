@@ -406,11 +406,10 @@ def _write_output(artifacts, output_dir: Path):
     # Use Pydantic's model_dump_json() for compact output
     # Strip internal-only fields here rather than with a field-level Pydantic
     # `exclude`: the analysis cache shares the serializer and must keep them.
-    json_str = json.dumps(
-        strip_internal_only(model_dump(artifacts, mode="json", exclude_none=True))
-    )
+    from codeanalyzer.core import stream_analysis_json, _log_mem  # LOW-MEM PATCH
     with output_file.open("w") as f:
-        f.write(json_str)
+        stream_analysis_json(artifacts, f, strip_internal=True)
+    _log_mem("after analysis.json write")
     logger.info(f"Analysis saved to {output_file}")
 
 

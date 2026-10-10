@@ -126,7 +126,7 @@ class FunctionScope:
         return "global"  # unknown free name: a module/builtin binding
 
 
-@dataclass
+@dataclass(slots=True)  # LOW-MEM PATCH: slots
 class StatementFacts:
     """Defs and uses (k-limited access-path strings) of one CFG node."""
 

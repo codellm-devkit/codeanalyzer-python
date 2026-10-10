@@ -1,5 +1,8 @@
+import gc
 import hashlib
+import json
 import os
+import resource
 import shutil
 import subprocess
 import sys
@@ -53,6 +56,90 @@ def _artifact_full_text(project_dir: Path, path: str, art) -> str:
         return art.source
 
 
+def _log_mem(label: str) -> None:
+    """LOW-MEM PATCH: log current/peak RSS of the driver at phase boundaries."""
+    try:
+        cur = int(os.popen(f"ps -o rss= -p {os.getpid()}").read().strip() or 0) / 1024
+    except Exception:
+        cur = -1
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    peak = peak / (1024 * 1024) if sys.platform == "darwin" else peak / 1024  # bytes on macOS, KB on Linux
+    logger.info("[mem] %-40s rss=%6.0f MB peak=%6.0f MB", label, cur, peak)
+
+
+def stream_analysis_json(analysis, fh, *, strip_internal: bool) -> None:
+    """LOW-MEM PATCH: serialize an ``Analysis`` envelope to ``fh`` one module at a
+    time instead of materializing the whole tree as one JSON string (cache) or
+    as a dict tree + stripped copy + string (output). The JSON *content* equals
+    ``model_dump_json(exclude_none=True)`` / ``json.dumps(strip_internal_only(
+    model_dump(mode="json", exclude_none=True)))``; only whitespace differs
+    (compact separators throughout). ``call_sites`` live solely under the
+    symbol table's callables, so the envelope needs no stripping."""
+    from codeanalyzer.schema import strip_internal_only
+
+    from typing import List as _List
+    from pydantic import TypeAdapter
+    from codeanalyzer.schema.py_schema import ParamEdge, PyCallEdge
+
+    app = analysis.application
+    # Detach the big collections, dump the (now small) envelope, then splice
+    # each collection back in at its own slot, streaming it in chunks.
+    big = {
+        "symbol_table": (app.symbol_table, "{}"),
+        "call_graph": (app.call_graph, "[]"),
+        "param_in": (app.param_in, "[]"),
+        "param_out": (app.param_out, "[]"),
+    }
+    try:
+        app.symbol_table, app.call_graph, app.param_in, app.param_out = {}, [], [], []
+        envelope = analysis.model_dump_json(exclude_none=True)
+    finally:
+        app.symbol_table = big["symbol_table"][0]
+        app.call_graph = big["call_graph"][0]
+        app.param_in = big["param_in"][0]
+        app.param_out = big["param_out"][0]
+    slots = []
+    for name, (_value, empty) in big.items():
+        marker = f'"{name}":{empty}'
+        idx = envelope.find(marker)
+        if idx < 0 or envelope.find(marker, idx + 1) >= 0:
+            raise RuntimeError(f"stream_analysis_json: could not locate a unique {name} slot")
+        slots.append((idx + len(marker) - 1, name))  # position of the closing bracket
+    slots.sort()
+    adapters = {
+        "call_graph": TypeAdapter(_List[PyCallEdge]),
+        "param_in": TypeAdapter(_List[ParamEdge]),
+        "param_out": TypeAdapter(_List[ParamEdge]),
+    }
+    CHUNK = 20000
+    pos = 0
+    for cut, name in slots:
+        fh.write(envelope[pos:cut])
+        pos = cut
+        value = big[name][0]
+        first = True
+        if name == "symbol_table":
+            for key, module in value.items():
+                if strip_internal:
+                    body = json.dumps(
+                        strip_internal_only(module.model_dump(mode="json", exclude_none=True)),
+                        separators=(",", ":"),
+                    )
+                else:
+                    body = module.model_dump_json(exclude_none=True)
+                fh.write(("" if first else ",") + json.dumps(key) + ":" + body)
+                first = False
+        else:
+            adapter = adapters[name]
+            for i in range(0, len(value), CHUNK):
+                chunk = adapter.dump_json(value[i:i + CHUNK], exclude_none=True).decode()
+                inner = chunk[1:-1]  # strip the chunk's own [ ]
+                if inner:
+                    fh.write(("" if first else ",") + inner)
+                    first = False
+    fh.write(envelope[pos:])
+
+
 def _ensure_ray() -> None:
     """Initialize Ray with the driver's pinned hash seed in the workers.
 
@@ -60,13 +147,23 @@ def _ensure_ray() -> None:
     interpreters, so Jedi inference in Ray workers would run with random
     set-iteration order and the emitted edges vary run to run (issue #99)."""
     if not ray.is_initialized():
-        ray.init(
+        # LOW-MEM PATCH: start a private local cluster with object spilling to
+        # disk disabled, a bounded object store, and an optional worker cap
+        # (CANPY_RAY_CPUS); shut down after the symbol-table phase so the idle
+        # workers release their memory before the single-process L2-L4 phases.
+        init_kwargs = dict(
             runtime_env={
                 "env_vars": {
                     "PYTHONHASHSEED": os.environ.get("PYTHONHASHSEED", "0")
                 }
             },
+            _system_config={"automatic_object_spilling_enabled": False},
+            object_store_memory=int(os.environ.get("CANPY_RAY_OBJECT_STORE", 1_000_000_000)),
+            include_dashboard=False,
         )
+        if os.environ.get("CANPY_RAY_CPUS"):
+            init_kwargs["num_cpus"] = int(os.environ["CANPY_RAY_CPUS"])
+        ray.init(**init_kwargs)
 
 
 @ray.remote
@@ -747,7 +844,16 @@ class Codeanalyzer:
                 k=self.options.graph_field_depth,
                 oracle_factory=lambda c, fast: SyntacticOracle(),
             )
+            del _func_asts  # LOW-MEM PATCH: unused at L3; drop the def-node ASTs now
             emit_l3_body(app, infos, sig_to_id, set(self.options.graphs.split(",")))
+            # LOW-MEM PATCH: L4 only needs the syntactic DDG *sets* (for the
+            # points-to delta), not the PDGs with their statement ASTs.
+            from codeanalyzer.dataflow.builder import syntactic_ddg_sets
+            syn_ddg_sets = syntactic_ddg_sets(app, infos, sig_to_id)
+            infos.clear()
+            del infos
+            gc.collect()
+            _log_mem("after L3 emit (L3 PDGs freed)")
 
         # L4: interprocedural dataflow (param vertices + summary + param_in/out)
         # layered on top of the L3 syntactic overlay (L3 ⊆ L4). Scalpel is the
@@ -772,7 +878,14 @@ class Codeanalyzer:
             # Semantic ddg delta: the alias-derived def-use edges the real
             # oracle adds beyond the L3 syntactic set, tagged prov=["points-to"].
             # ``infos`` are the syntactic (L3) PDGs from the >=3 block above.
-            emit_ddg_pointsto_delta(app, infos, ir, sig_to_id)
+            emit_ddg_pointsto_delta(app, syn_ddg_sets, ir, sig_to_id)
+            # LOW-MEM PATCH: the L3/L4 intermediates (per-function PDGs with their
+            # statement ASTs, SDG IR) are dead from here on; free them before the
+            # config tiers and serialization instead of at analyze() return.
+            del ir
+            del syn_ddg_sets
+            gc.collect()
+            _log_mem("after L4 emit (intermediates freed)")
 
         # config_use (#162) resolution: literal tier always runs at >= 2;
         # the dataflow tiers widen the set as substrate comes online -- intra
@@ -872,7 +985,8 @@ class Codeanalyzer:
         cache_file.parent.mkdir(parents=True, exist_ok=True)
 
         with cache_file.open('w') as f:
-            f.write(model_dump_json(analysis, indent=2))
+            stream_analysis_json(analysis, f, strip_internal=False)  # LOW-MEM PATCH
+        _log_mem("after cache save")
 
         logger.info(f"Analysis cached to {cache_file}")
 
@@ -1013,6 +1127,8 @@ class Codeanalyzer:
                         if result:
                             symbol_table.update(result)
                         progress.advance()
+                ray.shutdown()  # LOW-MEM PATCH: release the worker pool's memory
+                logger.info("Ray shut down after the symbol-table phase.")
         else:
             logger.info("Building symbol table serially.")
             symbol_table_builder = SymbolTableBuilder(self.project_dir, self.virtualenv)

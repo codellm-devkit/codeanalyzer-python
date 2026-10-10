@@ -56,11 +56,11 @@ from codeanalyzer.schema.py_schema import PyDecorator, byte_offsets
 
 
 def project(app: PyApplication, app_name: str, sig_to_id: dict,
-            analyzer: Optional[Any] = None) -> GraphRows:
+            analyzer: Optional[Any] = None, builder: Optional[RowBuilder] = None) -> GraphRows:
     """``analyzer`` is the envelope-level ``PyAnalyzerInfo`` (the keystone home
     for analyzer identity); the caller that holds the ``Analysis`` envelope
     passes it through so the :PyApplication node carries it as props."""
-    b = RowBuilder()
+    b = builder if builder is not None else RowBuilder()  # LOW-MEM PATCH
 
     # Keyed on the ``can://<app>`` id, not on ``--app-name``: two applications
     # analyzed under the same free-text name used to MERGE onto one root, with
@@ -928,6 +928,9 @@ def _stringify_if(value: Any) -> Optional[str]:
 
 
 def _jsonable(o: Any) -> Any:
+    import dataclasses as _dc  # LOW-MEM PATCH: slotted-dataclass schema leaves
+    if _dc.is_dataclass(o) and not isinstance(o, type):
+        return _dc.asdict(o)
     if hasattr(o, "model_dump"):
         return o.model_dump()
     if hasattr(o, "dict"):
