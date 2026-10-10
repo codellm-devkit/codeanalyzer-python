@@ -122,6 +122,9 @@ def model_dump(model, **kwargs):
 
 def model_copy(model):
     """Compatibility helper for copying a model (v2 model_copy / v1 copy)."""
+    import copy as _copy, dataclasses as _dc
+    if _dc.is_dataclass(model):  # LOW-MEM PATCH: slotted dataclass leaf (shallow copy, like model_copy)
+        return _copy.copy(model)
     return model.model_copy() if PYDANTIC_V2 else model.copy()
 
 

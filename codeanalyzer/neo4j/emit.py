@@ -29,7 +29,7 @@ from typing import Optional
 
 from codeanalyzer.neo4j.bolt import BoltConfig, bolt_writer
 from codeanalyzer.neo4j.schema import build_schema_document
-from codeanalyzer.neo4j.cypher import render_cypher
+from codeanalyzer.neo4j.cypher import render_cypher, write_cypher_streaming
 from codeanalyzer.neo4j.project import project
 from codeanalyzer.options import GRAPH_CYPHER, AnalysisOptions
 from codeanalyzer.schema import Analysis
@@ -58,9 +58,9 @@ def emit_neo4j(analysis: Analysis, options: AnalysisOptions) -> None:
     # canonical ``can://`` id and returns the ``signature -> id`` map the projection
     # keys nodes on, so the JSON and Neo4j projections agree.
     sig_to_id = assign_ids(analysis.application, app_name)
-    rows = project(analysis.application, app_name, sig_to_id, analyzer=analysis.analyzer)
 
     if options.neo4j_uri:
+        rows = project(analysis.application, app_name, sig_to_id, analyzer=analysis.analyzer)
         cfg = BoltConfig(
             uri=options.neo4j_uri,
             user=options.neo4j_user,
@@ -76,5 +76,7 @@ def emit_neo4j(analysis: Analysis, options: AnalysisOptions) -> None:
     out_dir = options.output if options.output is not None else Path.cwd()
     out_dir.mkdir(parents=True, exist_ok=True)
     target = out_dir / GRAPH_CYPHER
-    target.write_text(render_cypher(rows, app_name))
+    with target.open("w") as fh:  # LOW-MEM PATCH: streamed, see cypher.write_cypher_streaming
+        write_cypher_streaming(fh, analysis.application, app_name, sig_to_id,
+                               analyzer=analysis.analyzer)
     logger.info(f"Neo4j graph written to {target}")

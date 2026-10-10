@@ -102,15 +102,21 @@ def _is_global(path: str) -> bool:
 
 def augmented_facts(info: FunctionInfo, summaries: Dict[str, FunctionSummary]):
     """Per-node facts with callee global footprints injected at callsites."""
-    facts = {nid: f for nid, f in info.pdg.facts.items()}
-    out = {}
-    for nid, f in facts.items():
-        out[nid] = type(f)(defs=set(f.defs), uses=set(f.uses))
+    # LOW-MEM PATCH: copy-on-write. Only call-site nodes are ever augmented, and
+    # every downstream consumer (reaching-defs, flows, the SDG assembler) only
+    # reads facts, so the untouched nodes can share the PDG's own records
+    # instead of being deep-copied for every solve.
+    out = dict(info.pdg.facts)
+    copied = set()
     for cs in info.call_sites:
         for target in cs.targets:
             s = summaries.get(target)
             if s is None:
                 continue
+            if cs.node_id not in copied:
+                f = out[cs.node_id]
+                out[cs.node_id] = type(f)(defs=set(f.defs), uses=set(f.uses))
+                copied.add(cs.node_id)
             out[cs.node_id].uses |= s.global_reads
             out[cs.node_id].defs |= s.global_writes
     return out

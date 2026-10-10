@@ -156,3 +156,86 @@ def _edge_statements(edges: List[EdgeRow]) -> List[str]:
                 f"SET r += row.p;"
             )
     return blocks
+
+
+# ----------------------------------------------------------------------------------------------
+# LOW-MEM PATCH: streaming snapshot writer (see write_cypher_streaming).
+# ----------------------------------------------------------------------------------------------
+from codeanalyzer.neo4j.rows import EdgeRow, GraphRows, NodeRef, RowBuilder  # noqa: E402
+
+
+class _NodesOnlyBuilder(RowBuilder):
+    """Pass 1: nodes (merged props/labels, exactly as RowBuilder) + key set; no edges."""
+
+    def edge(self, type_, from_ref, to_ref, props=None, key=None):
+        return None
+
+    def edge_to_symbol(self, type_, from_ref, target_ref, props=None):
+        return None
+
+
+class _EdgeStreamBuilder(RowBuilder):
+    """Pass 2: nodes are already on disk; each edge batch is rendered with
+    ``_edge_statements`` (same grouping/BATCH) the moment it fills."""
+
+    def __init__(self, keys, fh):
+        super().__init__()
+        self._keys = keys
+        self._fh = fh
+        self._pending: Dict[str, List[EdgeRow]] = {}
+
+    def node(self, labels, key_prop, value, props):
+        return NodeRef(labels[0], key_prop, value)
+
+    def edge(self, type_, from_ref, to_ref, props=None, key=None):
+        e = EdgeRow(type_, from_ref, to_ref, dict(props or {}), key)
+        g = (
+            f"{e.type}|{e.from_ref.label}.{e.from_ref.key_prop}"
+            f"|{e.to_ref.label}.{e.to_ref.key_prop}|{e.key is not None}"
+        )
+        batch = self._pending.setdefault(g, [])
+        batch.append(e)
+        if len(batch) >= BATCH:
+            self._flush(g)
+
+    def edge_to_symbol(self, type_, from_ref, target_ref, props=None):
+        if (target_ref.label, target_ref.value) in self._keys:
+            self.edge(type_, from_ref, target_ref, props)
+
+    def _flush(self, g):
+        batch = self._pending.pop(g, None)
+        if batch:
+            for stmt in _edge_statements(batch):
+                self._fh.write(stmt)
+                self._fh.write("\n")
+
+    def finish(self) -> GraphRows:
+        for g in list(self._pending):
+            self._flush(g)
+        return GraphRows([], [])
+
+
+def write_cypher_streaming(fh, app, app_name: str, sig_to_id: dict, analyzer=None) -> None:
+    """Write the ``graph.cypher`` snapshot for ``app`` to ``fh`` without holding the
+    edge rows or the rendered text in memory (two projection passes)."""
+    from codeanalyzer.neo4j.project import project
+
+    nodes_b = _NodesOnlyBuilder()
+    project(app, app_name, sig_to_id, analyzer=analyzer, builder=nodes_b)
+    rows = nodes_b.finish()
+    keys = nodes_b._keys
+
+    fh.write("// ── constraints & indexes ──\n")
+    for stmt in CONSTRAINTS:
+        fh.write(f"{stmt};\n")
+    for stmt in INDEXES:
+        fh.write(f"{stmt};\n")
+    fh.write("\n// ── wipe this project's prior subgraph (externals/packages/decorators are shared) ──\n")
+    fh.write(_wipe(app_name) + "\n")
+    fh.write("\n// ── nodes ──\n")
+    for stmt in _node_statements(rows.nodes):
+        fh.write(stmt + "\n")
+    del rows, nodes_b
+
+    fh.write("\n// ── relationships ──\n")
+    project(app, app_name, sig_to_id, analyzer=analyzer, builder=_EdgeStreamBuilder(keys, fh))

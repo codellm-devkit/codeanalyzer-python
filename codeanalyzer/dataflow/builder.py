@@ -50,6 +50,14 @@ from codeanalyzer.utils import logger
 
 DEFAULT_K_LIMIT = 3
 
+# LOW-MEM PATCH: one shared provenance list per kind instead of a fresh
+# ``["ssa"]`` list object on each of the (tens of) millions of DDG edges. The
+# lists are never mutated; equality comparisons (``e.prov != [...]``) and JSON
+# serialization are unaffected.
+_PROV_SSA = ["ssa"]
+_PROV_REACHING_DEFS = ["reaching-defs"]
+_PROV_POINTS_TO = ["points-to"]
+
 
 def _walk_callables(
     module: PyModule,
@@ -339,7 +347,7 @@ def emit_l3_body(
                         src=im.local(e.source),
                         dst=im.local(e.target),
                         var=e.var,
-                        prov=["ssa"],
+                        prov=_PROV_SSA,
                     )
                     for e in pdg.edges
                     if e.type == "DDG"
@@ -441,6 +449,16 @@ def build_program_graphs(
                 nested_sig = f"{sig}.{node.ast_node.name}"
                 if nested_sig in infos:
                     info.nested_defs.append((node.id, nested_sig))
+
+    # LOW-MEM PATCH: from here on (summary fixpoint, SDG assembly, L4 emit) no
+    # stage reads a statement's AST -- only CFG node ids/positions, facts and
+    # oracles. Drop the def-node map and the per-node AST references so the
+    # whole-program AST copy this pass parsed is collected before the two most
+    # memory-hungry stages run.
+    func_asts.clear()
+    for info in infos.values():
+        for node in info.pdg.cfg.nodes:
+            node.ast_node = None
 
     call_edges = [
         (e.src, e.dst)
@@ -609,7 +627,7 @@ def emit_l4(
                 continue
             seen.add(key)
             rows.append(
-                DdgEdge(src=src, dst=dst, var=e.var, prov=["reaching-defs"])
+                DdgEdge(src=src, dst=dst, var=e.var, prov=_PROV_REACHING_DEFS)
             )
         rows.sort(key=lambda r: (r.src, r.dst, r.var or ""))
         pycallable.ddg.extend(rows)
@@ -629,9 +647,36 @@ def _ddg_local_set(im, pdg) -> Set[Tuple[str, str, Optional[str]]]:
     }
 
 
+def syntactic_ddg_sets(
+    app: PyApplication,
+    infos: Dict[str, FunctionInfo],
+    sig_to_id: Dict[str, str],
+) -> Dict[str, Set[Tuple[str, str, Optional[str]]]]:
+    """LOW-MEM PATCH: precompute, per signature, the L3 syntactic DDG set in the
+    exact form :func:`emit_ddg_pointsto_delta` derives from ``syntactic_infos``
+    (local ids are position-based, so an IdentityMap over the syntactic PDG
+    yields the same locals as one over the L4 PDG). Lets the caller free the L3
+    ``FunctionInfo`` records -- and the statement ASTs they pin -- before L4."""
+    from codeanalyzer.dataflow.identity import IdentityMap
+
+    sig_to_callable: Dict[str, PyCallable] = {}
+    for module in app.symbol_table.values():
+        for pycallable, _chain in _walk_callables(module):
+            sig_to_callable[pycallable.signature] = pycallable
+    out: Dict[str, Set[Tuple[str, str, Optional[str]]]] = {}
+    for sig, info in infos.items():
+        pycallable = sig_to_callable.get(sig)
+        if pycallable is None:
+            continue
+        callable_id = sig_to_id.get(sig) or pycallable.id
+        im = IdentityMap.for_function(callable_id, info.pdg)
+        out[sig] = _ddg_local_set(im, info.pdg)
+    return out
+
+
 def emit_ddg_pointsto_delta(
     app: PyApplication,
-    syntactic_infos: Dict[str, FunctionInfo],
+    syntactic_infos,
     ir: ProgramGraphsIR,
     sig_to_id: Dict[str, str],
 ) -> None:
@@ -678,12 +723,14 @@ def emit_ddg_pointsto_delta(
         # untouched — they are L3's and this delta is strictly additive over them.
         pycallable.ddg = [e for e in pycallable.ddg if e.prov != ["points-to"]]
 
-        delta = _ddg_local_set(im, fg.pdg) - _ddg_local_set(im, syn.pdg)
+        # LOW-MEM PATCH: accept a precomputed syntactic set (see syntactic_ddg_sets).
+        syn_set = syn if isinstance(syn, (set, frozenset)) else _ddg_local_set(im, syn.pdg)
+        delta = _ddg_local_set(im, fg.pdg) - syn_set
         for src, dst, var in sorted(delta, key=lambda t: (t[0], t[1], t[2] or "")):
             if src not in pycallable.body or dst not in pycallable.body:
                 continue
             pycallable.ddg.append(
-                DdgEdge(src=src, dst=dst, var=var, prov=["points-to"])
+                DdgEdge(src=src, dst=dst, var=var, prov=_PROV_POINTS_TO)
             )
 
 

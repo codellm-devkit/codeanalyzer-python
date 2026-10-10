@@ -59,7 +59,7 @@ CAPTURE_PREFIX = "<capture>:"
 GLOBAL_PREFIX = "<global>:"
 
 
-@dataclass
+@dataclass(slots=True)  # LOW-MEM PATCH: slots
 class ParamNode:
     id: int
     kind: str  # formal_in | formal_out | actual_in | actual_out
@@ -69,7 +69,7 @@ class ParamNode:
     end_line: int = -1
 
 
-@dataclass(frozen=True)
+@dataclass(slots=True, frozen=True)  # LOW-MEM PATCH: slots
 class SDGEdge:
     source_sig: str
     source_node: int

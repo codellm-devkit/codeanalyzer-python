@@ -44,7 +44,7 @@ from codeanalyzer.dataflow.alias import TypeBasedAliasOracle
 from codeanalyzer.dataflow.cfg import ControlFlowGraph
 
 
-@dataclass(frozen=True)
+@dataclass(slots=True, frozen=True)  # LOW-MEM PATCH: slots
 class DDGEdge:
     source: int  # the def node
     target: int  # the use node

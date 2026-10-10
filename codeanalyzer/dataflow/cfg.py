@@ -102,7 +102,7 @@ EDGE_KINDS = (
 )
 
 
-@dataclass
+@dataclass(slots=True)  # LOW-MEM PATCH: slots
 class CFGNode:
     """A statement-level CFG node. ``id`` is assigned in source-span order
     after construction (ENTRY = 0, EXIT = last CFG id)."""
@@ -118,7 +118,7 @@ class CFGNode:
     ast_node: Optional[ast.AST] = field(default=None, repr=False, compare=False)
 
 
-@dataclass(frozen=True)
+@dataclass(slots=True, frozen=True)  # LOW-MEM PATCH: slots
 class CFGEdge:
     source: int
     target: int

@@ -42,7 +42,7 @@ from codeanalyzer.dataflow.defuse import ddg_edges
 from codeanalyzer.dataflow.dominance import control_dependence
 
 
-@dataclass(frozen=True)
+@dataclass(slots=True, frozen=True)  # LOW-MEM PATCH: slots
 class PDGEdge:
     source: int
     target: int

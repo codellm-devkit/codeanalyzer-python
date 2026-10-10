@@ -21,6 +21,8 @@ for static analysis purposes.
 """
 from __future__ import annotations
 from pathlib import Path
+import dataclasses as _dataclasses
+from dataclasses import dataclass, field as _dc_field
 from typing import Any, Dict, List, Optional, Tuple
 from pydantic import BaseModel
 from typing_extensions import Literal
@@ -50,8 +52,15 @@ def builder(cls):
     # defaults straight off the model instead. Required fields are intentionally
     # omitted (seeded ``None``) — the builder chain must set them.
     defaults = {}
+    factories = {}  # LOW-MEM PATCH: dataclass default_factory, called per builder
     model_fields = getattr(cls, "model_fields", None)  # Pydantic v2
-    if model_fields:
+    if _dataclasses.is_dataclass(cls):  # LOW-MEM PATCH: slotted dataclass leaf
+        for f in _dataclasses.fields(cls):
+            if f.default is not _dataclasses.MISSING:
+                defaults[f.name] = f.default
+            elif f.default_factory is not _dataclasses.MISSING:
+                factories[f.name] = f.default_factory
+    elif model_fields:
         for name, field in model_fields.items():
             if not field.is_required():
                 defaults[name] = field.get_default(call_default_factory=True)
@@ -65,7 +74,10 @@ def builder(cls):
     # Create an __init__ method for the builder class that initializes all fields to their default values.
     def __init__(self):
         for field in annotations:
-            default = defaults.get(field, None)
+            if field in factories:  # LOW-MEM PATCH: fresh mutable default per instance
+                default = factories[field]()
+            else:
+                default = defaults.get(field, None)
             setattr(self, f"_{field}", default)
 
     namespace["__init__"] = __init__
@@ -114,8 +126,13 @@ def byte_offsets(source: str, start_line: int, start_col: int,
     return offset(start_line, start_col), offset(end_line, end_col)
 
 
-@builder
-class Span(BaseModel):
+# LOW-MEM PATCH: the per-statement / per-edge records below are the bulk of a
+# large project's tree (tens of millions of instances). As pydantic models each
+# instance costs ~650 B (``__dict__`` + ``__pydantic_fields_set__`` + ...); as
+# slotted stdlib dataclasses ~230 B, and pydantic serializes/validates them
+# identically when they appear as fields of the enclosing models.
+@dataclass(slots=True)
+class Span:
     """Where a node lives in source. `start`/`end` are [line, col] (1-based line,
     0-based col, ast semantics); `bytes` are utf-8 offsets into module.source."""
     start: Tuple[int, int]
@@ -123,8 +140,8 @@ class Span(BaseModel):
     bytes: Tuple[int, int]
 
 
-@builder
-class BodyNode(BaseModel):
+@dataclass(slots=True)
+class BodyNode:
     """A node in a callable's `body`: an AST region (statement/call/branch/…) or
     a synthetic analysis vertex (entry/exit/formal_in/out/actual_in/out)."""
     kind: str
@@ -146,31 +163,31 @@ class BodyNode(BaseModel):
     receiver_type: Optional[str] = None
     return_type: Optional[str] = None
     is_constructor_call: Optional[bool] = None
-    arguments: List["PyCallArgument"] = []
+    arguments: List["PyCallArgument"] = _dc_field(default_factory=list)
 
 
-@builder
-class CfgEdge(BaseModel):
+@dataclass(slots=True)
+class CfgEdge:
     src: str; dst: str; kind: str = "fallthrough"
 
 
-@builder
-class CdgEdge(BaseModel):
+@dataclass(slots=True)
+class CdgEdge:
     src: str; dst: str
 
 
-@builder
-class DdgEdge(BaseModel):
-    src: str; dst: str; var: Optional[str] = None; prov: List[str] = []
+@dataclass(slots=True)
+class DdgEdge:
+    src: str; dst: str; var: Optional[str] = None; prov: List[str] = _dc_field(default_factory=list)
 
 
-@builder
-class SummaryEdge(BaseModel):
+@dataclass(slots=True)
+class SummaryEdge:
     src: str; dst: str
 
 
-@builder
-class ParamEdge(BaseModel):
+@dataclass(slots=True)
+class ParamEdge:
     """A `param_in` (actual_in → formal_in) or `param_out` (formal_out → actual_out)
     edge at application scope. `var` is the callee-side formal's variable — the
     parameter name, or `<return>` for the return port — always set (#195), the
@@ -180,7 +197,8 @@ class ParamEdge(BaseModel):
 
 
 @builder
-class PyImport(BaseModel):
+@dataclass(slots=True)  # LOW-MEM PATCH: leaf record
+class PyImport:
     """Represents a Python import statement."""
 
     module: str
@@ -194,7 +212,8 @@ class PyImport(BaseModel):
 
 
 @builder
-class PyComment(BaseModel):
+@dataclass(slots=True)  # LOW-MEM PATCH: leaf record
+class PyComment:
     """Represents a Python comment."""
 
     content: str
@@ -206,7 +225,8 @@ class PyComment(BaseModel):
 
 
 @builder
-class PySymbol(BaseModel):
+@dataclass(slots=True)  # LOW-MEM PATCH: leaf record
+class PySymbol:
     """Represents a symbol used or declared in Python code."""
 
     name: str
@@ -220,7 +240,8 @@ class PySymbol(BaseModel):
 
 
 @builder
-class PyVariableDeclaration(BaseModel):
+@dataclass(slots=True)  # LOW-MEM PATCH: leaf record
+class PyVariableDeclaration:
     """Represents a Python variable declaration."""
 
     name: str
@@ -238,7 +259,8 @@ class PyVariableDeclaration(BaseModel):
 
 
 @builder
-class PyDecorator(BaseModel):
+@dataclass(slots=True)  # LOW-MEM PATCH: leaf record
+class PyDecorator:
     """One decorator application, structured rather than a source string (#128).
 
     ``name`` is the spelling as written (``lru_cache``, ``builtins.staticmethod``);
@@ -249,8 +271,8 @@ class PyDecorator(BaseModel):
 
     name: str
     qualified_name: Optional[str] = None
-    positional_arguments: List[str] = []
-    keyword_arguments: Dict[str, str] = {}
+    positional_arguments: List[str] = _dc_field(default_factory=list)
+    keyword_arguments: Dict[str, str] = _dc_field(default_factory=dict)
     expression: str = ""
     span: Optional[Span] = None
 
@@ -291,7 +313,8 @@ class PyEntrypointReport(BaseModel):
 
 
 @builder
-class PyCallableParameter(BaseModel):
+@dataclass(slots=True)  # LOW-MEM PATCH: leaf record
+class PyCallableParameter:
     """Represents a parameter of a Python callable (function/method)."""
 
     name: str
@@ -300,7 +323,7 @@ class PyCallableParameter(BaseModel):
     id: str = ""
     type: Optional[str] = None
     default_value: Optional[str] = None
-    decorators: List[PyDecorator] = []
+    decorators: List[PyDecorator] = _dc_field(default_factory=list)
     start_line: int = -1
     end_line: int = -1
     start_column: int = -1
@@ -308,7 +331,8 @@ class PyCallableParameter(BaseModel):
 
 
 @builder
-class PyCallArgument(BaseModel):
+@dataclass(slots=True)  # LOW-MEM PATCH: leaf record
+class PyCallArgument:
     """One call-site argument: AST category + inferred type, kept separate.
 
     The legacy ``PyCallsite.argument_types`` mixed these two vocabularies
@@ -333,19 +357,20 @@ class PyCallArgument(BaseModel):
 # BodyNode.arguments forward-references PyCallArgument (defined later);
 # pydantic v1 resolves string annotations only when told to, while v2
 # rebuilds automatically (and its update_forward_refs shim rejects localns).
-if not hasattr(BodyNode, "model_rebuild"):  # pydantic v1
-    BodyNode.update_forward_refs(PyCallArgument=PyCallArgument)
+if not hasattr(BaseModel, "model_rebuild"):  # pydantic v1 (LOW-MEM PATCH: BodyNode is a dataclass now)
+    raise RuntimeError("low-memory build requires pydantic v2")
 
 
 @builder
-class PyCallsite(BaseModel):
+@dataclass(slots=True)  # LOW-MEM PATCH: leaf record
+class PyCallsite:
     """Represents a Python call site (function or method invocation) with contextual metadata."""
 
     method_name: str
     receiver_expr: Optional[str] = None
     receiver_type: Optional[str] = None
-    argument_types: List[str] = []
-    arguments: List[PyCallArgument] = []
+    argument_types: List[str] = _dc_field(default_factory=list)
+    arguments: List[PyCallArgument] = _dc_field(default_factory=list)
     return_type: Optional[str] = None
     callee_signature: Optional[str] = None
     is_constructor_call: bool = False
@@ -464,7 +489,8 @@ class PyModule(BaseModel):
 
 
 @builder
-class PyCallEdge(BaseModel):
+@dataclass(slots=True)  # LOW-MEM PATCH: ~1M instances on a large project
+class PyCallEdge:
     """Identity-only call-graph edge with weight (keystone shape: the list name
     IS the edge type, so there is no ``type`` field).
 
@@ -477,7 +503,7 @@ class PyCallEdge(BaseModel):
     src: str  # caller callable id
     dst: str  # callee callable (or external) id
     weight: int = 1
-    prov: List[Literal["jedi", "defuse"]] = []
+    prov: List[Literal["jedi", "defuse"]] = _dc_field(default_factory=list)
 
 
 @builder
