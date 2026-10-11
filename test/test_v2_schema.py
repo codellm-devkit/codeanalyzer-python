@@ -1,12 +1,11 @@
 from codeanalyzer.schema.py_schema import (
     Analysis, PyApplication, PyModule, PyCallable, BodyNode, Span, DdgEdge,
 )
-from codeanalyzer.schema import model_dump_json, model_validate_json, PYDANTIC_V2
+from codeanalyzer.schema import model_dump_json, model_validate_json
 
 
 def _fields(model_cls):
-    """Field map across Pydantic v1/v2."""
-    return model_cls.model_fields if PYDANTIC_V2 else model_cls.__fields__
+    return model_cls.model_fields
 
 
 def test_envelope_round_trips():

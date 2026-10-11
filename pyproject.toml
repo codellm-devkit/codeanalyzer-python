@@ -6,35 +6,22 @@ readme = "README.md"
 authors = [
   { name = "Rahul Krishna", email = "i.m.ralk@gmail.com" }
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 
 dependencies = [
-    # jedi
-    "jedi>=0.18.0,<0.20.0; python_version < '3.11'",
-    "jedi<=0.19.2; python_version >= '3.11'",
+    "jedi<=0.19.2",
     # parso 0.8.5 is the first release shipping the Python 3.14 grammar; older
     # resolutions make jedi reject every file in a 3.14 analysis env (#107)
     "parso>=0.8.5",
-    # networkx
-    "networkx>=2.6.0,<3.2.0; python_version < '3.11'",
-    "networkx>=3.0.0,<4.0.0; python_version >= '3.11'",
-    # pydantic
-    "pydantic>=1.8.0,<2.0.0; python_version < '3.11'",
-    "pydantic>=2.0.0,<3.0.0; python_version >= '3.11'",
-    # requests
-    "requests>=2.20.0,<3.0.0; python_version >= '3.11'",
-    # rich
-    "rich>=12.6.0,<14.0.0; python_version < '3.11'",
-    "rich>=14.0.0,<15.0.0; python_version >= '3.11'",
-    # typer
-    "typer>=0.9.0,<1.0.0; python_version < '3.11'",
-    "typer>=0.9.0,<2.0.0; python_version >= '3.11'",
-    # typing-extensions
-    "typing-extensions>=4.0.0,<5.0.0; python_version < '3.11'",
-    "typing-extensions>=4.5.0,<6.0.0; python_version >= '3.11'",
-    # ray
-    "ray==2.0.0; python_version < '3.11'",
-    "ray>=2.10.0,<3.0.0; python_version >= '3.11'",
+    "networkx>=3.0.0,<4.0.0",
+    # pydantic v2 only: the schema's slotted dataclass leaves (#224) rely on v2
+    # validating and serializing stdlib dataclasses the way it does models.
+    "pydantic>=2.0.0,<3.0.0",
+    "requests>=2.20.0,<3.0.0",
+    "rich>=14.0.0,<15.0.0",
+    "typer>=0.9.0,<2.0.0",
+    "typing-extensions>=4.5.0,<6.0.0",
+    "ray>=2.10.0,<3.0.0",
     "packaging>=25.0",
     # uv -- installs the analyzed project's deps into the analysis venv quickly.
     # Shipped as a self-contained binary in its wheel, so it's available wherever
@@ -47,9 +34,6 @@ dependencies = [
     # pyyaml: the entrypoint rules pack (#27) is YAML. Declared explicitly --
     # it was previously only reachable as a transitive dep of ray.
     "pyyaml>=6.0,<7.0",
-    # tomli: stdlib tomllib only ships from 3.11; artifacts/parsers.py needs
-    # TOML parsing (pyproject.toml, Pipfile, lock files) below that floor.
-    "tomli>=2.0; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]
@@ -67,18 +51,14 @@ test = [
   "pytest-pspec>=0.0.3",
   # Neo4j integration test (opt-in; spins up a real Neo4j via Testcontainers).
   "neo4j>=5.0.0,<6.0.0",
-  "testcontainers[neo4j]>=4.0.0,<5.0.0; python_version >= '3.11'",
+  "testcontainers[neo4j]>=4.0.0,<5.0.0",
   # Real frameworks for the entrypoint-detection integration test (#27) --
   # rules.yml `match:` patterns are only meaningful against Jedi's actual
   # resolution of the installed package, never a guess at its public API path.
-  # python_version >= '3.11' only: below that, ray==2.0.0 pins click<=8.0.4,
-  # which conflicts with celery>=5.3's click>=8.1.2 floor. The integration
-  # test guards each import with pytest.importorskip, so it just skips on
-  # older interpreters rather than needing a resolvable pin here.
-  "flask>=3.0.0,<4.0.0; python_version >= '3.11'",
-  "fastapi>=0.100.0,<1.0.0; python_version >= '3.11'",
-  "celery>=5.3.0,<6.0.0; python_version >= '3.11'",
-  "click>=8.0.0,<9.0.0; python_version >= '3.11'",
+  "flask>=3.0.0,<4.0.0",
+  "fastapi>=0.100.0,<1.0.0",
+  "celery>=5.3.0,<6.0.0",
+  "click>=8.0.0,<9.0.0",
 ]
 dev = [
   "ipdb>=0.13.0,<0.14.0",

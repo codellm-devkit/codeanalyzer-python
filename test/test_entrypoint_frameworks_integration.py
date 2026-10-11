@@ -13,9 +13,7 @@ on the real, installed package.
 
 Each framework is an optional test-only dependency (see the `test`
 dependency-group in ``pyproject.toml``); guarded with ``importorskip`` so the
-suite still runs where one is absent (e.g. below the ``python_version >=
-'3.11'`` floor those pins carry, to dodge a ``ray``/``celery`` click-version
-conflict below that -- see the comment in ``pyproject.toml``).
+suite still runs where one is absent (e.g. a sync without the `test` group).
 """
 import json
 import subprocess

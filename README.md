@@ -79,7 +79,7 @@ needs.
 
 ### Prerequisites
 
-- **Python 3.10 or newer.**
+- **Python 3.11 or newer.**
 - A C toolchain and the `venv` / development headers — the analyzer builds an isolated virtual
   environment per project (via Python's `venv`) so Jedi can resolve types and imports:
 
