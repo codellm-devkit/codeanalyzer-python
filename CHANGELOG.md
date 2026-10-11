@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Removed
+
+- **BREAKING: Python 3.9 and 3.10 are no longer supported; the analyzer needs Python 3.11+**
+  (`requires-python = ">=3.11"`). The level-4 memory cut (#224) makes the schema's
+  per-edge and per-statement records slotted stdlib dataclasses. Only pydantic v2 validates
+  and serializes those the same way as models, and below 3.11 the dependency pins resolved
+  to pydantic v1 (with `ray==2.0.0`). The `python_version < '3.11'` pin set, the `tomli`
+  backport, the pydantic-v1 branches of the `codeanalyzer.schema` helpers, and the 3.10
+  `compat` release job are gone. `codeanalyzer.schema.PYDANTIC_V2` stays importable and is
+  always `True`. Migration: install the analyzer under Python 3.11 or newer.
+
 ## [1.5.4] - 2026-09-16
 
 ### Fixed

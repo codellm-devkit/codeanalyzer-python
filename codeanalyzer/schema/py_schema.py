@@ -53,21 +53,16 @@ def builder(cls):
     # omitted (seeded ``None``) — the builder chain must set them.
     defaults = {}
     factories = {}  # LOW-MEM PATCH: dataclass default_factory, called per builder
-    model_fields = getattr(cls, "model_fields", None)  # Pydantic v2
     if _dataclasses.is_dataclass(cls):  # LOW-MEM PATCH: slotted dataclass leaf
         for f in _dataclasses.fields(cls):
             if f.default is not _dataclasses.MISSING:
                 defaults[f.name] = f.default
             elif f.default_factory is not _dataclasses.MISSING:
                 factories[f.name] = f.default_factory
-    elif model_fields:
-        for name, field in model_fields.items():
+    else:
+        for name, field in cls.model_fields.items():
             if not field.is_required():
                 defaults[name] = field.get_default(call_default_factory=True)
-    else:  # Pydantic v1
-        for name, field in getattr(cls, "__fields__", {}).items():
-            if not field.required:
-                defaults[name] = field.get_default()
     # Create a namespace for the builder class.
     namespace = {}
 
@@ -352,13 +347,6 @@ class PyCallArgument:
     # tier's join point back to the variable's own definitions. `None` for
     # every other argument shape.
     name: Optional[str] = None
-
-
-# BodyNode.arguments forward-references PyCallArgument (defined later);
-# pydantic v1 resolves string annotations only when told to, while v2
-# rebuilds automatically (and its update_forward_refs shim rejects localns).
-if not hasattr(BaseModel, "model_rebuild"):  # pydantic v1 (LOW-MEM PATCH: BodyNode is a dataclass now)
-    raise RuntimeError("low-memory build requires pydantic v2")
 
 
 @builder

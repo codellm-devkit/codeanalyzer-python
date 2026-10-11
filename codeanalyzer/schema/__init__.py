@@ -1,6 +1,3 @@
-from importlib.metadata import version, PackageNotFoundError
-from packaging.version import parse as parse_version
-
 from .py_schema import (
     Analysis,
     BodyNode,
@@ -43,25 +40,10 @@ __all__ = [
     "ParamEdge",
 ]
 
-try:
-    pydantic_version = version("pydantic")
-except PackageNotFoundError:
-    pydantic_version = "0.0.0"  # fallback or raise if appropriate
+# Pydantic v2 is the only supported major since Python 3.11 became the floor;
+# kept as a constant for importers that still branch on it.
+PYDANTIC_V2 = True
 
-PYDANTIC_V2 = parse_version(pydantic_version) >= parse_version("2.0.0")
-
-if not PYDANTIC_V2:
-    # Safe to pass localns
-    PyCallable.update_forward_refs(PyClass=PyClass)
-    PyClass.update_forward_refs(PyCallable=PyCallable)
-    PyModule.update_forward_refs(PyCallable=PyCallable, PyClass=PyClass)
-    PyApplication.update_forward_refs(
-        PyCallable=PyCallable,
-        PyClass=PyClass,
-        PyModule=PyModule
-    )
-    Analysis.update_forward_refs(PyApplication=PyApplication)
-    
 # Fields the analyzer keeps in memory (and in the cache) but never emits.
 # `call_sites` is the internal record `body{}` call nodes are derived from (#120);
 # emitting both shipped the same fact twice under two identity schemes.
@@ -87,53 +69,27 @@ def strip_internal_only(data):
     return data
 
 
-# Compatibility helpers for Pydantic v1/v2
+# Serialization helpers, kept as the one call site for every dump/copy/load.
 def model_dump_json(model, **kwargs):
-    """Compatibility helper for JSON serialization."""
-    if PYDANTIC_V2:
-        return model.model_dump_json(**kwargs)
-    else:
-        # Map Pydantic v2 parameters to v1 equivalents
-        v1_kwargs = {}
-        if 'indent' in kwargs:
-            v1_kwargs['indent'] = kwargs['indent']
-        if 'exclude_none' in kwargs:
-            v1_kwargs['exclude_none'] = kwargs['exclude_none']
-        if 'separators' in kwargs:
-            # In v1, separators is passed to dumps_kwargs
-            v1_kwargs['separators'] = kwargs['separators']
-        return model.json(**v1_kwargs)
+    """Serialize a model to a JSON string."""
+    return model.model_dump_json(**kwargs)
 
 def model_dump(model, **kwargs):
-    """Compatibility helper for dict serialization (v2 model_dump / v1 dict).
-
-    ``mode="json"`` (v2) maps to a json round-trip on v1 so both versions
-    yield JSON-safe primitives.
-    """
-    if PYDANTIC_V2:
-        return model.model_dump(**kwargs)
-    import json as _json
-    mode = kwargs.pop("mode", None)
-    v1_kwargs = {k: v for k, v in kwargs.items() if k in ("exclude_none", "exclude")}
-    if mode == "json":
-        return _json.loads(model.json(**v1_kwargs))
-    return model.dict(**v1_kwargs)
+    """Serialize a model to a dict (``mode="json"`` yields JSON-safe primitives)."""
+    return model.model_dump(**kwargs)
 
 
 def model_copy(model):
-    """Compatibility helper for copying a model (v2 model_copy / v1 copy)."""
+    """Shallow-copy a model or a dataclass leaf."""
     import copy as _copy, dataclasses as _dc
     if _dc.is_dataclass(model):  # LOW-MEM PATCH: slotted dataclass leaf (shallow copy, like model_copy)
         return _copy.copy(model)
-    return model.model_copy() if PYDANTIC_V2 else model.copy()
+    return model.model_copy()
 
 
 def model_validate_json(model_class, json_data):
-    """Compatibility helper for JSON deserialization."""
-    if PYDANTIC_V2:
-        return model_class.model_validate_json(json_data)
-    else:
-        return model_class.parse_raw(json_data)
+    """Deserialize a model from a JSON string."""
+    return model_class.model_validate_json(json_data)
 
 __all__.extend([
     "PYDANTIC_V2",

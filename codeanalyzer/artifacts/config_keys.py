@@ -58,13 +58,8 @@ from __future__ import annotations
 import configparser
 import json
 import re
-import sys
+import tomllib
 from typing import Callable, Dict, List, Optional, Tuple
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:  # pragma: no cover - exercised on the 3.10 CI leg
-    import tomli as tomllib
 
 import yaml
 
