@@ -5,7 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.6.0] - 2026-10-11
+
+### Changed
+
+- **Level-4 analysis uses about 7x less memory, with the same output** (#224). On a
+  6,685-module project (Odoo 20.0), peak RSS fell from 42.6 GB to 5.7 GB for JSON output,
+  and from 65.1 GB to 5.5 GB for `--emit neo4j`. On the same input, `analysis.json` and
+  the analysis cache have the same content as 1.5.4. The Neo4j snapshot has the same
+  statements, but edge batches can come in a different order. Representation and lifetime
+  changes only; no analysis logic changed:
+  - The schema's leaf records are slotted stdlib dataclasses, not pydantic models. This
+    covers `Span`, `BodyNode`, the `cfg`/`cdg`/`ddg`/`summary`/`param_*` edges, `PyCallEdge`,
+    `PyCallsite`, `PyCallArgument`, `PySymbol`, `PyComment`, `PyVariableDeclaration`,
+    `PyCallableParameter`, `PyDecorator` and `PyImport`. The containers (`PyModule`,
+    `PyClass`, `PyCallable`, `PyApplication`, `Analysis`) stay pydantic models.
+  - `analysis.json` and the cache are written one module at a time, not as whole-tree
+    copies. The edge lists are written in chunks. The JSON now uses compact separators
+    (only whitespace differs).
+  - ASTs, PDG data and the level-4 IR are released as soon as nothing needs them.
+  - The Neo4j `graph.cypher` snapshot is written in two passes. Nodes are written first,
+    sorted as before. Edge batches are written as they fill.
+  - Ray runs as a private local cluster with object spilling turned off. It is shut down
+    after the symbol-table phase. `CANPY_RAY_OBJECT_STORE` (bytes, default 1 GB) caps the
+    object store, and `CANPY_RAY_CPUS` caps the workers.
+- **In-process API:** the leaf types above no longer have `.model_dump()` or
+  `.model_validate()`. Use `dataclasses.asdict(...)` or the constructor. The
+  `codeanalyzer.schema` helpers (`model_dump`, `model_copy`, ...) and the container
+  models handle them transparently.
 
 ### Removed
 
