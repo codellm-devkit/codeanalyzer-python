@@ -6,7 +6,8 @@ analysis level, plus the machine-readable Neo4j schema contract. It is the input
 substrate for revising the Python CLDK SDK's Pydantic model layer to canonical
 **schema v2** (a separate major release — see *Follow-up* below). Everything here
 is generated output; nothing in this directory is a source of truth on its own —
-the contract lives in the spec, the decision log, and `schema.neo4j.json`.
+the contract lives in the spec, the decision log, and the emitter
+(`python -m codeanalyzer --emit schema`).
 
 ## Package + version to pin
 
@@ -35,8 +36,8 @@ The authoritative contract for consuming these outputs is, in order:
   points-to verdict). These are the deltas the SDK's shared Pydantic models must encode.
 - **The Neo4j contract** — `docs/handoff/schema.neo4j.json` (this bundle): the
   versioned Neo4j projection contract, **`schema_version` 2.0.0** — node labels,
-  merge keys, property types, and relationship types. Byte-identical to the repo-root
-  `schema.neo4j.json` and to `python -m codeanalyzer --emit schema`.
+  merge keys, property types, and relationship types. Byte-identical to
+  `python -m codeanalyzer --emit schema`.
 
 ### Containment vocabulary (keystone-conformant as of 1.0.0)
 

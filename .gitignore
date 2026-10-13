@@ -199,3 +199,10 @@ node_modules/
 # Track fixture lock files past the repo-root uv.lock ignore
 !test/fixtures/**/uv.lock
 !test/fixtures/**/.env
+
+# Track the memtest fixture env past the repo-root .env ignore
+!test/memtest/.env
+
+# Generated Neo4j schema contract (canpy --emit schema) — not tracked at the
+# repo root; the tracked snapshot is docs/handoff/schema.neo4j.json
+schema.neo4j.json
