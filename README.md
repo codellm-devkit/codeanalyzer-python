@@ -69,8 +69,8 @@ needs.
   `graph.cypher` snapshot, or an **incremental** push to a live database over Bolt. A push is
   **additive by default** and never deletes: `--eager` is what permits it to remove declarations
   and edges the source no longer has.
-- **Versioned schema** — a machine-readable, version-stamped Neo4j schema contract (`--emit schema`),
-  checked in as `schema.neo4j.json` (`2.0.0`) and shipped with every release.
+- **Versioned schema** — a machine-readable, version-stamped Neo4j schema contract (`--emit schema`,
+  `2.0.0`) shipped with every release; the tracked snapshot lives in `docs/handoff/`.
 - **Incremental cache** — per-file results are cached under `.codeanalyzer`; `--lazy` (default)
   reuses them, `--eager` forces a clean rebuild. `--ray` distributes the work across cores.
 - **Compact output** — one canonical `analysis.json` per run.
@@ -612,14 +612,10 @@ canpy -i ./my-project --emit neo4j     # credentials picked up from the environm
 
 `--emit schema` writes the machine-readable, version-stamped Neo4j schema (`schema.json`: node labels,
 relationships, properties, constraints, and indexes; currently `schema_version` `2.0.0`). It needs no
-project and is checked into the repo as `schema.neo4j.json` and bundled in every release as a GitHub
-Release asset, so a consumer can validate producer/consumer compatibility without invoking the tool.
-The shape of the contract matches the
+project and is bundled in every release as a GitHub Release asset (a copy is checked in at
+[`docs/handoff/schema.neo4j.json`](./docs/handoff/schema.neo4j.json)), so a consumer can validate
+producer/consumer compatibility without invoking the tool. The shape of the contract matches the
 [`codeanalyzer-typescript`](https://github.com/codellm-devkit/codeanalyzer-typescript) backend.
-
-A UML of the `analysis.json` schema (the `PyApplication` containment tree) is checked in as
-[`schema-uml.drawio`](./schema-uml.drawio), and the property-graph schema as
-[`neo4j-schema.drawio`](./neo4j-schema.drawio).
 
 ## Development
 
@@ -628,7 +624,7 @@ This project uses [uv](https://docs.astral.sh/uv/).
 ```sh
 uv sync --all-groups
 uv run canpy --input /path/to/project           # run from source
-uv run canpy --emit schema > schema.neo4j.json  # regenerate the checked-in schema contract
+uv run canpy --emit schema > docs/handoff/schema.neo4j.json  # regenerate the checked-in schema snapshot
 uv run python scripts/update_readme.py          # regenerate the canpy --help block above
 uv run pytest                                   # run the test suite
 ```

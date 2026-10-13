@@ -1,4 +1,4 @@
-# Neo4j vocabulary (authoritative: `schema.neo4j.json`; regenerate with `uv run canpy --emit schema`)
+# Neo4j vocabulary (authoritative: `docs/handoff/schema.neo4j.json`; regenerate with `uv run canpy --emit schema`)
 
 ## Node labels
 

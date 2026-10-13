@@ -1,0 +1,6 @@
+*
+!pyproject.toml
+!README.md
+!LICENSE
+!codeanalyzer/
+**/__pycache__

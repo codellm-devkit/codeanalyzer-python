@@ -36,22 +36,23 @@ jobs:
       - name: Install dependencies
         run: uv pip install -e ".[neo4j]"
 
-      # Keep generated docs in lockstep with the code being released: regenerate the
-      # README `canpy --help` block and the Neo4j schema.json from source, and commit
-      # them back to main. Releases are cut from main HEAD, so this fast-forwards;
-      # best-effort if main moved.
-      - name: Sync generated docs (README --help + Neo4j schema)
+      # Keep the generated README `canpy --help` block in lockstep with the code being
+      # released: regenerate it from source and commit it back to main. Releases are
+      # cut from main HEAD, so this fast-forwards; best-effort if main moved.
+      # (The Neo4j schema contract is no longer checked in at the repo root — it is
+      # emitted fresh for the release asset and its tracked snapshot lives in
+      # docs/handoff/.)
+      - name: Sync generated docs (README --help)
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           uv run python scripts/update_readme.py
-          uv run canpy --emit schema > schema.neo4j.json
-          if git diff --quiet README.md schema.neo4j.json; then
+          if git diff --quiet README.md; then
             echo "Generated docs already current."
           else
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add README.md schema.neo4j.json
-            git commit -m "docs: sync README --help and Neo4j schema for ${GITHUB_REF#refs/tags/}"
+            git add README.md
+            git commit -m "docs: sync README --help for ${GITHUB_REF#refs/tags/}"
             git push origin HEAD:main || echo "::warning::could not push doc sync to main (diverged?)"
           fi
 

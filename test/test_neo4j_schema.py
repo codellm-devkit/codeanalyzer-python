@@ -2,9 +2,10 @@
 asserts that the real emitter only ever produces node labels, relationship types
 and properties that the schema (``codeanalyzer/neo4j/schema.py``) declares.
 This is the anti-drift guard: if ``project.py`` grows a label or property that
-``schema.py`` doesn't declare, this fails — keeping the published
-``schema.neo4j.json`` honest. It also checks the checked-in ``schema.neo4j.json``
-is regenerated (run ``canpy --emit schema > schema.neo4j.json``).
+``schema.py`` doesn't declare, this fails — keeping the published schema
+contract honest. It also checks the tracked snapshot
+(``docs/handoff/schema.neo4j.json``) is current (regenerate with
+``canpy --emit schema > docs/handoff/schema.neo4j.json``).
 """
 import json
 from pathlib import Path
@@ -148,9 +149,15 @@ def test_call_edge_to_imported_module_name_is_not_dropped():
 
 
 def test_checked_in_schema_matches_catalog():
-    """Run `canpy --emit schema > schema.neo4j.json` if this fails."""
-    on_disk_path = Path(__file__).resolve().parents[1] / "schema.neo4j.json"
-    assert on_disk_path.exists(), "schema.neo4j.json is missing — regenerate it"
+    """The repo-root schema.neo4j.json is generated, not tracked; the tracked
+    snapshot is the handoff bundle's copy. Run
+    `canpy --emit schema > docs/handoff/schema.neo4j.json` if this fails."""
+    on_disk_path = (
+        Path(__file__).resolve().parents[1] / "docs" / "handoff" / "schema.neo4j.json"
+    )
+    assert on_disk_path.exists(), (
+        "docs/handoff/schema.neo4j.json is missing — regenerate it"
+    )
     on_disk = json.loads(on_disk_path.read_text())
     fresh = build_schema_document()
     assert on_disk == fresh
@@ -172,15 +179,3 @@ def test_param_edges_carry_every_declared_property():
             assert not missing, f"{rel} {e.from_ref.value} -> {e.to_ref.value} lacks {missing}"
             assert e.props["var"], f"{rel} var must be non-empty"
 
-
-def test_handoff_schema_snapshot_matches_the_root_one():
-    """The handoff bundle ships its own copy of the contract
-    (``docs/handoff/schema.neo4j.json``, referenced by ``docs/handoff/README.md``) so
-    it stays self-contained. Nothing guarded it, and it had already drifted two node
-    labels behind the root snapshot before #202/#203 touched either. Regenerate both
-    with ``canpy --emit schema``."""
-    root = Path(__file__).resolve().parents[1] / "schema.neo4j.json"
-    handoff = Path(__file__).resolve().parents[1] / "docs" / "handoff" / "schema.neo4j.json"
-    assert json.loads(handoff.read_text()) == json.loads(root.read_text()), (
-        "docs/handoff/schema.neo4j.json is stale — regenerate both copies"
-    )
