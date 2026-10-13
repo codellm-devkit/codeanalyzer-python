@@ -118,6 +118,17 @@ def prune(p: Dict[str, Optional[Prop]]) -> Props:
     return {k: v for k, v in p.items() if v is not None}
 
 
+def normalize_node(labels: List[str], key_prop: str, value: str, props: Props):
+    """The per-emission rewrite every builder applies to a node before merging:
+    lift ``_module`` off the graph (#173) and tag ``can://``-keyed nodes with
+    :data:`CAN_NODE`. Returns ``(labels, props, module)``; ``props`` is a copy."""
+    props = dict(props)
+    module = props.pop("_module", None)
+    if key_prop == "id" and value.startswith(SCHEME) and CAN_NODE not in labels:
+        labels = [*labels, CAN_NODE]
+    return labels, props, module
+
+
 class RowBuilder:
     """Accumulates nodes/edges with ``MERGE`` semantics in memory, so the same
     node touched many times (a hot external symbol, a canonical decorator)
@@ -140,10 +151,7 @@ class RowBuilder:
         (last write wins) and unions labels — the in-memory analog of
         ``MERGE (n:Label {key}) SET n += props``."""
         node_id = f"{labels[0]} {value}"
-        props = dict(props)
-        module = props.pop("_module", None)  # lifted off the graph (#173)
-        if key_prop == "id" and value.startswith(SCHEME) and CAN_NODE not in labels:
-            labels = [*labels, CAN_NODE]
+        labels, props, module = normalize_node(labels, key_prop, value, props)
         existing = self._nodes.get(node_id)
         if existing is not None:
             existing.props.update(props)

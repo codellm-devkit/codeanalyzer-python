@@ -86,15 +86,17 @@ def stream_analysis_json(analysis, fh, *, strip_internal: bool) -> None:
     # each collection back in at its own slot, streaming it in chunks.
     big = {
         "symbol_table": (app.symbol_table, "{}"),
+        "artifacts": (app.artifacts, "{}"),
         "call_graph": (app.call_graph, "[]"),
         "param_in": (app.param_in, "[]"),
         "param_out": (app.param_out, "[]"),
     }
     try:
-        app.symbol_table, app.call_graph, app.param_in, app.param_out = {}, [], [], []
+        app.symbol_table, app.artifacts, app.call_graph, app.param_in, app.param_out = {}, {}, [], [], []
         envelope = analysis.model_dump_json(exclude_none=True)
     finally:
         app.symbol_table = big["symbol_table"][0]
+        app.artifacts = big["artifacts"][0]
         app.call_graph = big["call_graph"][0]
         app.param_in = big["param_in"][0]
         app.param_out = big["param_out"][0]
@@ -118,16 +120,16 @@ def stream_analysis_json(analysis, fh, *, strip_internal: bool) -> None:
         pos = cut
         value = big[name][0]
         first = True
-        if name == "symbol_table":
+        if name in ("symbol_table", "artifacts"):
             for key, module in value.items():
-                if strip_internal:
+                if strip_internal and name == "symbol_table":
                     body = json.dumps(
                         strip_internal_only(module.model_dump(mode="json", exclude_none=True)),
                         separators=(",", ":"),
                     )
                 else:
                     body = module.model_dump_json(exclude_none=True)
-                fh.write(("" if first else ",") + json.dumps(key) + ":" + body)
+                fh.write(("" if first else ",") + json.dumps(key, ensure_ascii=name != "artifacts") + ":" + body)
                 first = False
         else:
             adapter = adapters[name]
