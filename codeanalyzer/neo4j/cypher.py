@@ -161,17 +161,61 @@ def _edge_statements(edges: List[EdgeRow]) -> List[str]:
 # ----------------------------------------------------------------------------------------------
 # LOW-MEM PATCH: streaming snapshot writer (see write_cypher_streaming).
 # ----------------------------------------------------------------------------------------------
-from codeanalyzer.neo4j.rows import EdgeRow, GraphRows, NodeRef, RowBuilder  # noqa: E402
+from codeanalyzer.neo4j.rows import EdgeRow, GraphRows, NodeRef, RowBuilder, normalize_node  # noqa: E402
 
 
-class _NodesOnlyBuilder(RowBuilder):
-    """Pass 1: nodes (merged props/labels, exactly as RowBuilder) + key set; no edges."""
+# ``edge_to_symbol`` targets are :PySymbol by contract (see RowBuilder), so pass 2
+# gates on those keys only — not the millions of :PyBodyNode keys.
+_GATED = frozenset({"PySymbol"})
+
+
+class _NodeStreamBuilder(RowBuilder):
+    """Pass 1: every node emission becomes one ``UNWIND`` row, rendered with
+    ``_node_statements`` (same grouping/BATCH) the moment its batch fills; only
+    the :data:`_GATED` keys are kept (see ``_EdgeStreamBuilder.edge_to_symbol``). ``MERGE … SET n += row.p, n:Extra`` replays RowBuilder's
+    merge (last write wins, labels union) provided a re-emitted node's rows run
+    in emission order, so a node still waiting in a batch flushes that batch first."""
+
+    def __init__(self, fh):
+        super().__init__()
+        self._fh = fh
+        self._pending: Dict[str, List[NodeRow]] = {}
+        self._waiting: Dict[str, str] = {}  # node id -> group of its unwritten row
+
+    def node(self, labels, key_prop, value, props):
+        node_id = f"{labels[0]} {value}"
+        labels, props, _module = normalize_node(labels, key_prop, value, props)
+        if node_id in self._waiting:
+            self._flush(self._waiting[node_id])
+        g = f"{':'.join(labels)}|{key_prop}"
+        batch = self._pending.setdefault(g, [])
+        batch.append(NodeRow(list(labels), key_prop, value, props))
+        self._waiting[node_id] = g
+        if labels[0] in _GATED:
+            self._keys.add((labels[0], value))
+        if len(batch) >= BATCH:
+            self._flush(g)
+        return NodeRef(labels[0], key_prop, value)
 
     def edge(self, type_, from_ref, to_ref, props=None, key=None):
         return None
 
     def edge_to_symbol(self, type_, from_ref, target_ref, props=None):
         return None
+
+    def _flush(self, g):
+        batch = self._pending.pop(g, None)
+        if batch:
+            for n in batch:
+                del self._waiting[f"{n.labels[0]} {n.value}"]
+            for stmt in _node_statements(batch):
+                self._fh.write(stmt)
+                self._fh.write("\n")
+
+    def finish(self) -> GraphRows:
+        for g in list(self._pending):
+            self._flush(g)
+        return GraphRows([], [])
 
 
 class _EdgeStreamBuilder(RowBuilder):
@@ -217,13 +261,10 @@ class _EdgeStreamBuilder(RowBuilder):
 
 def write_cypher_streaming(fh, app, app_name: str, sig_to_id: dict, analyzer=None) -> None:
     """Write the ``graph.cypher`` snapshot for ``app`` to ``fh`` without holding the
-    edge rows or the rendered text in memory (two projection passes)."""
+    node/edge rows or the rendered text in memory (two projection passes: nodes,
+    then edges gated on the node key set). Rows come in emission order rather than
+    sorted; the resulting graph is the same as :func:`render_cypher`'s."""
     from codeanalyzer.neo4j.project import project
-
-    nodes_b = _NodesOnlyBuilder()
-    project(app, app_name, sig_to_id, analyzer=analyzer, builder=nodes_b)
-    rows = nodes_b.finish()
-    keys = nodes_b._keys
 
     fh.write("// ── constraints & indexes ──\n")
     for stmt in CONSTRAINTS:
@@ -233,9 +274,10 @@ def write_cypher_streaming(fh, app, app_name: str, sig_to_id: dict, analyzer=Non
     fh.write("\n// ── wipe this project's prior subgraph (externals/packages/decorators are shared) ──\n")
     fh.write(_wipe(app_name) + "\n")
     fh.write("\n// ── nodes ──\n")
-    for stmt in _node_statements(rows.nodes):
-        fh.write(stmt + "\n")
-    del rows, nodes_b
+    nodes_b = _NodeStreamBuilder(fh)
+    project(app, app_name, sig_to_id, analyzer=analyzer, builder=nodes_b)
+    keys = nodes_b._keys
+    del nodes_b
 
     fh.write("\n// ── relationships ──\n")
     project(app, app_name, sig_to_id, analyzer=analyzer, builder=_EdgeStreamBuilder(keys, fh))
