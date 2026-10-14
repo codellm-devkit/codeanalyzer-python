@@ -57,7 +57,8 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 from codeanalyzer.neo4j.rows import (
-    CAN_NODE, EdgeRow, GraphRows, NodeRow, application_prefix, chunk, descendant_prefix,
+    CAN_NODE, EdgeRow, GraphRows, NodeRef, NodeRow, RowBuilder, application_prefix,
+    chunk, descendant_prefix, normalize_node,
 )
 from codeanalyzer.neo4j.schema import CONSTRAINTS, INDEXES
 from codeanalyzer.utils import logger
@@ -91,6 +92,177 @@ class BoltConfig:
     user: str
     password: str
     database: Optional[str] = None
+
+
+class _NodeBatches(RowBuilder):
+    """Writes node batches as the projection emits them, keeping only the
+    :PySymbol keys (for edge gating) and one changed module's ids (for --eager)."""
+
+    def __init__(self, session, neo4j, changed, app_prefix, eager):
+        super().__init__()
+        self._session, self._neo4j = session, neo4j
+        self._changed, self._app_prefix, self._eager = changed, app_prefix, eager
+        self._pending, self._waiting = [], set()
+        self._module = self._module_id = None
+        self._module_keys = set()
+
+    def begin_module(self, file_key, module):
+        self._flush()
+        self._module, self._module_id, self._module_keys = file_key, module.id, set()
+        if self._eager and file_key in self._changed:
+            if not module.id or not module.id.startswith(self._app_prefix):
+                raise ValueError(f"neo4j: module {file_key!r} has no can:// id under "
+                                 f"{self._app_prefix!r}; refusing to purge")
+            with self._session() as s:
+                s.run(PURGE_MODULE_EDGES, mid=module.id, pre=descendant_prefix(module.id)).consume()
+
+    def end_module(self):
+        self._flush()
+        if self._eager and self._module in self._changed:
+            with self._session() as s:
+                s.run(PURGE_VANISHED_NODES, mid=self._module_id, keys=list(self._module_keys),
+                      pre=descendant_prefix(self._module_id)).consume()
+        self._module = self._module_id = None
+        self._module_keys = set()
+
+    def node(self, labels, key_prop, value, props):
+        labels, props, module = normalize_node(labels, key_prop, value, props)
+        identity = (labels[0], value)
+        if labels[0] == "PySymbol":
+            self._keys.add(identity)
+        ref = NodeRef(labels[0], key_prop, value)
+        if module is not None:
+            if module != self._module:
+                raise ValueError("neo4j: owned node emitted outside its module boundary")
+            if module not in self._changed:
+                return ref
+            self._module_keys.add(value)
+        if labels[0] == "PyModule":
+            # The hash is published after the whole push succeeds; a failed push
+            # must not leave a partly written module looking unchanged.
+            props.pop("content_hash", None)
+        # A repeated node must be written in emission order, even across label groups.
+        if identity in self._waiting:
+            self._flush()
+        self._pending.append(NodeRow(list(labels), key_prop, value, props, module))
+        self._waiting.add(identity)
+        if len(self._pending) >= BATCH:
+            self._flush()
+        return ref
+
+    def edge(self, *args, **kwargs):
+        pass
+
+    def edge_to_symbol(self, *args, **kwargs):
+        pass
+
+    def _flush(self):
+        _upsert_nodes(self._session, self._neo4j, self._pending)
+        self._pending, self._waiting = [], set()
+
+    def finish(self):
+        self._flush()
+        return GraphRows([], [])
+
+
+class _EdgeBatches(RowBuilder):
+    """Writes the relationships owned by changed modules (or by no module) in batches."""
+
+    def __init__(self, session, neo4j, changed, keys, module_by_id):
+        super().__init__()
+        self._session, self._neo4j, self._changed = session, neo4j, changed
+        self._keys, self._module_by_id = keys, module_by_id
+        self._pending, self._waiting = [], set()
+
+    def _owner(self, value):
+        # The module whose id equals ``value`` or contains it (``module.id + '/'``),
+        # the same containment the eager purge uses.
+        end = len(value)
+        while end > 0:
+            if value[:end] in self._module_by_id:
+                return self._module_by_id[value[:end]]
+            end = value.rfind("/", 0, end)
+        return None
+
+    def node(self, labels, key_prop, value, props):
+        return NodeRef(labels[0], key_prop, value)
+
+    def edge(self, type_, from_ref, to_ref, props=None, key=None):
+        owner = self._owner(from_ref.value)
+        if owner is not None and owner not in self._changed:
+            return
+        identity = (type_, from_ref, to_ref, key)
+        if identity in self._waiting:
+            self._flush()
+        self._pending.append(EdgeRow(type_, from_ref, to_ref, dict(props or {}), key))
+        self._waiting.add(identity)
+        if len(self._pending) >= BATCH:
+            self._flush()
+
+    def edge_to_symbol(self, type_, from_ref, target_ref, props=None):
+        if (target_ref.label, target_ref.value) in self._keys:
+            self.edge(type_, from_ref, target_ref, props)
+
+    def _flush(self):
+        _upsert_edges(self._session, self._neo4j, self._pending)
+        self._pending, self._waiting = [], set()
+
+    def finish(self):
+        self._flush()
+        return GraphRows([], [])
+
+
+def bolt_writer_streaming(app, app_name, sig_to_id, analyzer, cfg: BoltConfig, full_run: bool,
+                          eager: bool = False) -> None:
+    """:func:`bolt_writer` without materializing :class:`GraphRows`: the projection
+    runs twice (nodes, then relationships) and is written in bounded batches."""
+    try:
+        import neo4j  # noqa: WPS433 (lazy, optional dependency)
+    except ImportError as exc:  # pragma: no cover - exercised only without the extra
+        raise RuntimeError(
+            "The 'neo4j' driver is required for a live Bolt push. "
+            "Install it with: pip install 'codeanalyzer-python[neo4j]'"
+        ) from exc
+    from codeanalyzer.neo4j.project import project
+
+    app_prefix = application_prefix(app_name)
+    driver = neo4j.GraphDatabase.driver(cfg.uri, auth=(cfg.user, cfg.password))
+
+    session_kwargs = {"database": cfg.database} if cfg.database else {}
+
+    def session():
+        return driver.session(**session_kwargs)
+
+    try:
+        with session() as s:
+            for stmt in CONSTRAINTS + INDEXES:
+                s.run(stmt).consume()
+            db_hash = {rec["k"]: rec["h"] for rec in s.run(
+                f"MATCH (m:PyModule:{CAN_NODE}) WHERE m.id STARTS WITH $app "
+                "RETURN m.id AS k, m.content_hash AS h", app=app_prefix,
+            )}
+        changed = {key for key, mod in app.symbol_table.items()
+                   if mod.id not in db_hash or mod.content_hash is None
+                   or mod.content_hash != db_hash[mod.id]}
+        logger.info(f"neo4j(bolt): {len(app.symbol_table)} modules ({len(changed)} changed)")
+
+        nodes = _NodeBatches(session, neo4j, changed, app_prefix, eager)
+        project(app, app_name, sig_to_id, analyzer=analyzer, builder=nodes, module_scoped=True)
+        module_by_id = {mod.id: key for key, mod in app.symbol_table.items()}
+        edges = _EdgeBatches(session, neo4j, changed, nodes._keys, module_by_id)
+        project(app, app_name, sig_to_id, analyzer=analyzer, builder=edges)
+
+        if full_run and eager:
+            with session() as s:
+                rec = s.run(PRUNE_VANISHED_MODULES, app=app_prefix, present=list(module_by_id)).single()
+                logger.info(f"neo4j(bolt): pruned {rec['pruned'] if rec else 0} vanished module(s)")
+        _upsert_nodes(session, neo4j, [
+            NodeRow(["PyModule"], "id", app.symbol_table[key].id,
+                    {"content_hash": app.symbol_table[key].content_hash})
+            for key in changed if app.symbol_table[key].content_hash is not None
+        ])
+    finally:
+        driver.close()
 
 
 def bolt_writer(rows: GraphRows, cfg: BoltConfig, full_run: bool, eager: bool = False) -> None:

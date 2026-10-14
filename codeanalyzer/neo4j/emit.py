@@ -27,10 +27,9 @@ import json
 from pathlib import Path
 from typing import Optional
 
-from codeanalyzer.neo4j.bolt import BoltConfig, bolt_writer
+from codeanalyzer.neo4j.bolt import BoltConfig, bolt_writer_streaming
 from codeanalyzer.neo4j.schema import build_schema_document
 from codeanalyzer.neo4j.cypher import render_cypher, write_cypher_streaming
-from codeanalyzer.neo4j.project import project
 from codeanalyzer.options import GRAPH_CYPHER, AnalysisOptions
 from codeanalyzer.schema import Analysis
 from codeanalyzer.schema.assign_ids import assign_ids
@@ -60,7 +59,6 @@ def emit_neo4j(analysis: Analysis, options: AnalysisOptions) -> None:
     sig_to_id = assign_ids(analysis.application, app_name)
 
     if options.neo4j_uri:
-        rows = project(analysis.application, app_name, sig_to_id, analyzer=analysis.analyzer)
         cfg = BoltConfig(
             uri=options.neo4j_uri,
             user=options.neo4j_user,
@@ -70,7 +68,8 @@ def emit_neo4j(analysis: Analysis, options: AnalysisOptions) -> None:
         # A full run (no single-file restriction) makes orphan pruning safe; --eager
         # is what permits any deletion at all (#171).
         full_run = options.file_name is None
-        bolt_writer(rows, cfg, full_run, eager=options.rebuild_analysis)
+        bolt_writer_streaming(analysis.application, app_name, sig_to_id, analysis.analyzer, cfg,
+                              full_run, eager=options.rebuild_analysis)
         return
 
     out_dir = options.output if options.output is not None else Path.cwd()

@@ -165,6 +165,12 @@ class RowBuilder:
         self._keys.add((labels[0], value))
         return NodeRef(labels[0], key_prop, value)
 
+    def begin_module(self, file_key: str, module) -> None:
+        """Streaming hook: the module's nodes follow, until :meth:`end_module`."""
+
+    def end_module(self) -> None:
+        """Streaming hook: every node owned by the current module was emitted."""
+
     def edge(self, type_: str, from_ref: NodeRef, to_ref: NodeRef, props: Optional[Props] = None,
              key: Optional[str] = None) -> None:
         """An edge whose endpoints are known to exist (both ends emitted this run).
