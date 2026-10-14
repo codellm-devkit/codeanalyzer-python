@@ -14,7 +14,8 @@ import os
 import pytest
 
 from codeanalyzer.neo4j import project
-from codeanalyzer.neo4j.bolt import BoltConfig, bolt_writer
+from codeanalyzer.neo4j import bolt
+from codeanalyzer.neo4j.bolt import BoltConfig, bolt_writer_streaming
 from codeanalyzer.schema import PyApplication, PyCallable, PyModule
 from codeanalyzer.schema.assign_ids import assign_ids
 
@@ -35,6 +36,11 @@ def _single_module_app(file_key: str = "appb/main.py"):
     )
     app = PyApplication(symbol_table={file_key: mod}, call_graph=[])
     return app, assign_ids(app, "app-b")
+
+def _push(app, app_name, sig_to_id, cfg, **kwargs):
+    """The live writer ``--emit neo4j --neo4j-uri`` uses."""
+    bolt_writer_streaming(app, app_name, sig_to_id, None, cfg, **kwargs)
+
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("RUN_CONTAINER_TESTS"),
@@ -91,7 +97,7 @@ def _clean_db(driver):
 def test_full_push_materializes_the_whole_graph_and_schema(driver, cfg):
     app, sig_to_id = make_sample_app()
     rows = project(app, "sample-app", sig_to_id)
-    bolt_writer(rows, cfg, full_run=True)
+    _push(app, "sample-app", sig_to_id, cfg, full_run=True)
 
     # Every projected node/edge lands.
     assert _num(driver, "MATCH (n) RETURN count(n)") == len(rows.nodes)
@@ -131,13 +137,13 @@ def test_full_run_does_not_prune_another_applications_modules(driver, cfg):
     # Re-stamp under the pushed name: the writer refuses a module whose can:// id
     # is not under the application it is asked to purge for (#173).
     sig_to_id_a = assign_ids(app_a, "app-a")
-    bolt_writer(project(app_a, "app-a", sig_to_id_a), cfg, full_run=True, eager=True)
+    _push(app_a, "app-a", sig_to_id_a, cfg, full_run=True, eager=True)
     before = _num(driver, "MATCH (:PyApplication {name:'app-a'})-[:PY_HAS_MODULE]->(m) RETURN count(m)")
     assert before > 0
 
     # A full-run push for a different application must leave app-a untouched.
     app_b, sig_to_id_b = _single_module_app()
-    bolt_writer(project(app_b, "app-b", sig_to_id_b), cfg, full_run=True, eager=True)
+    _push(app_b, "app-b", sig_to_id_b, cfg, full_run=True, eager=True)
 
     after = _num(driver, "MATCH (:PyApplication {name:'app-a'})-[:PY_HAS_MODULE]->(m) RETURN count(m)")
     assert after == before, "full-run push for app-b pruned app-a's modules (#45)"
@@ -147,8 +153,8 @@ def test_full_run_does_not_prune_another_applications_modules(driver, cfg):
 def test_re_pushing_identical_analysis_is_idempotent(driver, cfg):
     app, sig_to_id = make_sample_app()
     rows = project(app, "sample-app", sig_to_id)
-    bolt_writer(rows, cfg, full_run=True)
-    bolt_writer(rows, cfg, full_run=True)
+    _push(app, "sample-app", sig_to_id, cfg, full_run=True)
+    _push(app, "sample-app", sig_to_id, cfg, full_run=True)
     assert _num(driver, "MATCH (n) RETURN count(n)") == len(rows.nodes)
     assert _num(driver, "MATCH ()-[r]->() RETURN count(r)") == len(rows.edges)
 
@@ -156,14 +162,14 @@ def test_re_pushing_identical_analysis_is_idempotent(driver, cfg):
 def test_a_full_run_prunes_a_module_whose_source_vanished(driver, cfg):
     """Pruning is destructive, so it is an --eager behaviour (#171)."""
     app0, sig_to_id0 = make_sample_app()
-    bolt_writer(project(app0, "sample-app", sig_to_id0), cfg, full_run=True, eager=True)
+    _push(app0, "sample-app", sig_to_id0, cfg, full_run=True, eager=True)
 
     # Drop one module from a fresh app and re-push as a full run.
     app, sig_to_id = make_sample_app()
     victim = sorted(app.symbol_table.keys())[0]
     del app.symbol_table[victim]
     rows = project(app, "sample-app", sig_to_id)
-    bolt_writer(rows, cfg, full_run=True, eager=True)
+    _push(app, "sample-app", sig_to_id, cfg, full_run=True, eager=True)
 
     # The victim's subtree is gone: nothing under its can:// prefix remains.
     victim_id = app0.symbol_table[victim].id
@@ -198,7 +204,7 @@ def test_a_push_never_touches_a_sibling_analyzers_nodes(driver, cfg):
         )
 
     app_b, sig_to_id_b = _single_module_app(file_key)
-    bolt_writer(project(app_b, "app-b", sig_to_id_b), cfg, full_run=True, eager=True)
+    _push(app_b, "app-b", sig_to_id_b, cfg, full_run=True, eager=True)
 
     assert _num(driver, "MATCH (n:TsModule) RETURN count(n)") == 1
     assert _num(driver, "MATCH (n:TsCallable) RETURN count(n)") == 1
@@ -209,21 +215,20 @@ def test_a_lazy_push_deletes_nothing(driver, cfg):
     """#171: a push is additive by default. Re-pushing an app with a module and a
     callable removed must leave both in the graph — only --eager reconciles them."""
     app0, sig_to_id0 = make_sample_app()
-    rows0 = project(app0, "sample-app", sig_to_id0)
-    bolt_writer(rows0, cfg, full_run=True)
+    _push(app0, "sample-app", sig_to_id0, cfg, full_run=True)
     before = _num(driver, "MATCH (n:PyCanNode) RETURN count(n)")
 
     app, sig_to_id = make_sample_app()
     victim = sorted(app.symbol_table.keys())[0]
     victim_pre = app.symbol_table[victim].id + "/"
     del app.symbol_table[victim]
-    bolt_writer(project(app, "sample-app", sig_to_id), cfg, full_run=True)
+    _push(app, "sample-app", sig_to_id, cfg, full_run=True)
 
     assert _num(driver, "MATCH (n:PyCanNode) RETURN count(n)") == before
     assert _num(driver, "MATCH (n:PyCanNode) WHERE n.id STARTS WITH $pre RETURN count(n)", pre=victim_pre) > 0
 
     # ...and --eager still reconciles it.
-    bolt_writer(project(app, "sample-app", sig_to_id), cfg, full_run=True, eager=True)
+    _push(app, "sample-app", sig_to_id, cfg, full_run=True, eager=True)
     assert _num(driver, "MATCH (n:PyCanNode) WHERE n.id STARTS WITH $pre RETURN count(n)", pre=victim_pre) == 0
 
 
@@ -233,15 +238,14 @@ def test_eager_push_of_a_second_python_app_with_a_colliding_module_path_leaves_t
     stay inside `can://<app>/`."""
     file_key = "appb/main.py"
     app_a, sig_a = _single_module_app(file_key)
-    app_a_rows = project(app_a, "app-a", assign_ids(app_a, "app-a"))
-    bolt_writer(app_a_rows, cfg, full_run=True, eager=True)
+    _push(app_a, "app-a", assign_ids(app_a, "app-a"), cfg, full_run=True, eager=True)
     a_nodes = _num(driver, "MATCH (n:PyCanNode) WHERE n.id STARTS WITH 'can://app-a/python/' RETURN count(n)")
     assert a_nodes > 0
 
     app_b, sig_b = _single_module_app(file_key)
-    bolt_writer(project(app_b, "app-b", sig_b), cfg, full_run=True, eager=True)
+    _push(app_b, "app-b", sig_b, cfg, full_run=True, eager=True)
     # ...and again, so app-b's purge runs against a graph that already holds app-b too.
-    bolt_writer(project(app_b, "app-b", sig_b), cfg, full_run=True, eager=True)
+    _push(app_b, "app-b", sig_b, cfg, full_run=True, eager=True)
 
     assert _num(driver, "MATCH (n:PyCanNode) WHERE n.id STARTS WITH 'can://app-a/python/' RETURN count(n)") == a_nodes
     assert _num(driver, "MATCH (:PyApplication {name:'app-a'})-[:PY_HAS_MODULE]->(m) RETURN count(m)") == 1
@@ -254,7 +258,7 @@ def test_external_nodes_sit_inside_the_application_prefix(driver, cfg):
     `@external` home is language-NEUTRAL, so the prefix is the application's, with
     no language segment — the same shape as `artifact`."""
     app, sig_to_id = make_sample_app()
-    bolt_writer(project(app, "sample-app", sig_to_id), cfg, full_run=True, eager=True)
+    _push(app, "sample-app", sig_to_id, cfg, full_run=True, eager=True)
     total = _num(driver, "MATCH (e:PyExternal) RETURN count(e)")
     assert total >= 1
     inside = _num(driver, "MATCH (e:PyExternal:PyCanNode) WHERE e.id STARTS WITH 'can://sample-app/@external/' RETURN count(e)")
@@ -263,6 +267,25 @@ def test_external_nodes_sit_inside_the_application_prefix(driver, cfg):
 
 def test_eager_push_refuses_an_empty_application_id(driver, cfg):
     app, sig_to_id = make_sample_app()
-    rows = project(app, "", sig_to_id)
     with pytest.raises(ValueError):
-        bolt_writer(rows, cfg, full_run=True, eager=True)
+        _push(app, "", sig_to_id, cfg, full_run=True, eager=True)
+
+
+def test_a_failed_push_publishes_no_module_hash(driver, cfg, monkeypatch):
+    """Hashes mark modules unchanged, so they are written only after a push succeeds;
+    otherwise a retry would skip a partly written module forever."""
+    app, sig_to_id = make_sample_app()
+    upsert_edges = bolt._upsert_edges
+    def fail(*args):
+        raise RuntimeError("connection lost")
+    monkeypatch.setattr(bolt, "_upsert_edges", fail)
+    with pytest.raises(RuntimeError):
+        _push(app, "sample-app", sig_to_id, cfg, full_run=True)
+    assert _num(driver, "MATCH (m:PyModule) WHERE m.content_hash IS NOT NULL RETURN count(m)") == 0
+
+    monkeypatch.setattr(bolt, "_upsert_edges", upsert_edges)
+    _push(app, "sample-app", sig_to_id, cfg, full_run=True)
+    rows = project(app, "sample-app", sig_to_id)
+    assert _num(driver, "MATCH ()-[r]->() RETURN count(r)") == len(rows.edges)
+    assert _num(driver, "MATCH (m:PyModule) WHERE m.content_hash IS NOT NULL RETURN count(m)") == \
+        len(app.symbol_table)

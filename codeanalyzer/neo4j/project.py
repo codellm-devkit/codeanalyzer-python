@@ -56,7 +56,8 @@ from codeanalyzer.schema.py_schema import PyDecorator, byte_offsets
 
 
 def project(app: PyApplication, app_name: str, sig_to_id: dict,
-            analyzer: Optional[Any] = None, builder: Optional[RowBuilder] = None) -> GraphRows:
+            analyzer: Optional[Any] = None, builder: Optional[RowBuilder] = None,
+            *, module_scoped: bool = False) -> GraphRows:
     """``analyzer`` is the envelope-level ``PyAnalyzerInfo`` (the keystone home
     for analyzer identity); the caller that holds the ``Analysis`` envelope
     passes it through so the :PyApplication node carries it as props."""
@@ -101,10 +102,18 @@ def project(app: PyApplication, app_name: str, sig_to_id: dict,
     module_id_by_key = {k: m.id for k, m in app.symbol_table.items()}
 
     for file_key, mod in app.symbol_table.items():
+        if module_scoped:
+            b.begin_module(file_key, mod)
         mod_ref = b.node(["PyModule"], "id", mod.id, _module_props(mod, file_key))
         b.edge("PY_HAS_MODULE", app_ref, mod_ref)
         _project_module_body(b, file_key, mod_ref, mod, externals, sig_to_id, module_id_by_key,
                              application_id(app_name))
+        if module_scoped:
+            _project_program_graphs(
+                b, app, externals, sig_to_id, application_id(app_name),
+                modules=((file_key, mod),), include_parameters=False,
+            )
+            b.end_module()
 
     # The aggregated :PY_CALLS twin.
     app_can_id = application_id(app_name)
@@ -117,7 +126,10 @@ def project(app: PyApplication, app_name: str, sig_to_id: dict,
 
     # Level-3 CPG overlay: each callable's v2 body/cfg/cdg/ddg. Idempotent under
     # MERGE — a no-op when no callable carries L3 fields (levels 1/2).
-    _project_program_graphs(b, app, externals, sig_to_id, app_can_id)
+    if module_scoped:
+        _project_parameter_edges(b, app)
+    else:
+        _project_program_graphs(b, app, externals, sig_to_id, app_can_id)
 
     # Neutral artifact/dependency subgraph (Task 6). L1 data — always present,
     # full-depth-always regardless of -a.
@@ -155,6 +167,7 @@ def _body_ref(callable_id: str, local_key: str) -> NodeRef:
 
 def _project_program_graphs(
     b: RowBuilder, app: PyApplication, externals: dict, sig_to_id: dict, app_can_id: str,
+    *, modules=None, include_parameters=True,
 ) -> None:
     """Level-3 CPG overlay, projected off each callable's v2 ``body``/``cfg``/
     ``cdg``/``ddg`` (populated by ``emit_l3_body`` at ``-a 3``; empty otherwise).
@@ -179,7 +192,7 @@ def _project_program_graphs(
     emitted ``PyBodyNode`` keys). All idempotent under MERGE — no-ops below L4."""
     from codeanalyzer.semantic_analysis.call_graph import _walk_module_callables
 
-    for file_key, mod in app.symbol_table.items():
+    for file_key, mod in (app.symbol_table.items() if modules is None else modules):
         for c in _walk_module_callables(mod):
             if not c.id:
                 continue  # unstamped callable — assign_ids must run first
@@ -274,6 +287,11 @@ def _project_program_graphs(
     # SDG assembler and carried on `ParamEdge.var`. The catalog declared it and
     # nothing wrote it, so `r.var` predicates went three-valued across every
     # call boundary.
+    if include_parameters:
+        _project_parameter_edges(b, app)
+
+
+def _project_parameter_edges(b: RowBuilder, app: PyApplication) -> None:
     for e in app.param_in or []:
         b.edge(
             "PY_PARAM_IN",

@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- The live Neo4j push (`--neo4j-uri`) no longer builds the whole graph in memory
+  before writing it: nodes, then relationships, are projected straight into
+  bounded batches. Module content hashes are written only after the push
+  succeeds, so a failed push is fully redone by the next run.
+
 ## [1.6.0] - 2026-10-11
 
 ### Changed
