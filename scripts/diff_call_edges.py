@@ -11,8 +11,11 @@ would win them back"::
     canpy -i APP -a 2 -o out/novenv --no-venv
     python scripts/diff_call_edges.py out/venv/analysis.json out/novenv/analysis.json
 
-Two views are reported:
+Three views are reported:
 
+* **All edge families** -- ``call_graph``, ``cfg``, ``cdg``, ``ddg`` (split by
+  ``prov``), ``summary``, ``param_in``, ``param_out``: counts and set
+  differences, so an L4 run shows where any loss actually lands.
 * **Edge level** -- the ``call_graph`` ``(src, dst)`` sets, the number usually
   quoted.
 * **Call-site level** -- every ``call`` body node, matched across runs by its
@@ -84,6 +87,15 @@ def _import_names(module: Dict[str, Any]) -> Set[str]:
     return names
 
 
+INTRA_FAMILIES = ("cfg", "cdg", "ddg", "summary")  # per callable; ddg split by prov
+APP_FAMILIES = ("call_graph", "param_in", "param_out")  # application scope
+
+
+def _edge_key(e: Dict[str, Any]) -> str:
+    """Edge identity: every field but ``weight``."""
+    return json.dumps({k: v for k, v in e.items() if k != "weight"}, sort_keys=True)
+
+
 class Run:
     """The parts of one analysis.json the diff needs."""
 
@@ -96,6 +108,8 @@ class Run:
         self.edges: Dict[Tuple[str, str], Dict[str, Any]] = {
             (e["src"], e["dst"]): e for e in app.get("call_graph") or []
         }
+        # every edge family the run emits (L3/L4 included), as identity sets
+        self.families: Dict[str, Set[Tuple[str, str]]] = defaultdict(set)
         # site id -> (file key, call node, import-bound names of that file)
         self.sites: Dict[str, Tuple[str, Dict[str, Any], Set[str]]] = {}
         for file_key, module in (app.get("symbol_table") or {}).items():
@@ -109,6 +123,13 @@ class Run:
                 for local, node in (c.get("body") or {}).items():
                     if node.get("kind") == "call":
                         self.sites[node.get("id") or f"{c['id']}@{local}"] = (file_key, node, imports)
+                for fam in INTRA_FAMILIES:
+                    for e in c.get(fam) or []:
+                        name = f"ddg:{','.join(e.get('prov') or [])}" if fam == "ddg" else fam
+                        self.families[name].add((c["id"], _edge_key(e)))
+        for fam in APP_FAMILIES:
+            for e in app.get(fam) or []:
+                self.families[fam].add(("", _edge_key(e)))
 
 
 def classify(node: Dict[str, Any], imports: Set[str]) -> str:
@@ -223,8 +244,15 @@ def diff(base: Run, cand: Run, samples: int) -> Dict[str, Any]:
         (s, d) for (s, d) in lost_edges if any((s, c) in cand_edges for c in rename_map.get(d, ()))
     }
 
+    families = {}
+    for fam in sorted(base.families.keys() | cand.families.keys()):
+        b, c = base.families.get(fam, set()), cand.families.get(fam, set())
+        families[fam] = {"baseline": len(b), "candidate": len(c),
+                         "only_baseline": len(b - c), "only_candidate": len(c - b)}
+
     return {
         "baseline": str(base.path),
+        "families": families,
         "candidate": str(cand.path),
         "edges": {
             "baseline": len(base_edges),
@@ -273,6 +301,19 @@ def render(r: Dict[str, Any], top_homes: int) -> str:
     out = [
         f"baseline : {r['baseline']}",
         f"candidate: {r['candidate']}",
+        "",
+        "== all edge families (L3/L4 included) ==",
+        f"  {'family':<20}{'baseline':>9}{'candidate':>10}{'net':>8}{'only-base':>11}{'only-cand':>11}",
+    ]
+    tb = tc = 0
+    for fam, f in r["families"].items():
+        tb, tc = tb + f["baseline"], tc + f["candidate"]
+        out.append(
+            f"  {fam:<20}{f['baseline']:>9}{f['candidate']:>10}"
+            f"{pct(f['candidate'] - f['baseline'], f['baseline']):>8}{f['only_baseline']:>11}{f['only_candidate']:>11}"
+        )
+    out += [
+        f"  {'TOTAL':<20}{tb:>9}{tc:>10}{pct(tc - tb, tb):>8}",
         "",
         "== call_graph edges (src, dst) ==",
         (
