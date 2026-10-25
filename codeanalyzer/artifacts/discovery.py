@@ -120,6 +120,7 @@ def discover_artifacts(
     *,
     capture_text: bool = True,
     exclude_paths: Iterable[Path] = (),
+    id_prefix: str = "",
 ) -> Dict[str, PyArtifact]:
     """Walk the project and return every file as an artifact, sorted by path.
 
@@ -146,7 +147,10 @@ def discover_artifacts(
     decodable file is captured in full; ``capture_text=False`` empties
     ``source`` everywhere (inventory otherwise identical), and an undecodable
     file gets ``""`` as ``binary``. ``sha256``/``size_bytes`` always reflect
-    the full file regardless."""
+    the full file regardless.
+
+    ``id_prefix`` is prepended to the path in each artifact id only
+    (--workspace-root); keys and ``path`` stay project-relative."""
     out: Dict[str, PyArtifact] = {}
     excluded = _resolve_exclusions(project_dir, exclude_paths)
     for path in sorted(project_dir.rglob("*")):
@@ -185,7 +189,7 @@ def discover_artifacts(
             fmt, source = "binary", ""
 
         out[rel_posix] = PyArtifact(
-            id=artifact_id(app_name, rel_posix), path=rel_posix, format=fmt,
+            id=artifact_id(app_name, id_prefix + rel_posix), path=rel_posix, format=fmt,
             roles=list(roles), size_bytes=len(raw),
             sha256=hashlib.sha256(raw).hexdigest(),
             source=source,

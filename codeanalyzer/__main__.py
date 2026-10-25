@@ -97,6 +97,14 @@ def main(
             "(default: input dir name).",
         ),
     ] = None,
+    workspace_root: Annotated[
+        Optional[Path],
+        typer.Option(
+            "--workspace-root",
+            help="Directory file keys, module ids and artifact ids are relative to "
+            "(default: --input). Must contain --input.",
+        ),
+    ] = None,
     neo4j_uri: Annotated[
         Optional[str],
         typer.Option(
@@ -313,6 +321,7 @@ def main(
 
         emit=emit,
         app_name=app_name,
+        workspace_root=workspace_root,
         neo4j_uri=neo4j_uri,
         neo4j_user=neo4j_user,
         neo4j_password=neo4j_password,
@@ -362,6 +371,14 @@ def main(
         raise typer.Exit(code=1)
     if not options.input.exists():
         logger.error(f"Input path '{options.input}' does not exist.")
+        raise typer.Exit(code=1)
+    if options.workspace_root is not None and not options.input.resolve().is_relative_to(
+        options.workspace_root.resolve()
+    ):
+        # Relativizing would yield `..` keys, which the schema forbids.
+        logger.error(
+            f"--input '{options.input}' is not inside --workspace-root '{options.workspace_root}'."
+        )
         raise typer.Exit(code=1)
 
     if options.file_name is not None:

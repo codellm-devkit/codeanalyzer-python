@@ -5,9 +5,10 @@ from codeanalyzer.schema import ids
 from codeanalyzer.schema.py_schema import PyApplication, PyModule, PyClass, PyCallable
 
 
-def assign_ids(app: PyApplication, app_name: str) -> Dict[str, str]:
+def assign_ids(app: PyApplication, app_name: str, key_prefix: str = "") -> Dict[str, str]:
     """Sets `.id` on the app + every module/class/callable. Returns a
-    `signature -> can://id` map for later stages (identity layer input)."""
+    `signature -> can://id` map for later stages (identity layer input).
+    `key_prefix` is prepended to each file key in module ids (--workspace-root)."""
     app.id = ids.application_id(app_name); app.kind = "application"
     sig_to_id: Dict[str, str] = {}
 
@@ -29,7 +30,7 @@ def assign_ids(app: PyApplication, app_name: str) -> Dict[str, str]:
             do_class(cl.id, ic)
 
     for file_key, mod in app.symbol_table.items():
-        mod.id = ids.module_id(app_name, file_key); mod.kind = "module"
+        mod.id = ids.module_id(app_name, key_prefix + file_key); mod.kind = "module"
         for fn in (mod.functions or {}).values():
             do_callable(mod.id, fn)
         for cl in (mod.types or {}).values():
