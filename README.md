@@ -536,6 +536,17 @@ inheritance, decorators, and call sites are relationships. At `-a 3`/`-a 4` the 
   pruned. Requires the `neo4j` extra. Every graph carries a `schema_version` on its `:PyApplication`
   node.
 
+  An `--eager` full run (no `--file-name`) also reconciles the application's artifacts, so a
+  deleted or renamed file, a removed dependency, or re-keying under `--workspace-root` leaves
+  nothing stale. Python-owned artifact edges (`HAS_ARTIFACT`, `DECLARES_DEPENDENCY`/`LOCKS` to
+  `pkg:pypi/…`, `PY_PROVIDES`, `PY_USES_CONFIG`, `PY_READS_CONFIG_UNRESOLVED`,
+  `PY_UNRESOLVED_IMPORT`) are rebuilt. An `:Artifact` or
+  `:ConfigKey` the run no longer emits loses its `:PyCanNode` label. An artifact is then deleted only
+  if no other analyzer's `HAS_ARTIFACT` still points at it; a config key only if no other analyzer's
+  marker (`:JCanNode`, `:TSCanNode`) claims it. A `--lazy` push reconciles nothing, so push once
+  with `--eager` after toggling `--workspace-root`. Config keys written under the pre-1.5.0
+  `can://artifact/<app>/` prefix by a sibling that did not yet mark them are treated as python's.
+
 Call-graph endpoints that aren't present in the symbol table (third-party / framework / RPC targets)
 are materialized as `:PyExternal` ghost nodes, mirroring the analyzer's own ghost-node behaviour.
 

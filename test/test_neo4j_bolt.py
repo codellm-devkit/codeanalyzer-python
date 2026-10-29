@@ -289,3 +289,243 @@ def test_a_failed_push_publishes_no_module_hash(driver, cfg, monkeypatch):
     assert _num(driver, "MATCH ()-[r]->() RETURN count(r)") == len(rows.edges)
     assert _num(driver, "MATCH (m:PyModule) WHERE m.content_hash IS NOT NULL RETURN count(m)") == \
         len(app.symbol_table)
+
+
+# --- artifact reconciliation (--eager full runs) -------------------------------------------------
+
+from codeanalyzer.schema.ids import artifact_id, config_key_id, purl_pypi
+
+_ART = "can://sample-app/artifact/"
+
+
+def _rekeyed(prefix: str):
+    """The sample app with every artifact re-keyed under ``prefix`` — what toggling
+    --workspace-root does to an existing graph."""
+    app, sig_to_id = make_sample_app()
+    old_to_new = {}
+    arts = {}
+    for path, art in app.artifacts.items():
+        new_id = artifact_id("sample-app", prefix + path)
+        old_to_new[art.id] = new_id
+        for ck in art.config_keys:
+            new_ck = config_key_id(new_id, ck.key)
+            old_to_new[ck.id] = new_ck
+            ck.id = new_ck
+        art.id, art.path = new_id, prefix + path
+        arts[prefix + path] = art
+    app.artifacts = arts
+    for d in app.dependencies:
+        d.declared_in = old_to_new[d.declared_in]
+    for u in app.config_uses:
+        u.dst = old_to_new[u.dst]
+    return app, sig_to_id
+
+
+def test_toggling_workspace_root_leaves_no_old_keyed_artifacts(driver, cfg):
+    app0, s0 = make_sample_app()
+    _push(app0, "sample-app", s0, cfg, full_run=True, eager=True)
+    assert _num(driver, "MATCH (a:Artifact {id: $id}) RETURN count(a)", id=_ART + "pyproject.toml") == 1
+
+    app, s = _rekeyed("services/app/")
+    _push(app, "sample-app", s, cfg, full_run=True, eager=True)
+
+    rooted = _ART + "services/app/"
+    assert _num(driver, "MATCH (n) WHERE (n:Artifact OR n:ConfigKey) AND n.id STARTS WITH $p "
+                "AND NOT n.id STARTS WITH $r RETURN count(n)", p=_ART, r=rooted) == 0
+    assert _num(driver, "MATCH (:PyApplication)-[r:HAS_ARTIFACT]->() RETURN count(r)") == len(app.artifacts)
+    assert _num(driver, "MATCH ()-[r:DECLARES_DEPENDENCY]->(:Package {id: $p}) RETURN count(r)",
+                p=purl_pypi("acme")) == 1
+    assert _num(driver, "MATCH ()-[r:PY_USES_CONFIG]->(k) WHERE k.id STARTS WITH $r RETURN count(r)",
+                r=rooted) == 1
+    assert _num(driver, "MATCH ()-[r:PY_USES_CONFIG]->() RETURN count(r)") == 1
+
+
+def test_a_lazy_push_reconciles_no_artifacts(driver, cfg):
+    app0, s0 = make_sample_app()
+    _push(app0, "sample-app", s0, cfg, full_run=True)
+    app, s = _rekeyed("services/app/")
+    _push(app, "sample-app", s, cfg, full_run=True)
+    assert _num(driver, "MATCH (a:Artifact {id: $id}) RETURN count(a)", id=_ART + "pyproject.toml") == 1
+
+
+def test_a_targeted_eager_push_reconciles_no_artifacts(driver, cfg):
+    app0, s0 = make_sample_app()
+    _push(app0, "sample-app", s0, cfg, full_run=True, eager=True)
+    app, s = _rekeyed("services/app/")
+    _push(app, "sample-app", s, cfg, full_run=False, eager=True)
+    assert _num(driver, "MATCH (a:Artifact {id: $id}) RETURN count(a)", id=_ART + "pyproject.toml") == 1
+
+
+def test_a_changed_manifest_drops_its_removed_dependency_config_key_and_reads(driver, cfg):
+    app0, s0 = make_sample_app()
+    _push(app0, "sample-app", s0, cfg, full_run=True, eager=True)
+    gone_key = app0.artifacts["pyproject.toml"].config_keys[0].id
+    assert _num(driver, "MATCH ()-[r:PY_USES_CONFIG]->(:ConfigKey {id: $k}) RETURN count(r)", k=gone_key) == 1
+
+    app, s = make_sample_app()
+    app.dependencies = []
+    app.artifacts["pyproject.toml"].config_keys = []
+    app.config_uses = []
+    app.config_reads_unresolved = []
+    _push(app, "sample-app", s, cfg, full_run=True, eager=True)
+
+    assert _num(driver, "MATCH ()-[r:DECLARES_DEPENDENCY|LOCKS]->(:Package {id: $p}) RETURN count(r)",
+                p=purl_pypi("acme")) == 0
+    assert _num(driver, "MATCH (k:ConfigKey {id: $k}) RETURN count(k)", k=gone_key) == 0
+    assert _num(driver, "MATCH ()-[r:PY_USES_CONFIG]->() RETURN count(r)") == 0
+    assert _num(driver, "MATCH ()-[r:PY_READS_CONFIG_UNRESOLVED]->() RETURN count(r)") == 0
+
+
+def test_a_lock_edge_follows_a_manifest_change_with_an_unchanged_lockfile(driver, cfg):
+    app0, s0 = make_sample_app()
+    _push(app0, "sample-app", s0, cfg, full_run=True, eager=True)
+
+    app, s = make_sample_app()
+    app.dependencies[0].locked_version = None  # the manifest no longer pins acme; poetry.lock bytes unchanged
+    _push(app, "sample-app", s, cfg, full_run=True, eager=True)
+    assert _num(driver, "MATCH (:Artifact {id: $l})-[r:LOCKS]->() RETURN count(r)", l=_ART + "poetry.lock") == 0
+
+
+def test_an_unchanged_eager_repush_is_idempotent(driver, cfg):
+    app, s = make_sample_app()
+    _push(app, "sample-app", s, cfg, full_run=True, eager=True)
+    shape = ("MATCH (n) OPTIONAL MATCH (n)-[r]-() "
+             "RETURN count(DISTINCT n) * 1000000 + count(DISTINCT r)")
+    before = _num(driver, shape)
+    app, s = make_sample_app()
+    _push(app, "sample-app", s, cfg, full_run=True, eager=True)
+    assert _num(driver, shape) == before
+
+
+def test_a_sibling_analyzers_artifacts_and_edges_survive_a_python_push(driver, cfg):
+    app0, s0 = make_sample_app()
+    _push(app0, "sample-app", s0, cfg, full_run=True, eager=True)
+    # What codeanalyzer-java writes: a claim on the shared pyproject.toml with a maven
+    # dependency, plus an artifact and config key python never emits.
+    with driver.session() as session:
+        session.run(
+            "MATCH (a:Artifact {id: $pp}) SET a:JCanNode "
+            "MERGE (j:JApplication {id: 'can://sample-app'}) MERGE (j)-[:HAS_ARTIFACT]->(a) "
+            "MERGE (m:Package {id: 'pkg:maven/org.example/lib'}) MERGE (a)-[:DECLARES_DEPENDENCY {_k: 'compile'}]->(m) "
+            "MERGE (o:Artifact:JCanNode {id: $pom}) MERGE (j)-[:HAS_ARTIFACT]->(o) "
+            "MERGE (k:ConfigKey:JCanNode {id: $key}) MERGE (o)-[:DEFINES_CONFIG]->(k)",
+            pp=_ART + "pyproject.toml", pom=_ART + "pom.xml", key=config_key_id(_ART + "pom.xml", "x"),
+        ).consume()
+
+    app, s = make_sample_app()
+    del app.artifacts["pyproject.toml"]
+    app.dependencies, app.config_uses = [], []
+    _push(app, "sample-app", s, cfg, full_run=True, eager=True)
+
+    pp = _ART + "pyproject.toml"
+    assert _num(driver, "MATCH (a:Artifact:JCanNode {id: $id}) WHERE NOT a:PyCanNode RETURN count(a)", id=pp) == 1
+    assert _num(driver, "MATCH (:PyApplication)-[r:HAS_ARTIFACT]->(:Artifact {id: $id}) RETURN count(r)", id=pp) == 0
+    assert _num(driver, "MATCH (:Artifact {id: $id})-[r:DECLARES_DEPENDENCY]->(:Package {id: 'pkg:maven/org.example/lib'}) "
+                "RETURN count(r)", id=pp) == 1
+    assert _num(driver, "MATCH (:Artifact {id: $id})-[:DEFINES_CONFIG]->(:ConfigKey) RETURN count(*)",
+                id=_ART + "pom.xml") == 1
+
+
+def test_an_artifact_an_unmarked_sibling_inventories_survives(driver, cfg):
+    app0, s0 = make_sample_app()
+    _push(app0, "sample-app", s0, cfg, full_run=True, eager=True)
+    with driver.session() as session:
+        session.run("MATCH (a:Artifact {id: $id}) MERGE (t:TSApplication {id: 'can://sample-app'}) "
+                    "MERGE (t)-[:HAS_ARTIFACT]->(a)", id=_ART + "poetry.lock").consume()
+    app, s = make_sample_app()
+    del app.artifacts["poetry.lock"]
+    _push(app, "sample-app", s, cfg, full_run=True, eager=True)
+    assert _num(driver, "MATCH (:TSApplication)-[:HAS_ARTIFACT]->(a:Artifact {id: $id}) WHERE NOT a:PyCanNode "
+                "RETURN count(a)", id=_ART + "poetry.lock") == 1
+
+
+def test_a_config_key_another_analyzer_claims_survives(driver, cfg):
+    app0, s0 = make_sample_app()
+    _push(app0, "sample-app", s0, cfg, full_run=True, eager=True)
+    key = app0.artifacts["pyproject.toml"].config_keys[0].id
+    with driver.session() as session:
+        session.run("MATCH (k:ConfigKey {id: $k}) SET k:TSCanNode", k=key).consume()
+    app, s = make_sample_app()
+    app.artifacts["pyproject.toml"].config_keys = []
+    app.config_uses = []
+    _push(app, "sample-app", s, cfg, full_run=True, eager=True)
+    assert _num(driver, "MATCH (:Artifact)-[:DEFINES_CONFIG]->(k:ConfigKey:TSCanNode {id: $k}) "
+                "WHERE NOT k:PyCanNode RETURN count(k)", k=key) == 1
+
+
+def test_an_app_whose_name_extends_anothers_is_not_reconciled_by_it(driver, cfg):
+    app_b, s_b = make_sample_app()
+    s_b = assign_ids(app_b, "sample-apps")
+    for path, art in app_b.artifacts.items():
+        art.id = artifact_id("sample-apps", path)
+    app_b.dependencies, app_b.config_uses, app_b.config_reads_unresolved = [], [], []
+    for art in app_b.artifacts.values():
+        art.config_keys = []
+    _push(app_b, "sample-apps", s_b, cfg, full_run=True, eager=True)
+    before = _num(driver, "MATCH (a:Artifact) WHERE a.id STARTS WITH 'can://sample-apps/' RETURN count(a)")
+    assert before > 0
+
+    app, s = make_sample_app()
+    app.artifacts = {}
+    app.dependencies, app.config_uses = [], []
+    _push(app, "sample-app", s, cfg, full_run=True, eager=True)
+    assert _num(driver, "MATCH (a:Artifact:PyCanNode) WHERE a.id STARTS WITH 'can://sample-apps/' "
+                "RETURN count(a)") == before
+
+
+def test_pre_rekey_artifacts_are_released_too(driver, cfg):
+    legacy = "can://artifact/sample-app/pyproject.toml"
+    with driver.session() as session:
+        session.run("MERGE (a:Artifact:PyCanNode {id: $id}) MERGE (k:ConfigKey:PyCanNode {id: $k}) "
+                    "MERGE (a)-[:DEFINES_CONFIG]->(k)", id=legacy, k=config_key_id(legacy, "x")).consume()
+    app, s = make_sample_app()
+    _push(app, "sample-app", s, cfg, full_run=True, eager=True)
+    assert _num(driver, "MATCH (n) WHERE n.id STARTS WITH 'can://artifact/sample-app/' RETURN count(n)") == 0
+
+
+def test_a_removed_dependency_and_a_resolved_import_drop_their_import_edges(driver, cfg):
+    app0, s0 = make_sample_app()
+    _push(app0, "sample-app", s0, cfg, full_run=True, eager=True)
+    assert _num(driver, "MATCH ()-[r:PY_PROVIDES]->() RETURN count(r)") == 1
+    assert _num(driver, "MATCH ()-[r:PY_UNRESOLVED_IMPORT]->() RETURN count(r)") == 1
+
+    app, s = make_sample_app()
+    app.dependencies, app.unresolved_imports = [], []
+    _push(app, "sample-app", s, cfg, full_run=True, eager=True)
+
+    assert _num(driver, "MATCH ()-[r:PY_PROVIDES]->() RETURN count(r)") == 0
+    assert _num(driver, "MATCH ()-[r:PY_UNRESOLVED_IMPORT]->() RETURN count(r)") == 0
+
+
+def test_the_rows_writer_reconciles_artifacts_too(driver, cfg):
+    app0, s0 = make_sample_app()
+    bolt.bolt_writer(project(app0, "sample-app", s0), cfg, full_run=True, eager=True)
+    app, s = _rekeyed("services/app/")
+    bolt.bolt_writer(project(app, "sample-app", s), cfg, full_run=True, eager=True)
+    assert _num(driver, "MATCH (n) WHERE (n:Artifact OR n:ConfigKey) AND n.id STARTS WITH $p "
+                "AND NOT n.id STARTS WITH $r RETURN count(n)", p=_ART, r=_ART + "services/app/") == 0
+    assert _num(driver, "MATCH ()-[r:PY_USES_CONFIG]->() RETURN count(r)") == 1
+
+
+def test_a_sibling_owned_pre_rekey_artifact_survives(driver, cfg):
+    legacy = "can://artifact/sample-app/pom.xml"
+    with driver.session() as session:
+        session.run("MERGE (a:Artifact:JCanNode {id: $id}) "
+                    "MERGE (k:ConfigKey:JCanNode {id: $k}) MERGE (a)-[:DEFINES_CONFIG]->(k)",
+                    id=legacy, k=config_key_id(legacy, "x")).consume()
+    app, s = make_sample_app()
+    _push(app, "sample-app", s, cfg, full_run=True, eager=True)
+    assert _num(driver, "MATCH (n:JCanNode) WHERE n.id STARTS WITH 'can://artifact/sample-app/' "
+                "RETURN count(n)") == 2
+
+
+def test_reconciliation_spans_several_batches(driver, cfg):
+    n = 2500
+    with driver.session() as session:
+        session.run("UNWIND range(1, $n) AS i "
+                    "CREATE (:Artifact:PyCanNode {id: $p + 'stale/' + toString(i) + '.txt'})",
+                    n=n, p=_ART).consume()
+    app, s = make_sample_app()
+    _push(app, "sample-app", s, cfg, full_run=True, eager=True)
+    assert _num(driver, "MATCH (a:Artifact) WHERE a.id STARTS WITH $p RETURN count(a)", p=_ART + "stale/") == 0
+    assert _num(driver, "MATCH (a:Artifact) WHERE a.id STARTS WITH $p RETURN count(a)", p=_ART) == len(app.artifacts)
