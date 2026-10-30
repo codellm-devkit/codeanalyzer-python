@@ -47,7 +47,7 @@ def test_reemitted_nodes_replay_to_merged_rows(monkeypatch):
     for i in range(4 * BATCH):
         labels = rnd.choice([["PySymbol"], ["PySymbol", "PyClass"], ["Artifact"], ["Artifact", "Extra"]])
         props = {"n": i, f"p{i % 5}": True, "_module": "m.py"}
-        args = (labels, "id", f"can://a/{rnd.randrange(BATCH)}", props)
+        args = (labels, "id", f"can://a/a/{rnd.randrange(BATCH)}", props)
         assert streamed.node(*args) == memory.node(*args)
     streamed.finish()
     assert _replay(batches) == _merged(memory.finish().nodes)
@@ -58,8 +58,8 @@ def test_no_statement_repeats_a_node(monkeypatch):
     batches = _capture_batches(monkeypatch)
     b = _NodeStreamBuilder(io.StringIO())
     for i in range(3):
-        b.node(["PySymbol"], "id", "can://a/x", {"n": i})
-        b.node(["PySymbol"], "id", f"can://a/y{i}", {})
+        b.node(["PySymbol"], "id", "can://a/a/x", {"n": i})
+        b.node(["PySymbol"], "id", f"can://a/a/y{i}", {})
     b.finish()
     for batch in batches:
         ids = [n.value for n in batch]

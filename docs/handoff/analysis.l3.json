@@ -1,11 +1,12 @@
 {
   "schema_version": "2.0.0",
+  "identity_version": 2,
   "language": "python",
   "max_level": 3,
   "k_limit": 3,
   "analyzer": {
     "name": "codeanalyzer-python",
-    "version": "1.0.1",
+    "version": "1.6.2",
     "config": {
       "analysis_level": 3
     }
@@ -13,9 +14,9 @@
   "application": {
     "symbol_table": {
       "service.py": {
-        "file_path": "/private/tmp/claude-501/-Users-rkrsn-workspace-codellm-devkit-codeanalyzer-python/679d9d16-db02-445a-9e18-8e43de0e0565/scratchpad/sample_proj/service.py",
+        "file_path": "/path/to/sample-app/service.py",
         "module_name": "service",
-        "id": "can://python/sample_proj/service.py",
+        "id": "can://sample-app/sample-app/python/service.py",
         "kind": "module",
         "source": "class BaseService:\n    pass\n\nclass Service(BaseService):\n    def announce(self, flag):\n        message = build(flag)\n        if flag:\n            message = message + \"!\"\n        return message\n\ndef build(x):\n    y = x\n    return y\n\ndef run(flag):\n    svc = Service()\n    return svc.announce(flag)\n",
         "imports": [],
@@ -24,7 +25,7 @@
           "service.BaseService": {
             "name": "BaseService",
             "signature": "service.BaseService",
-            "id": "can://python/sample_proj/service.py/BaseService",
+            "id": "can://sample-app/sample-app/python/service.py/BaseService",
             "kind": "class",
             "span": {
               "start": [
@@ -42,6 +43,9 @@
             },
             "comments": [],
             "base_classes": [],
+            "decorators": [],
+            "entrypoints": [],
+            "is_entrypoint": false,
             "callables": {},
             "attributes": {},
             "types": {},
@@ -51,7 +55,7 @@
           "service.Service": {
             "name": "Service",
             "signature": "service.Service",
-            "id": "can://python/sample_proj/service.py/Service",
+            "id": "can://sample-app/sample-app/python/service.py/Service",
             "kind": "class",
             "span": {
               "start": [
@@ -71,12 +75,15 @@
             "base_classes": [
               "BaseService"
             ],
+            "decorators": [],
+            "entrypoints": [],
+            "is_entrypoint": false,
             "callables": {
               "announce": {
                 "name": "announce",
-                "path": "/private/tmp/claude-501/-Users-rkrsn-workspace-codellm-devkit-codeanalyzer-python/679d9d16-db02-445a-9e18-8e43de0e0565/scratchpad/sample_proj/service.py",
+                "path": "/path/to/sample-app/service.py",
                 "signature": "service.Service.announce",
-                "id": "can://python/sample_proj/service.py/Service/announce(self,flag)",
+                "id": "can://sample-app/sample-app/python/service.py/Service/announce(self,flag)",
                 "kind": "function",
                 "span": {
                   "start": [
@@ -94,10 +101,15 @@
                 },
                 "comments": [],
                 "decorators": [],
+                "modifiers": [],
+                "entrypoints": [],
+                "is_entrypoint": false,
                 "parameters": [
                   {
                     "name": "self",
+                    "id": "can://sample-app/sample-app/python/service.py/Service/announce(self,flag)@formal_in:0",
                     "type": "Service",
+                    "decorators": [],
                     "start_line": 5,
                     "end_line": 5,
                     "start_column": 17,
@@ -105,6 +117,8 @@
                   },
                   {
                     "name": "flag",
+                    "id": "can://sample-app/sample-app/python/service.py/Service/announce(self,flag)@formal_in:1",
+                    "decorators": [],
                     "start_line": 5,
                     "end_line": 5,
                     "start_column": 23,
@@ -160,25 +174,6 @@
                     "col_offset": 22
                   }
                 ],
-                "call_sites": [
-                  {
-                    "method_name": "build",
-                    "argument_types": [
-                      "Name"
-                    ],
-                    "arguments": [
-                      {
-                        "ast_kind": "Name"
-                      }
-                    ],
-                    "callee_signature": "service.build",
-                    "is_constructor_call": false,
-                    "start_line": 6,
-                    "start_column": 18,
-                    "end_line": 6,
-                    "end_column": 29
-                  }
-                ],
                 "callables": {},
                 "types": {},
                 "local_variables": [
@@ -206,6 +201,7 @@
                 "body": {
                   "6:18": {
                     "kind": "call",
+                    "id": "can://sample-app/sample-app/python/service.py/Service/announce(self,flag)@6:18",
                     "span": {
                       "start": [
                         6,
@@ -220,13 +216,25 @@
                         116
                       ]
                     },
-                    "callee": "can://python/sample_proj/service.py/build(x)"
+                    "callee": "can://sample-app/sample-app/python/service.py/build(x)",
+                    "parent": "6:8",
+                    "method_name": "build",
+                    "is_constructor_call": false,
+                    "arguments": [
+                      {
+                        "ast_kind": "Name",
+                        "name": "flag"
+                      }
+                    ]
                   },
                   "@entry": {
-                    "kind": "entry"
+                    "kind": "entry",
+                    "id": "can://sample-app/sample-app/python/service.py/Service/announce(self,flag)@entry",
+                    "arguments": []
                   },
                   "6:8": {
                     "kind": "statement",
+                    "id": "can://sample-app/sample-app/python/service.py/Service/announce(self,flag)@6:8",
                     "span": {
                       "start": [
                         6,
@@ -240,10 +248,12 @@
                         95,
                         116
                       ]
-                    }
+                    },
+                    "arguments": []
                   },
                   "7:11": {
                     "kind": "branch",
+                    "id": "can://sample-app/sample-app/python/service.py/Service/announce(self,flag)@7:11",
                     "span": {
                       "start": [
                         7,
@@ -257,10 +267,12 @@
                         128,
                         132
                       ]
-                    }
+                    },
+                    "arguments": []
                   },
                   "8:12": {
                     "kind": "statement",
+                    "id": "can://sample-app/sample-app/python/service.py/Service/announce(self,flag)@8:12",
                     "span": {
                       "start": [
                         8,
@@ -274,10 +286,12 @@
                         146,
                         169
                       ]
-                    }
+                    },
+                    "arguments": []
                   },
                   "9:8": {
                     "kind": "return",
+                    "id": "can://sample-app/sample-app/python/service.py/Service/announce(self,flag)@9:8",
                     "span": {
                       "start": [
                         9,
@@ -291,10 +305,13 @@
                         178,
                         192
                       ]
-                    }
+                    },
+                    "arguments": []
                   },
                   "@exit": {
-                    "kind": "exit"
+                    "kind": "exit",
+                    "id": "can://sample-app/sample-app/python/service.py/Service/announce(self,flag)@exit",
+                    "arguments": []
                   }
                 },
                 "cfg": [
@@ -422,9 +439,9 @@
         "functions": {
           "build": {
             "name": "build",
-            "path": "/private/tmp/claude-501/-Users-rkrsn-workspace-codellm-devkit-codeanalyzer-python/679d9d16-db02-445a-9e18-8e43de0e0565/scratchpad/sample_proj/service.py",
+            "path": "/path/to/sample-app/service.py",
             "signature": "service.build",
-            "id": "can://python/sample_proj/service.py/build(x)",
+            "id": "can://sample-app/sample-app/python/service.py/build(x)",
             "kind": "function",
             "span": {
               "start": [
@@ -442,9 +459,14 @@
             },
             "comments": [],
             "decorators": [],
+            "modifiers": [],
+            "entrypoints": [],
+            "is_entrypoint": false,
             "parameters": [
               {
                 "name": "x",
+                "id": "can://sample-app/sample-app/python/service.py/build(x)@formal_in:0",
+                "decorators": [],
                 "start_line": 11,
                 "end_line": 11,
                 "start_column": 10,
@@ -472,7 +494,6 @@
                 "col_offset": 11
               }
             ],
-            "call_sites": [],
             "callables": {},
             "types": {},
             "local_variables": [
@@ -489,10 +510,13 @@
             "cyclomatic_complexity": 2,
             "body": {
               "@entry": {
-                "kind": "entry"
+                "kind": "entry",
+                "id": "can://sample-app/sample-app/python/service.py/build(x)@entry",
+                "arguments": []
               },
               "12:4": {
                 "kind": "statement",
+                "id": "can://sample-app/sample-app/python/service.py/build(x)@12:4",
                 "span": {
                   "start": [
                     12,
@@ -506,10 +530,12 @@
                     212,
                     217
                   ]
-                }
+                },
+                "arguments": []
               },
               "13:4": {
                 "kind": "return",
+                "id": "can://sample-app/sample-app/python/service.py/build(x)@13:4",
                 "span": {
                   "start": [
                     13,
@@ -523,10 +549,13 @@
                     222,
                     230
                   ]
-                }
+                },
+                "arguments": []
               },
               "@exit": {
-                "kind": "exit"
+                "kind": "exit",
+                "id": "can://sample-app/sample-app/python/service.py/build(x)@exit",
+                "arguments": []
               }
             },
             "cfg": [
@@ -578,9 +607,9 @@
           },
           "run": {
             "name": "run",
-            "path": "/private/tmp/claude-501/-Users-rkrsn-workspace-codellm-devkit-codeanalyzer-python/679d9d16-db02-445a-9e18-8e43de0e0565/scratchpad/sample_proj/service.py",
+            "path": "/path/to/sample-app/service.py",
             "signature": "service.run",
-            "id": "can://python/sample_proj/service.py/run(flag)",
+            "id": "can://sample-app/sample-app/python/service.py/run(flag)",
             "kind": "function",
             "span": {
               "start": [
@@ -598,9 +627,14 @@
             },
             "comments": [],
             "decorators": [],
+            "modifiers": [],
+            "entrypoints": [],
+            "is_entrypoint": false,
             "parameters": [
               {
                 "name": "flag",
+                "id": "can://sample-app/sample-app/python/service.py/run(flag)@formal_in:0",
+                "decorators": [],
                 "start_line": 15,
                 "end_line": 15,
                 "start_column": 8,
@@ -640,40 +674,6 @@
                 "col_offset": 11
               }
             ],
-            "call_sites": [
-              {
-                "method_name": "Service",
-                "argument_types": [],
-                "arguments": [],
-                "return_type": "Service",
-                "callee_signature": "service.Service.__init__",
-                "is_constructor_call": true,
-                "start_line": 16,
-                "start_column": 10,
-                "end_line": 16,
-                "end_column": 19
-              },
-              {
-                "method_name": "announce",
-                "receiver_expr": "svc",
-                "receiver_type": "Service",
-                "argument_types": [
-                  "Name"
-                ],
-                "arguments": [
-                  {
-                    "ast_kind": "Name"
-                  }
-                ],
-                "return_type": "str",
-                "callee_signature": "service.Service.announce",
-                "is_constructor_call": false,
-                "start_line": 17,
-                "start_column": 11,
-                "end_line": 17,
-                "end_column": 29
-              }
-            ],
             "callables": {},
             "types": {},
             "local_variables": [
@@ -692,6 +692,7 @@
             "body": {
               "16:10": {
                 "kind": "call",
+                "id": "can://sample-app/sample-app/python/service.py/run(flag)@16:10",
                 "span": {
                   "start": [
                     16,
@@ -706,10 +707,16 @@
                     266
                   ]
                 },
-                "callee": "can://python/sample_proj/@external/service.Service/__init__"
+                "callee": "can://sample-app/sample-app/@external/service.Service/__init__",
+                "parent": "16:4",
+                "method_name": "Service",
+                "return_type": "Service",
+                "is_constructor_call": true,
+                "arguments": []
               },
               "17:11": {
                 "kind": "call",
+                "id": "can://sample-app/sample-app/python/service.py/run(flag)@17:11",
                 "span": {
                   "start": [
                     17,
@@ -724,13 +731,28 @@
                     296
                   ]
                 },
-                "callee": "can://python/sample_proj/service.py/Service/announce(self,flag)"
+                "callee": "can://sample-app/sample-app/python/service.py/Service/announce(self,flag)",
+                "parent": "17:4",
+                "method_name": "announce",
+                "receiver_expr": "svc",
+                "receiver_type": "Service",
+                "return_type": "str",
+                "is_constructor_call": false,
+                "arguments": [
+                  {
+                    "ast_kind": "Name",
+                    "name": "flag"
+                  }
+                ]
               },
               "@entry": {
-                "kind": "entry"
+                "kind": "entry",
+                "id": "can://sample-app/sample-app/python/service.py/run(flag)@entry",
+                "arguments": []
               },
               "16:4": {
                 "kind": "statement",
+                "id": "can://sample-app/sample-app/python/service.py/run(flag)@16:4",
                 "span": {
                   "start": [
                     16,
@@ -744,10 +766,12 @@
                     251,
                     266
                   ]
-                }
+                },
+                "arguments": []
               },
               "17:4": {
                 "kind": "return",
+                "id": "can://sample-app/sample-app/python/service.py/run(flag)@17:4",
                 "span": {
                   "start": [
                     17,
@@ -761,10 +785,13 @@
                     271,
                     296
                   ]
-                }
+                },
+                "arguments": []
               },
               "@exit": {
-                "kind": "exit"
+                "kind": "exit",
+                "id": "can://sample-app/sample-app/python/service.py/run(flag)@exit",
+                "arguments": []
               }
             },
             "cfg": [
@@ -843,49 +870,63 @@
         },
         "variables": [],
         "content_hash": "7097c745b302b502071549264a3eab63d8ba4db7c11174aca96a06d023db62e9",
-        "last_modified": 1784055599.9118228,
+        "last_modified": 1793382888.634782,
         "file_size": 297
       }
     },
-    "id": "can://python/sample_proj",
+    "id": "can://sample-app/sample-app",
     "kind": "application",
+    "identity_version": 2,
+    "application_name": "sample-app",
+    "identity_namespace": "sample-app",
     "call_graph": [
       {
-        "src": "can://python/sample_proj/service.py/Service/announce(self,flag)",
-        "dst": "can://python/sample_proj/service.py/build(x)",
-        "weight": 2,
-        "prov": [
-          "jedi",
-          "pycg"
-        ]
-      },
-      {
-        "src": "can://python/sample_proj/service.py/run(flag)",
-        "dst": "can://python/sample_proj/@external/service.Service/__init__",
+        "src": "can://sample-app/sample-app/python/service.py/Service/announce(self,flag)",
+        "dst": "can://sample-app/sample-app/python/service.py/build(x)",
         "weight": 1,
         "prov": [
           "jedi"
         ]
       },
       {
-        "src": "can://python/sample_proj/service.py/run(flag)",
-        "dst": "can://python/sample_proj/service.py/Service/announce(self,flag)",
-        "weight": 2,
+        "src": "can://sample-app/sample-app/python/service.py/run(flag)",
+        "dst": "can://sample-app/sample-app/@external/service.Service/__init__",
+        "weight": 1,
         "prov": [
-          "jedi",
-          "pycg"
+          "jedi"
+        ]
+      },
+      {
+        "src": "can://sample-app/sample-app/python/service.py/run(flag)",
+        "dst": "can://sample-app/sample-app/python/service.py/Service/announce(self,flag)",
+        "weight": 1,
+        "prov": [
+          "jedi"
         ]
       }
     ],
     "external_symbols": {
-      "can://python/sample_proj/@external/service.Service/__init__": {
-        "id": "can://python/sample_proj/@external/service.Service/__init__",
+      "can://sample-app/sample-app/@external/service.Service/__init__": {
+        "id": "can://sample-app/sample-app/@external/service.Service/__init__",
         "kind": "external",
         "name": "__init__",
         "module": "service.Service"
       }
     },
+    "artifacts": {},
+    "dependencies": [],
+    "unresolved_imports": [],
+    "entrypoint_report": {
+      "frameworks_detected": [],
+      "rulesets": [
+        "shipped"
+      ],
+      "unresolved": {},
+      "errors": []
+    },
     "param_in": [],
-    "param_out": []
+    "param_out": [],
+    "config_uses": [],
+    "config_reads_unresolved": []
   }
 }

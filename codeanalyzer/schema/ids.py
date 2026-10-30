@@ -2,13 +2,10 @@
 Ordinal ids (< callable) are `ordinal_id(callable_id, tag)`. Pure functions;
 ids are opaque handles (the <file> segment itself contains '/').
 
-The **application is the outermost segment** and the language sits inside it:
-``can://<app>/python/<file>/<type>/<callable-sig>``. So ``can://<app>`` is a
-prefix of every id this analyzer mints for that application — code, externals
-and artifacts alike — which is what the prefix-scoped destructive statements
-(#173) rely on. Nothing may be identified by its *language* prefix any more:
-an application named ``python`` mints ``can://python/python/...``, so a test
-for ``can://python/`` no longer means "a python id"; test the scheme instead."""
+The root is ``can://<namespace>/<application>``. Every application-owned ID
+shares this root; language-specific suffixes and app-relative file keys are
+unchanged. Package URLs remain outside application ownership.
+"""
 from __future__ import annotations
 from typing import Iterable, Iterator, List, Optional, Tuple
 
@@ -17,14 +14,25 @@ SCHEME = "can://"
 # This analyzer's language segment, which sits INSIDE the app rather than above it.
 LANG = "python"
 
-def application_id(app_name: str) -> str:
-    """``can://<app>`` — the application root, and the prefix every id below it shares."""
-    return f"{SCHEME}{app_name}"
+def _root_segment(value: str) -> str:
+    """Validate raw identity text and percent-encode its UTF-8 bytes."""
+    from urllib.parse import quote
+    import unicodedata
+    if (not isinstance(value, str) or not value.strip() or value in (".", "..")
+            or any(c in "/\\" or unicodedata.category(c) in ("Cc", "Cs") for c in value)):
+        raise ValueError("identity names must be nonempty names without separators or controls")
+    return quote(value, safe="-._~", encoding="utf-8", errors="strict")
 
-def module_id(app_name: str, file_key: str) -> str:
-    """``can://<app>/python/<relative-file-key>`` (separators normalized to ``/``)."""
+
+def application_id(app_name: str, namespace: str | None = None) -> str:
+    """The namespace-qualified application root."""
+    return f"{SCHEME}{_root_segment(app_name if namespace is None else namespace)}/{_root_segment(app_name)}"
+
+
+def module_id(app_name: str, file_key: str, namespace: str | None = None) -> str:
     rel = file_key.replace("\\", "/").lstrip("./")
-    return f"{application_id(app_name)}/{LANG}/{rel}"
+    return f"{application_id(app_name, namespace)}/{LANG}/{rel}"
+
 
 def child_id(parent_id: str, segment: str) -> str:
     return f"{parent_id}/{segment}"
@@ -105,14 +113,14 @@ def stamp_body_ids(callable) -> None:
         p.id = ordinal_id(callable.id, f"formal_in:{i}")
 
 
-def artifact_id(app_name: str, rel_path: str) -> str:
+def artifact_id(app_name: str, rel_path: str, namespace: str | None = None) -> str:
     """Language-neutral artifact id: ``can://<app>/artifact/<rel-path>``.
 
     ``artifact`` is a reserved segment in the same position the language
     occupies for code nodes, so sibling analyzers over the same repo (same
     ``<app>``) still emit the same id for the same file — and, unlike the old
     ``can://artifact/<app>/...``, it now sits inside the application prefix."""
-    return f"{application_id(app_name)}/artifact/{rel_path}"
+    return f"{application_id(app_name, namespace)}/artifact/{rel_path}"
 
 
 def config_key_id(artifact_id: str, dotted_key: str) -> str:

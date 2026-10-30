@@ -24,7 +24,7 @@ from pathlib import Path
 import dataclasses as _dataclasses
 from dataclasses import dataclass, field as _dc_field
 from typing import Any, Dict, List, Optional, Tuple
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from typing_extensions import Literal
 
 
@@ -630,6 +630,9 @@ class PyApplication(BaseModel):
     symbol_table: Dict[str, PyModule]
     id: str = ""
     kind: str = "application"
+    identity_version: Literal[2] = 2
+    application_name: str = ""
+    identity_namespace: str = ""
     call_graph: List[PyCallEdge] = []
     # Call-graph endpoints not declared in the symbol table (imported library /
     # builtin members), keyed by signature. Populated by the analyzer so every
@@ -658,8 +661,22 @@ class Analysis(BaseModel):
     """v2 payload root: envelope + the application tree node. ``k_limit`` is an
     L3+ envelope key (None below the dataflow levels; exclude_none drops it)."""
     schema_version: str = "2.0.0"
+    identity_version: Literal[2]
     language: str = "python"
     max_level: int = 1
     k_limit: Optional[int] = None
     analyzer: PyAnalyzerInfo = PyAnalyzerInfo()
     application: PyApplication
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_identity_markers(cls, value):
+        # Parsing must not silently upgrade legacy caches using model defaults.
+        if isinstance(value, dict):
+            if type(value.get("identity_version")) is not int or value["identity_version"] != 2:
+                raise ValueError("analysis identity_version must be integer 2")
+            app = value.get("application")
+            if isinstance(app, dict) and (type(app.get("identity_version")) is not int
+                                          or app["identity_version"] != 2):
+                raise ValueError("application identity_version must be integer 2")
+        return value

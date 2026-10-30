@@ -239,7 +239,7 @@ def test_eager_push_of_a_second_python_app_with_a_colliding_module_path_leaves_t
     file_key = "appb/main.py"
     app_a, sig_a = _single_module_app(file_key)
     _push(app_a, "app-a", assign_ids(app_a, "app-a"), cfg, full_run=True, eager=True)
-    a_nodes = _num(driver, "MATCH (n:PyCanNode) WHERE n.id STARTS WITH 'can://app-a/python/' RETURN count(n)")
+    a_nodes = _num(driver, "MATCH (n:PyCanNode) WHERE n.id STARTS WITH 'can://app-a/app-a/python/' RETURN count(n)")
     assert a_nodes > 0
 
     app_b, sig_b = _single_module_app(file_key)
@@ -247,7 +247,7 @@ def test_eager_push_of_a_second_python_app_with_a_colliding_module_path_leaves_t
     # ...and again, so app-b's purge runs against a graph that already holds app-b too.
     _push(app_b, "app-b", sig_b, cfg, full_run=True, eager=True)
 
-    assert _num(driver, "MATCH (n:PyCanNode) WHERE n.id STARTS WITH 'can://app-a/python/' RETURN count(n)") == a_nodes
+    assert _num(driver, "MATCH (n:PyCanNode) WHERE n.id STARTS WITH 'can://app-a/app-a/python/' RETURN count(n)") == a_nodes
     assert _num(driver, "MATCH (:PyApplication {name:'app-a'})-[:PY_HAS_MODULE]->(m) RETURN count(m)") == 1
     assert _num(driver, "MATCH (:PyApplication {name:'app-b'})-[:PY_HAS_MODULE]->(m) RETURN count(m)") == 1
 
@@ -261,7 +261,7 @@ def test_external_nodes_sit_inside_the_application_prefix(driver, cfg):
     _push(app, "sample-app", sig_to_id, cfg, full_run=True, eager=True)
     total = _num(driver, "MATCH (e:PyExternal) RETURN count(e)")
     assert total >= 1
-    inside = _num(driver, "MATCH (e:PyExternal:PyCanNode) WHERE e.id STARTS WITH 'can://sample-app/@external/' RETURN count(e)")
+    inside = _num(driver, "MATCH (e:PyExternal:PyCanNode) WHERE e.id STARTS WITH 'can://sample-app/sample-app/@external/' RETURN count(e)")
     assert inside == total
 
 
@@ -295,7 +295,7 @@ def test_a_failed_push_publishes_no_module_hash(driver, cfg, monkeypatch):
 
 from codeanalyzer.schema.ids import artifact_id, config_key_id, purl_pypi
 
-_ART = "can://sample-app/artifact/"
+_ART = "can://sample-app/sample-app/artifact/"
 
 
 def _rekeyed(prefix: str):
@@ -405,7 +405,7 @@ def test_a_sibling_analyzers_artifacts_and_edges_survive_a_python_push(driver, c
     with driver.session() as session:
         session.run(
             "MATCH (a:Artifact {id: $pp}) SET a:JCanNode "
-            "MERGE (j:JApplication {id: 'can://sample-app'}) MERGE (j)-[:HAS_ARTIFACT]->(a) "
+            "MERGE (j:JApplication {id: 'can://sample-app/sample-app'}) MERGE (j)-[:HAS_ARTIFACT]->(a) "
             "MERGE (m:Package {id: 'pkg:maven/org.example/lib'}) MERGE (a)-[:DECLARES_DEPENDENCY {_k: 'compile'}]->(m) "
             "MERGE (o:Artifact:JCanNode {id: $pom}) MERGE (j)-[:HAS_ARTIFACT]->(o) "
             "MERGE (k:ConfigKey:JCanNode {id: $key}) MERGE (o)-[:DEFINES_CONFIG]->(k)",
@@ -430,7 +430,7 @@ def test_an_artifact_an_unmarked_sibling_inventories_survives(driver, cfg):
     app0, s0 = make_sample_app()
     _push(app0, "sample-app", s0, cfg, full_run=True, eager=True)
     with driver.session() as session:
-        session.run("MATCH (a:Artifact {id: $id}) MERGE (t:TSApplication {id: 'can://sample-app'}) "
+        session.run("MATCH (a:Artifact {id: $id}) MERGE (t:TSApplication {id: 'can://sample-app/sample-app'}) "
                     "MERGE (t)-[:HAS_ARTIFACT]->(a)", id=_ART + "poetry.lock").consume()
     app, s = make_sample_app()
     del app.artifacts["poetry.lock"]
@@ -462,25 +462,25 @@ def test_an_app_whose_name_extends_anothers_is_not_reconciled_by_it(driver, cfg)
     for art in app_b.artifacts.values():
         art.config_keys = []
     _push(app_b, "sample-apps", s_b, cfg, full_run=True, eager=True)
-    before = _num(driver, "MATCH (a:Artifact) WHERE a.id STARTS WITH 'can://sample-apps/' RETURN count(a)")
+    before = _num(driver, "MATCH (a:Artifact) WHERE a.id STARTS WITH 'can://sample-apps/sample-apps/' RETURN count(a)")
     assert before > 0
 
     app, s = make_sample_app()
     app.artifacts = {}
     app.dependencies, app.config_uses = [], []
     _push(app, "sample-app", s, cfg, full_run=True, eager=True)
-    assert _num(driver, "MATCH (a:Artifact:PyCanNode) WHERE a.id STARTS WITH 'can://sample-apps/' "
+    assert _num(driver, "MATCH (a:Artifact:PyCanNode) WHERE a.id STARTS WITH 'can://sample-apps/sample-apps/' "
                 "RETURN count(a)") == before
 
 
-def test_pre_rekey_artifacts_are_released_too(driver, cfg):
+def test_legacy_artifacts_are_outside_selected_scope(driver, cfg):
     legacy = "can://artifact/sample-app/pyproject.toml"
     with driver.session() as session:
         session.run("MERGE (a:Artifact:PyCanNode {id: $id}) MERGE (k:ConfigKey:PyCanNode {id: $k}) "
                     "MERGE (a)-[:DEFINES_CONFIG]->(k)", id=legacy, k=config_key_id(legacy, "x")).consume()
     app, s = make_sample_app()
     _push(app, "sample-app", s, cfg, full_run=True, eager=True)
-    assert _num(driver, "MATCH (n) WHERE n.id STARTS WITH 'can://artifact/sample-app/' RETURN count(n)") == 0
+    assert _num(driver, "MATCH (n) WHERE n.id STARTS WITH 'can://artifact/sample-app/' RETURN count(n)") == 2
 
 
 def test_a_removed_dependency_and_a_resolved_import_drop_their_import_edges(driver, cfg):

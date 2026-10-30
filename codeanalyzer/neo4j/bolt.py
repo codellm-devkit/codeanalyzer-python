@@ -112,11 +112,11 @@ PURGE_PROVIDES = (
 # Release python's claim on artifacts/config keys the run no longer emits. An artifact is
 # deleted once no HAS_ARTIFACT is left (every analyzer inventories with one, marked or not);
 # a config key once no other analyzer's *CanNode claims it. Pre-1.5.0 artifacts carry no
-# marker at all, so under the legacy prefix an unmarked node counts as python's.
+# marker; legacy roots are outside the selected identity and are left alone.
 RELEASE_VANISHED_ARTIFACTS = (
     "UNWIND $pres AS pre "
     "MATCH (n) WHERE (n:Artifact OR n:ConfigKey) AND n.id STARTS WITH pre AND NOT n.id IN $keep "
-    f"AND (n:{CAN_NODE} OR (pre = $legacy AND none(l IN labels(n) WHERE l ENDS WITH 'CanNode'))) "
+    f"AND n:{CAN_NODE} "
     f"CALL {{ WITH n REMOVE n:{CAN_NODE} "
     "WITH n WHERE (n:Artifact AND NOT ()-[:HAS_ARTIFACT]->(n)) "
     "OR (n:ConfigKey AND none(l IN labels(n) WHERE l ENDS WITH 'CanNode')) "
@@ -125,18 +125,17 @@ RELEASE_VANISHED_ARTIFACTS = (
 )
 
 
-def _artifact_prefixes(app_name: str) -> List[str]:
-    """``can://<app>/artifact/``, and ``can://artifact/<app>/`` for pre-1.5.0 pushes.
-    Both separator-terminated, so ``app`` never reaches ``apps``."""
-    return [f"{application_prefix(app_name)}artifact/", f"can://artifact/{app_name}/"]
+def _artifact_prefixes(app_name: str, namespace: str | None = None) -> List[str]:
+    """Artifacts in the selected namespace/application only."""
+    return [f"{application_prefix(app_name, namespace)}artifact/"]
 
 
-def _reconcile_artifacts(session, app_name: str, keep: List[str]) -> None:
+def _reconcile_artifacts(session, app_name: str, keep: List[str], namespace: str | None = None) -> None:
     """Drop python-owned artifact edges and release vanished artifacts/config keys.
     Auto-commit and batched; a partial failure is finished by the next eager push."""
-    pres = _artifact_prefixes(app_name)
-    app_pre = application_prefix(app_name)
-    params = {"pres": pres, "legacy": pres[1], "keep": keep, "app_id": app_pre[:-1], "app_pre": app_pre}
+    pres = _artifact_prefixes(app_name, namespace)
+    app_pre = application_prefix(app_name, namespace)
+    params = {"pres": pres, "keep": keep, "app_id": app_pre[:-1], "app_pre": app_pre}
     with session() as s:
         s.run(PURGE_ARTIFACT_EDGES, **params).consume()
         s.run(PURGE_UNRESOLVED_CONFIG_READS, **params).consume()
@@ -280,7 +279,7 @@ class _EdgeBatches(RowBuilder):
 
 
 def bolt_writer_streaming(app, app_name, sig_to_id, analyzer, cfg: BoltConfig, full_run: bool,
-                          eager: bool = False) -> None:
+                          eager: bool = False, namespace: str | None = None) -> None:
     """:func:`bolt_writer` without materializing :class:`GraphRows`: the projection
     runs twice (nodes, then relationships) and is written in bounded batches."""
     try:
@@ -292,7 +291,7 @@ def bolt_writer_streaming(app, app_name, sig_to_id, analyzer, cfg: BoltConfig, f
         ) from exc
     from codeanalyzer.neo4j.project import project
 
-    app_prefix = application_prefix(app_name)
+    app_prefix = application_prefix(app_name, namespace)
     driver = neo4j.GraphDatabase.driver(cfg.uri, auth=(cfg.user, cfg.password))
 
     session_kwargs = {"database": cfg.database} if cfg.database else {}
@@ -315,12 +314,12 @@ def bolt_writer_streaming(app, app_name, sig_to_id, analyzer, cfg: BoltConfig, f
 
         reconcile = full_run and eager
         if reconcile:
-            _reconcile_artifacts(session, app_name, _artifact_keep(app))
+            _reconcile_artifacts(session, app_name, _artifact_keep(app), namespace)
         nodes = _NodeBatches(session, neo4j, changed, app_prefix, eager)
-        project(app, app_name, sig_to_id, analyzer=analyzer, builder=nodes, module_scoped=True)
+        project(app, app_name, sig_to_id, analyzer=analyzer, namespace=namespace, builder=nodes, module_scoped=True)
         module_by_id = {mod.id: key for key, mod in app.symbol_table.items()}
         edges = _EdgeBatches(session, neo4j, changed, nodes._keys, module_by_id, reconcile)
-        project(app, app_name, sig_to_id, analyzer=analyzer, builder=edges)
+        project(app, app_name, sig_to_id, analyzer=analyzer, namespace=namespace, builder=edges)
 
         if full_run and eager:
             with session() as s:
@@ -369,7 +368,9 @@ def bolt_writer(rows: GraphRows, cfg: BoltConfig, full_run: bool, eager: bool = 
             ),
             None,
         )
-        app_prefix = application_prefix(app_name)
+        namespace = next((n.props.get("identity_namespace") for n in rows.nodes
+                          if n.labels and n.labels[0] == "PyApplication"), None)
+        app_prefix = application_prefix(app_name, namespace)
 
         # Partition nodes by owning module (an in-memory field, never emitted, #173);
         # shared nodes have none.
@@ -410,7 +411,7 @@ def bolt_writer(rows: GraphRows, cfg: BoltConfig, full_run: bool, eager: bool = 
         reconcile = full_run and eager
         if reconcile:
             _reconcile_artifacts(session, app_name, [
-                n.value for n in rows.nodes if n.labels and n.labels[0] in ("Artifact", "ConfigKey")])
+                n.value for n in rows.nodes if n.labels and n.labels[0] in ("Artifact", "ConfigKey")], namespace)
         _upsert_nodes(session, neo4j, shared)
 
         # 4. per changed module: purge owned edges + vanished decls, then upsert its nodes.

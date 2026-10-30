@@ -56,23 +56,6 @@ def _artifact_full_text(project_dir: Path, path: str, art) -> str:
         return art.source
 
 
-def _rekey_to_workspace(app: PyApplication, prefix: str) -> None:
-    """Rename the published file-keyed maps under `prefix` (--workspace-root).
-
-    Ids were already minted with the prefix; this renames the symbol-table and
-    artifact keys, artifact `path`, and `resolved_module`, which names a key."""
-    if not prefix:
-        return
-    for mod in app.symbol_table.values():
-        for im in mod.imports or []:
-            if im.resolved_module:
-                im.resolved_module = prefix + im.resolved_module
-    app.symbol_table = {prefix + k: m for k, m in app.symbol_table.items()}
-    for art in (app.artifacts or {}).values():
-        art.path = prefix + art.path
-    app.artifacts = {prefix + k: a for k, a in (app.artifacts or {}).items()}
-
-
 def _log_mem(label: str) -> None:
     """LOW-MEM PATCH: log current/peak RSS of the driver at phase boundaries."""
     try:
@@ -779,9 +762,8 @@ class Codeanalyzer:
         # analyzer identity rides the envelope below (keystone home).
         app.repository = repository_info(self.project_dir)
 
-        app_name = self.options.app_name or self.project_dir.name
-        key_prefix = self._workspace_key_prefix()
-        sig_to_id = assign_ids(app, app_name, key_prefix)
+        app_name = self.options.app_name if self.options.app_name is not None else self.project_dir.name
+        sig_to_id = assign_ids(app, app_name, self.options.namespace)
         # Home call-graph endpoints that are not declared in the symbol table
         # (imported library / builtin members) onto @external ids once, so the
         # JSON and Neo4j backends share one authoritative external-symbol set
@@ -806,10 +788,9 @@ class Codeanalyzer:
         )
 
         app.artifacts = discover_artifacts(
-            self.project_dir, app_name,
+            self.project_dir, app_name, self.options.namespace,
             capture_text=self.options.artifact_text,
             exclude_paths=self._own_output_paths(),
-            id_prefix=key_prefix,
         )
         app.dependencies, app.unresolved_imports = build_dependency_view(
             app.artifacts,
@@ -936,25 +917,14 @@ class Codeanalyzer:
         # k_limit is an L3+ envelope key: below the dataflow levels it stays
         # None and exclude_none drops it from the payload.
         analysis = Analysis(
+            identity_version=2,
             max_level=self.analysis_level,
             k_limit=self.options.graph_field_depth if self.analysis_level >= 3 else None,
             analyzer=analyzer_info(self.analysis_level),
             application=app,
         )
         self._save_analysis_cache(analysis, cache_file)
-        # After the save: the cache keeps input-relative keys, so it is reused
-        # whether or not --workspace-root is set.
-        _rekey_to_workspace(app, key_prefix)
-
         return analysis
-
-    def _workspace_key_prefix(self) -> str:
-        """The input's path under --workspace-root, `/`-terminated; "" when unset."""
-        root = self.options.workspace_root
-        if root is None:
-            return ""
-        rel = self.project_dir.resolve().relative_to(Path(root).resolve()).as_posix()
-        return "" if rel == "." else rel + "/"
 
     @staticmethod
     def _cache_analyzer_matches(cached: Optional[Analysis], current_version: str) -> bool:
@@ -993,6 +963,12 @@ class Codeanalyzer:
             return None
         if getattr(cached, "schema_version", None) != "2.0.0":
             logger.info("stale/incompatible analysis cache (schema_version) — rebuilding")
+            return None
+        app_name = self.options.app_name if self.options.app_name is not None else self.project_dir.name
+        namespace = app_name if self.options.namespace is None else self.options.namespace
+        if (cached.application.application_name != app_name
+                or cached.application.identity_namespace != namespace):
+            logger.info("analysis cache identity changed — rebuilding from source")
             return None
         # The cache keys only on file hash/mtime/size, not on level, so a cache
         # built at a different analysis_level would leak higher-level body/edge

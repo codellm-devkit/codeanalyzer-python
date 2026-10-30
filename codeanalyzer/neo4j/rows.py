@@ -80,7 +80,7 @@ def descendant_prefix(can_id: str) -> str:
     return f"{can_id}/"
 
 
-def application_prefix(app_name: Optional[str]) -> str:
+def application_prefix(app_name: Optional[str], namespace: Optional[str] = None) -> str:
     """``can://<app>/`` — the scope of every destructive statement. Refuses an
     empty application: ``STARTS WITH ''`` would match every node in the database.
 
@@ -89,7 +89,7 @@ def application_prefix(app_name: Optional[str]) -> str:
     outside every scope and so never cleaned up."""
     if not app_name:
         raise ValueError("neo4j: refusing a destructive statement without an application id")
-    return descendant_prefix(application_id(app_name))
+    return descendant_prefix(application_id(app_name, namespace))
 
 
 @dataclass

@@ -97,13 +97,9 @@ def main(
             "(default: input dir name).",
         ),
     ] = None,
-    workspace_root: Annotated[
-        Optional[Path],
-        typer.Option(
-            "--workspace-root",
-            help="Directory file keys, module ids and artifact ids are relative to "
-            "(default: --input). Must contain --input.",
-        ),
+    namespace: Annotated[
+        Optional[str],
+        typer.Option("--namespace", help="Identity namespace (default: resolved application name)."),
     ] = None,
     neo4j_uri: Annotated[
         Optional[str],
@@ -321,7 +317,7 @@ def main(
 
         emit=emit,
         app_name=app_name,
-        workspace_root=workspace_root,
+        namespace=namespace,
         neo4j_uri=neo4j_uri,
         neo4j_user=neo4j_user,
         neo4j_password=neo4j_password,
@@ -372,13 +368,12 @@ def main(
     if not options.input.exists():
         logger.error(f"Input path '{options.input}' does not exist.")
         raise typer.Exit(code=1)
-    if options.workspace_root is not None and not options.input.resolve().is_relative_to(
-        options.workspace_root.resolve()
-    ):
-        # Relativizing would yield `..` keys, which the schema forbids.
-        logger.error(
-            f"--input '{options.input}' is not inside --workspace-root '{options.workspace_root}'."
-        )
+    from codeanalyzer.schema.ids import application_id
+    try:
+        application_id(options.app_name if options.app_name is not None else options.input.resolve().name,
+                       options.namespace)
+    except ValueError as exc:
+        logger.error(str(exc))
         raise typer.Exit(code=1)
 
     if options.file_name is not None:

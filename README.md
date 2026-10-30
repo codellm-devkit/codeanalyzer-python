@@ -178,11 +178,8 @@ $ canpy --help
 │                                                                       for the graph              │
 │                                                                       :PyApplication anchor      │
 │                                                                       (default: input dir name). │
-│ --workspace-root                               <path>                 Directory file keys,       │
-│                                                                       module ids and artifact    │
-│                                                                       ids are relative to        │
-│                                                                       (default: --input). Must   │
-│                                                                       contain --input.           │
+│ --namespace                                    <str>                  Identity namespace         │
+│                                                                       (default: application name).│
 │ --neo4j-uri                                    <str>                  Push the graph to a live   │
 │                                                                       Neo4j over Bolt            │
 │                                                                       (incremental); omit to     │
@@ -350,13 +347,19 @@ $ canpy --help
    PY_-namespaced like every other row family so multi-language databases never mingle
    analyzers' edges).
 
-8. **Repository-relative paths for a project inside a larger repo:**
+8. **Namespace-qualified identity for a service inside a larger repo:**
    ```sh
-   canpy --input ./monorepo/services/api --workspace-root ./monorepo
-   # symbol_table key: services/api/app/main.py
+   canpy --input ./monorepo/services/api --app-name api --namespace monorepo
+   # application id: can://monorepo/api
+   # symbol_table key: app/main.py (relative to --input)
    ```
-   Only the published keys and ids change; the application id, signatures and the cache stay
-   as they are.
+   The namespace defaults to the resolved application name: `--app-name api` alone
+   produces `can://api/api`. Both segments are case-sensitive raw strings, encoded as
+   UTF-8 URI components; empty names, controls, separators, `.` and `..` are invalid.
+   JSON envelopes and graph application anchors carry `identity_version: 2`, plus raw
+   `application_name` and `identity_namespace` on the application. `schema_version`
+   remains `2.0.0`. Changing either identity segment rebuilds the cache from source;
+   regenerate legacy outputs rather than translating existing IDs.
 
 ## Analysis levels
 
@@ -421,16 +424,20 @@ just populate more of the same tree:
 ```jsonc
 {
   "schema_version": "2.0.0",
+  "identity_version": 2,
   "language": "python",
   "max_level": 4,                 // the level this run was produced at
   "k_limit": 3,                   // access-path depth bound (--graph-field-depth); L3+ only
   "analyzer": { "name": "codeanalyzer-python", "version": "1.0.0" },
   "application": {
-    "id": "can://<app>",
+    "id": "can://<namespace>/<app>",
     "kind": "application",
+    "identity_version": 2,
+    "application_name": "<app>",
+    "identity_namespace": "<namespace>",
     "symbol_table": {             // relative POSIX path → module
       "pkg/mod.py": {
-        "id": "can://<app>/python/pkg/mod.py",
+        "id": "can://<namespace>/<app>/python/pkg/mod.py",
         "kind": "module",
         "source": "…full file text, stored once per module…",
         "types":     { "<Class>": { "id": "…", "kind": "class", "callables": { /* methods */ } } },
@@ -440,8 +447,8 @@ just populate more of the same tree:
     "call_graph": [ { "src": "can://…/main(a)", "dst": "can://…/helper(x)",
                       "weight": 1, "prov": ["defuse", "jedi"] } ],
     "external_symbols": {         // imported/builtin call targets, keyed by id
-      "can://<app>/@external/os/getcwd":
-        { "id": "can://<app>/@external/os/getcwd", "kind": "external",
+      "can://<namespace>/<app>/@external/os/getcwd":
+        { "id": "can://<namespace>/<app>/@external/os/getcwd", "kind": "external",
           "name": "getcwd", "module": "os" }
     },
     "param_in":  [ { "src": "can://…/main(a)@6:4/actual_in:0", "dst": "can://…/helper(x)@formal_in:0",
@@ -478,7 +485,7 @@ The application envelope also contains three substrate sections:
 - **`artifacts`** — discovered non-code files (manifests, configs, Docker files, CI workflows,
   packaging files, scripts, docs, and legal files) with extraction status (`none`, `partial`, or
   `full`; default `none`), keyed by relative path; each artifact carries the
-  `can://<app>/artifact/<path>` id namespace. Config files carry extracted `config_keys`
+  `can://<namespace>/<app>/artifact/<path>` id namespace. Config files carry extracted `config_keys`
   (keys, values, namespaces, and references) and `DEFINES_CONFIG` Neo4j edges.
 - **`dependencies`** — declared packages with kind (`runtime`/`dev`/`optional`/`build`), spec,
   locked version, and provenance (`prov`): where each binding came from (manifest file, lock file,
@@ -489,7 +496,7 @@ The application envelope also contains three substrate sections:
 Notable properties:
 
 - **Durable `can://` ids** identify every node at callable granularity and above
-  (`can://<app>/python/<file>/<callable-sig>`); nodes below a callable use ordinal ids
+  (`can://<namespace>/<app>/python/<file>/<callable-sig>`); nodes below a callable use ordinal ids
   (`@entry`, `@exit`, `line:col`, `@formal_in:N`, `line:col/actual_in:N`).
 - **`source` lives once per module**; every node's text is the `module.source[span.bytes]` slice.
 - **Cross-function edges** — `call_graph`, `param_in`, `param_out`, `config_uses` — live at **application** scope;
@@ -537,15 +544,15 @@ inheritance, decorators, and call sites are relationships. At `-a 3`/`-a 4` the 
   node.
 
   An `--eager` full run (no `--file-name`) also reconciles the application's artifacts, so a
-  deleted or renamed file, a removed dependency, or re-keying under `--workspace-root` leaves
+  deleted or renamed file or a removed dependency leaves
   nothing stale. Python-owned artifact edges (`HAS_ARTIFACT`, `DECLARES_DEPENDENCY`/`LOCKS` to
   `pkg:pypi/…`, `PY_PROVIDES`, `PY_USES_CONFIG`, `PY_READS_CONFIG_UNRESOLVED`,
   `PY_UNRESOLVED_IMPORT`) are rebuilt. An `:Artifact` or
   `:ConfigKey` the run no longer emits loses its `:PyCanNode` label. An artifact is then deleted only
   if no other analyzer's `HAS_ARTIFACT` still points at it; a config key only if no other analyzer's
   marker (`:JCanNode`, `:TSCanNode`) claims it. A `--lazy` push reconciles nothing, so push once
-  with `--eager` after toggling `--workspace-root`. Config keys written under the pre-1.5.0
-  `can://artifact/<app>/` prefix by a sibling that did not yet mark them are treated as python's.
+  with `--eager` to reconcile changes within the selected namespace/application. Other
+  namespaces and legacy identity roots are outside this scope and remain untouched.
 
 Call-graph endpoints that aren't present in the symbol table (third-party / framework / RPC targets)
 are materialized as `:PyExternal` ghost nodes, mirroring the analyzer's own ghost-node behaviour.
@@ -618,7 +625,7 @@ RETURN src.id, d.var, d.prov
 
 // interprocedural flow through a parameter (level 4)
 MATCH (a:PyBodyNode)-[:PY_PARAM_IN]->(f:PyBodyNode)
-WHERE f.id STARTS WITH "can://myapp/python/src/api.py"
+WHERE f.id STARTS WITH "can://myapp/myapp/python/src/api.py"
 RETURN a.id, f.id
 ```
 
@@ -650,7 +657,7 @@ Apache 2.0 — see [LICENSE](./LICENSE).
 
 ## Polyglot applications: all languages, or none
 
-A `--emit neo4j` push is **destructive**. It sweeps everything under `can://<app>/` that this
+A `--emit neo4j` push is **destructive**. It sweeps everything under `can://<namespace>/<app>/` that this
 analyzer marked, then rewrites what it found. Since the id grammar puts the application outermost,
 every analyzer over the same `<app>` shares that prefix — so a push reclaims stale rows belonging to
 *this* analyzer and, in the shared namespaces, sweeps rows a sibling wrote.

@@ -14,14 +14,14 @@ the contract lives in the spec, the decision log, and the emitter
 Pin the analyzer that produced these samples:
 
 ```
-pip install "codeanalyzer-python==1.0.1"
+pip install "codeanalyzer-python==1.6.2"
 ```
 
 For L4 alias analysis (the Scalpel points-to oracle), install the optional extra —
 without it, L4 degrades to the type-based fallback oracle (still sound, coarser):
 
 ```
-pip install "codeanalyzer-python[scalpel]==1.0.1"
+pip install "codeanalyzer-python[scalpel]==1.6.2"
 ```
 
 ## Schema contract
@@ -57,7 +57,7 @@ no per-language mapping layer is needed (issue #98 closed the old
   `can://…/@external/<module>/<name>` entries in `external_symbols` (keyed by id,
   `kind:"external"`).
 
-Root envelope keys: `schema_version`, `language`, `max_level`,
+Root envelope keys: `identity_version`, `schema_version`, `language`, `max_level`,
 `analyzer{name,version}`, `k_limit` (present at L3+ only), `application`.
 `application` keys: `symbol_table`, `id`, `kind`, `call_graph`, `external_symbols`,
 `param_in`, `param_out`.
@@ -92,8 +92,13 @@ These samples were produced with `--no-venv` on a single-module sample project.
 
 ## Sample files — one per level (cumulative; L1 ⊆ L2 ⊆ L3 ⊆ L4)
 
-Each `analysis.lN.json` carries `"schema_version": "2.0.0"` and `"max_level": N`.
-Pretty-printed for reading; machine paths sanitized to `/path/to`.
+Each `analysis.lN.json` carries `"identity_version": 2`, `"schema_version": "2.0.0"` and `"max_level": N`.
+Application ownership is `can://sample-app/sample-app`, with raw `application_name`
+and `identity_namespace` on the application and graph anchor.
+Pretty-printed for reading; machine paths sanitized to `/path/to/sample-app`.
+The source file mtime is fixed to zero for reproducible graph metadata.
+These references describe the namespace identity contract on this branch; use a
+matching analyzer build when consuming them.
 
 | File | Level | What it adds over the previous level |
 | --- | --- | --- |
@@ -132,11 +137,11 @@ def run(flag):
 ```
 
 ```
-python -m codeanalyzer -i <sample> -a 1 -o <tmp> --no-venv   # → analysis.l1.json
-python -m codeanalyzer -i <sample> -a 2 -o <tmp> --no-venv   # → analysis.l2.json
-python -m codeanalyzer -i <sample> -a 3 -o <tmp> --no-venv   # → analysis.l3.json
-python -m codeanalyzer -i <sample> -a 4 -o <tmp> --no-venv   # → analysis.l4.json
-python -m codeanalyzer -i <sample> --emit neo4j -o <tmp> --no-venv   # → graph.cypher
+python -m codeanalyzer -i <sample> --app-name sample-app --namespace sample-app --app-name sample-app --namespace sample-app --app-name sample-app --namespace sample-app -a 1 -o <tmp> --no-venv   # → analysis.l1.json
+python -m codeanalyzer -i <sample> --app-name sample-app --namespace sample-app --app-name sample-app --namespace sample-app --app-name sample-app --namespace sample-app -a 2 -o <tmp> --no-venv   # → analysis.l2.json
+python -m codeanalyzer -i <sample> --app-name sample-app --namespace sample-app --app-name sample-app --namespace sample-app --app-name sample-app --namespace sample-app -a 3 -o <tmp> --no-venv   # → analysis.l3.json
+python -m codeanalyzer -i <sample> --app-name sample-app --namespace sample-app --app-name sample-app --namespace sample-app --app-name sample-app --namespace sample-app -a 4 -o <tmp> --no-venv   # → analysis.l4.json
+python -m codeanalyzer -i <sample> --app-name sample-app --namespace sample-app --app-name sample-app --namespace sample-app --app-name sample-app --namespace sample-app --emit neo4j -o <tmp> --no-venv   # → graph.cypher
 python -m codeanalyzer --emit schema -o <tmp>                # → schema.json
 ```
 
