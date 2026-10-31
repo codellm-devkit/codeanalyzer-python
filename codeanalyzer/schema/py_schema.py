@@ -24,7 +24,7 @@ from pathlib import Path
 import dataclasses as _dataclasses
 from dataclasses import dataclass, field as _dc_field
 from typing import Any, Dict, List, Optional, Tuple
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, field_validator, model_validator
 from typing_extensions import Literal
 
 
@@ -654,6 +654,14 @@ class PyApplication(BaseModel):
     # Literal tier from L2; dataflow tiers widen the set at L3/L4 (additive).
     config_uses: List[PyConfigUseEdge] = []
     config_reads_unresolved: List[PyConfigRead] = []
+
+
+    @field_validator("identity_version", mode="before")
+    @classmethod
+    def validate_identity_version(cls, value):
+        if type(value) is not int or value != 2:
+            raise ValueError("application identity_version must be integer 2")
+        return value
 
 
 @builder

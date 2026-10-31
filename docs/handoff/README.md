@@ -137,11 +137,11 @@ def run(flag):
 ```
 
 ```
-python -m codeanalyzer -i <sample> --app-name sample-app --namespace sample-app --app-name sample-app --namespace sample-app --app-name sample-app --namespace sample-app -a 1 -o <tmp> --no-venv   # → analysis.l1.json
-python -m codeanalyzer -i <sample> --app-name sample-app --namespace sample-app --app-name sample-app --namespace sample-app --app-name sample-app --namespace sample-app -a 2 -o <tmp> --no-venv   # → analysis.l2.json
-python -m codeanalyzer -i <sample> --app-name sample-app --namespace sample-app --app-name sample-app --namespace sample-app --app-name sample-app --namespace sample-app -a 3 -o <tmp> --no-venv   # → analysis.l3.json
-python -m codeanalyzer -i <sample> --app-name sample-app --namespace sample-app --app-name sample-app --namespace sample-app --app-name sample-app --namespace sample-app -a 4 -o <tmp> --no-venv   # → analysis.l4.json
-python -m codeanalyzer -i <sample> --app-name sample-app --namespace sample-app --app-name sample-app --namespace sample-app --app-name sample-app --namespace sample-app --emit neo4j -o <tmp> --no-venv   # → graph.cypher
+python -m codeanalyzer -i <sample> --app-name sample-app --namespace sample-app -a 1 -o <tmp> --no-venv   # → analysis.l1.json
+python -m codeanalyzer -i <sample> --app-name sample-app --namespace sample-app -a 2 -o <tmp> --no-venv   # → analysis.l2.json
+python -m codeanalyzer -i <sample> --app-name sample-app --namespace sample-app -a 3 -o <tmp> --no-venv   # → analysis.l3.json
+python -m codeanalyzer -i <sample> --app-name sample-app --namespace sample-app -a 4 -o <tmp> --no-venv   # → analysis.l4.json
+python -m codeanalyzer -i <sample> --app-name sample-app --namespace sample-app --emit neo4j -o <tmp> --no-venv   # → graph.cypher
 python -m codeanalyzer --emit schema -o <tmp>                # → schema.json
 ```
 

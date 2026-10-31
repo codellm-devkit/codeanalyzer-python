@@ -278,6 +278,26 @@ class _EdgeBatches(RowBuilder):
         return GraphRows([], [])
 
 
+def _validate_stored_identity(session, app_name, namespace):
+    """Read the selected anchor before schema or graph mutations; absence is fresh."""
+    from codeanalyzer.schema.ids import application_id
+
+    app_id = application_id(app_name, namespace)
+    record = session.run(
+        "MATCH (a:PyApplication {id: $id}) RETURN properties(a) AS identity",
+        id=app_id,
+    ).single()
+    if record is None:
+        return
+    metadata = record["identity"]
+    expected_namespace = app_name if namespace is None else namespace
+    if (type(metadata.get("identity_version")) is not int
+            or metadata.get("identity_version") != 2
+            or metadata.get("application_name") != app_name
+            or metadata.get("identity_namespace") != expected_namespace):
+        raise ValueError("Stored application identity is missing or incompatible")
+
+
 def bolt_writer_streaming(app, app_name, sig_to_id, analyzer, cfg: BoltConfig, full_run: bool,
                           eager: bool = False, namespace: str | None = None) -> None:
     """:func:`bolt_writer` without materializing :class:`GraphRows`: the projection
@@ -301,6 +321,7 @@ def bolt_writer_streaming(app, app_name, sig_to_id, analyzer, cfg: BoltConfig, f
 
     try:
         with session() as s:
+            _validate_stored_identity(s, app_name, namespace)
             for stmt in CONSTRAINTS + INDEXES:
                 s.run(stmt).consume()
             db_hash = {rec["k"]: rec["h"] for rec in s.run(
@@ -350,11 +371,6 @@ def bolt_writer(rows: GraphRows, cfg: BoltConfig, full_run: bool, eager: bool = 
         return driver.session(**session_kwargs)
 
     try:
-        # 1. schema (DDL runs in its own autocommit transactions).
-        with session() as s:
-            for stmt in [*CONSTRAINTS, *INDEXES]:
-                s.run(stmt)
-
         # The application anchor. Every destructive statement below is scoped to
         # ``can://<app>/``; an empty application is refused up front rather than
         # becoming ``STARTS WITH ''`` (every node in the database). The root row is
@@ -371,6 +387,14 @@ def bolt_writer(rows: GraphRows, cfg: BoltConfig, full_run: bool, eager: bool = 
         namespace = next((n.props.get("identity_namespace") for n in rows.nodes
                           if n.labels and n.labels[0] == "PyApplication"), None)
         app_prefix = application_prefix(app_name, namespace)
+
+        with session() as s:
+            _validate_stored_identity(s, app_name, namespace)
+
+        # 1. schema (DDL runs in its own autocommit transactions).
+        with session() as s:
+            for stmt in [*CONSTRAINTS, *INDEXES]:
+                s.run(stmt)
 
         # Partition nodes by owning module (an in-memory field, never emitted, #173);
         # shared nodes have none.

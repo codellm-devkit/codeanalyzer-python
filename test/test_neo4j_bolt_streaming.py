@@ -26,3 +26,47 @@ def test_batches_do_not_retain_the_graph(monkeypatch):
         tracemalloc.stop()
     assert sum(sizes) == 100_000 and max(sizes) <= bolt.BATCH
     assert peak < 4 * 1024 * 1024, f"streaming retained {peak} bytes for 100k rows"
+
+
+import sys
+from types import SimpleNamespace
+import pytest
+from codeanalyzer.neo4j.rows import GraphRows, NodeRow
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("metadata", [
+    {}, {"identity_version": 2, "application_name": "app"},
+    {"identity_version": 2, "identity_namespace": "team"},
+    {"identity_version": 2.0, "application_name": "app", "identity_namespace": "team"},
+    {"identity_version": True, "application_name": "app", "identity_namespace": "team"},
+    {"identity_version": 2, "application_name": "other", "identity_namespace": "team"},
+    {"identity_version": 2, "application_name": "app", "identity_namespace": "other"},
+])
+def test_stored_identity_rejected_before_any_write(monkeypatch, streaming, metadata):
+    queries = []
+    class Session:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def run(self, query, **params):
+            queries.append(query)
+            assert query.startswith("MATCH (a:PyApplication"), "write or unrelated read before identity guard"
+            assert params == {"id": "can://team/app"}
+            return SimpleNamespace(single=lambda: {"identity": metadata})
+    driver = SimpleNamespace(session=lambda **kw: Session(), close=lambda: None)
+    monkeypatch.setitem(sys.modules, "neo4j", SimpleNamespace(GraphDatabase=SimpleNamespace(driver=lambda *a, **kw: driver)))
+    cfg = bolt.BoltConfig("bolt://unused", "user", "password")
+    with pytest.raises(ValueError, match="identity"):
+        if streaming:
+            bolt.bolt_writer_streaming(SimpleNamespace(symbol_table={}), "app", {}, None, cfg, True, namespace="team")
+        else:
+            rows = GraphRows([NodeRow(["PyApplication"], "id", "can://team/app", {"name": "app", "identity_namespace": "team"})], [])
+            bolt.bolt_writer(rows, cfg, True)
+    assert len(queries) == 1
+
+
+def test_stored_identity_allows_fresh_or_matching_anchor():
+    for metadata in [None, {"identity_version": 2, "application_name": "app", "identity_namespace": "team"}]:
+        result = None if metadata is None else {"identity": metadata}
+        session = SimpleNamespace(run=lambda *args, **kwargs: SimpleNamespace(single=lambda: result))
+        bolt._validate_stored_identity(session, "app", "team")
