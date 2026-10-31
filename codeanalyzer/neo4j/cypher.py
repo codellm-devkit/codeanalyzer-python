@@ -43,7 +43,7 @@ from codeanalyzer.schema.ids import application_id
 BATCH = 500
 
 
-def render_cypher(rows: GraphRows, app_name: str) -> str:
+def render_cypher(rows: GraphRows, app_name: str, namespace: str | None = None) -> str:
     out: List[str] = []
 
     out.append("// ── constraints & indexes ──")
@@ -54,7 +54,7 @@ def render_cypher(rows: GraphRows, app_name: str) -> str:
 
     out.append("")
     out.append("// ── wipe this project's prior subgraph (externals/packages/decorators are shared) ──")
-    out.append(_wipe(app_name))
+    out.append(_wipe(app_name, namespace))
 
     out.append("")
     out.append("// ── nodes ──")
@@ -68,7 +68,7 @@ def render_cypher(rows: GraphRows, app_name: str) -> str:
     return "\n".join(out)
 
 
-def _wipe(app_name: str) -> str:
+def _wipe(app_name: str, namespace: str | None = None) -> str:
     """The application root by equality plus everything under ``can://<app>/`` (#173).
     Scoped by id prefix, so it is one application by construction — a second python
     app sharing a module path, and a sibling analyzer's :Py* graph, are outside it.
@@ -81,8 +81,8 @@ def _wipe(app_name: str) -> str:
     instead of leaving them to accumulate. That is deliberate, and it is the one
     behavioural widening here: a cross-language edge into a shared :Artifact is
     dropped by a python snapshot and restored on that analyzer's next push."""
-    prefix = cypher_value(application_prefix(app_name))
-    app_id = cypher_value(application_id(app_name))
+    prefix = cypher_value(application_prefix(app_name, namespace))
+    app_id = cypher_value(application_id(app_name, namespace))
     return "\n".join(
         [
             f"MATCH (x:{CAN_NODE}) WHERE x.id = {app_id} OR x.id STARTS WITH {prefix}",
@@ -259,7 +259,7 @@ class _EdgeStreamBuilder(RowBuilder):
         return GraphRows([], [])
 
 
-def write_cypher_streaming(fh, app, app_name: str, sig_to_id: dict, analyzer=None) -> None:
+def write_cypher_streaming(fh, app, app_name: str, sig_to_id: dict, analyzer=None, namespace: str | None = None) -> None:
     """Write the ``graph.cypher`` snapshot for ``app`` to ``fh`` without holding the
     node/edge rows or the rendered text in memory (two projection passes: nodes,
     then edges gated on the node key set). Rows come in emission order rather than
@@ -272,12 +272,12 @@ def write_cypher_streaming(fh, app, app_name: str, sig_to_id: dict, analyzer=Non
     for stmt in INDEXES:
         fh.write(f"{stmt};\n")
     fh.write("\n// ── wipe this project's prior subgraph (externals/packages/decorators are shared) ──\n")
-    fh.write(_wipe(app_name) + "\n")
+    fh.write(_wipe(app_name, namespace) + "\n")
     fh.write("\n// ── nodes ──\n")
     nodes_b = _NodeStreamBuilder(fh)
-    project(app, app_name, sig_to_id, analyzer=analyzer, builder=nodes_b)
+    project(app, app_name, sig_to_id, analyzer=analyzer, namespace=namespace, builder=nodes_b)
     keys = nodes_b._keys
     del nodes_b
 
     fh.write("\n// ── relationships ──\n")
-    project(app, app_name, sig_to_id, analyzer=analyzer, builder=_EdgeStreamBuilder(keys, fh))
+    project(app, app_name, sig_to_id, analyzer=analyzer, namespace=namespace, builder=_EdgeStreamBuilder(keys, fh))

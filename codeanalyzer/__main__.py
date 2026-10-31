@@ -97,6 +97,10 @@ def main(
             "(default: input dir name).",
         ),
     ] = None,
+    namespace: Annotated[
+        Optional[str],
+        typer.Option("--namespace", help="Identity namespace (default: resolved application name)."),
+    ] = None,
     neo4j_uri: Annotated[
         Optional[str],
         typer.Option(
@@ -313,6 +317,7 @@ def main(
 
         emit=emit,
         app_name=app_name,
+        namespace=namespace,
         neo4j_uri=neo4j_uri,
         neo4j_user=neo4j_user,
         neo4j_password=neo4j_password,
@@ -362,6 +367,13 @@ def main(
         raise typer.Exit(code=1)
     if not options.input.exists():
         logger.error(f"Input path '{options.input}' does not exist.")
+        raise typer.Exit(code=1)
+    from codeanalyzer.schema.ids import application_id
+    try:
+        application_id(options.app_name if options.app_name is not None else options.input.resolve().name,
+                       options.namespace)
+    except ValueError as exc:
+        logger.error(str(exc))
         raise typer.Exit(code=1)
 
     if options.file_name is not None:

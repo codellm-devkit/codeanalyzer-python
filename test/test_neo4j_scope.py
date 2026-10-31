@@ -41,7 +41,7 @@ def test_attribute_and_variable_ids_hang_under_their_owner_can_id():
     for n in attrs + variables:
         owner, _, leaf = n.value.rpartition("/")
         assert owner in owners, f"{n.value} is not under a declared owner"
-        assert n.value.startswith("can://sample-app/python/")
+        assert n.value.startswith("can://sample-app/sample-app/python/")
     assert all("@" in n.value.rsplit("/", 1)[1] for n in variables)  # <name>@<line>
 
 
@@ -62,8 +62,8 @@ def test_two_application_names_never_share_an_id_keyed_node():
 
 
 def test_prefix_helpers_guard_the_two_ways_this_goes_wrong():
-    assert descendant_prefix("can://app/python/src/foo.py") == "can://app/python/src/foo.py/"
-    assert application_prefix("app") == "can://app/"
+    assert descendant_prefix("can://app/app/python/src/foo.py") == "can://app/app/python/src/foo.py/"
+    assert application_prefix("app") == "can://app/app/"
     for bad in ("", None):
         with pytest.raises(ValueError):
             application_prefix(bad)
@@ -71,8 +71,8 @@ def test_prefix_helpers_guard_the_two_ways_this_goes_wrong():
 
 def test_row_builder_lifts_module_and_marks_every_can_id():
     b = RowBuilder()
-    r1 = b.node(["PyModule"], "id", "can://app/python/m.py", {"_module": "m.py", "x": 1})
-    b.node(["Artifact"], "id", "can://app/artifact/Dockerfile", {"_module": "Dockerfile"})
+    r1 = b.node(["PyModule"], "id", "can://app/app/python/m.py", {"_module": "m.py", "x": 1})
+    b.node(["Artifact"], "id", "can://app/app/artifact/Dockerfile", {"_module": "Dockerfile"})
     b.node(["PyDecorator"], "name", "functools.lru_cache", {"name": "functools.lru_cache"})
     rows = b.finish()
     by = {n.value: n for n in rows.nodes}
@@ -81,8 +81,8 @@ def test_row_builder_lifts_module_and_marks_every_can_id():
     # The artifact id used to be can://artifact/app/... — outside every
     # application prefix, so it never carried the marker and no destructive
     # statement could reach it. Nested under the app it is an ordinary can node.
-    assert CAN_NODE in by["can://app/artifact/Dockerfile"].labels
-    assert by["can://app/artifact/Dockerfile"].module == "Dockerfile"
+    assert CAN_NODE in by["can://app/app/artifact/Dockerfile"].labels
+    assert by["can://app/app/artifact/Dockerfile"].module == "Dockerfile"
     assert CAN_NODE not in by["functools.lru_cache"].labels
 
 
@@ -98,7 +98,7 @@ def test_two_applications_project_as_two_distinct_roots():
     ]
     assert [r.key_prop for r in roots] == ["id", "id"], \
         "the root must merge on its id, not on a display name"
-    assert [r.value for r in roots] == ["can://svc-quotes", "can://svc-orders"]
+    assert [r.value for r in roots] == ["can://svc-quotes/svc-quotes", "can://svc-orders/svc-orders"]
     assert [r.props["name"] for r in roots] == ["svc-quotes", "svc-orders"], \
         "name survives as a display property"
     assert roots[0].value != roots[1].value, "two services must not share a root node"

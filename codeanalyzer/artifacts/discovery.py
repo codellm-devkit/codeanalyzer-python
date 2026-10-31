@@ -117,6 +117,7 @@ def _classify(rel_posix: str) -> Tuple[str, List[str]] | None:
 def discover_artifacts(
     project_dir: Path,
     app_name: str,
+    namespace: str | None = None,
     *,
     capture_text: bool = True,
     exclude_paths: Iterable[Path] = (),
@@ -146,7 +147,9 @@ def discover_artifacts(
     decodable file is captured in full; ``capture_text=False`` empties
     ``source`` everywhere (inventory otherwise identical), and an undecodable
     file gets ``""`` as ``binary``. ``sha256``/``size_bytes`` always reflect
-    the full file regardless."""
+    the full file regardless.
+
+    ``namespace`` qualifies identity; keys and ``path`` stay project-relative."""
     out: Dict[str, PyArtifact] = {}
     excluded = _resolve_exclusions(project_dir, exclude_paths)
     for path in sorted(project_dir.rglob("*")):
@@ -185,7 +188,7 @@ def discover_artifacts(
             fmt, source = "binary", ""
 
         out[rel_posix] = PyArtifact(
-            id=artifact_id(app_name, rel_posix), path=rel_posix, format=fmt,
+            id=artifact_id(app_name, rel_posix, namespace), path=rel_posix, format=fmt,
             roles=list(roles), size_bytes=len(raw),
             sha256=hashlib.sha256(raw).hexdigest(),
             source=source,

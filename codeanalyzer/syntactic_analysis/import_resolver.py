@@ -18,12 +18,13 @@ def _dotted_candidates(app: PyApplication, project_dir: Union[Path, str]) -> Dic
     """dotted module path -> file_key, for every analyzed module.
 
     ``pkg/util.py`` -> ``pkg.util``; ``pkg/__init__.py`` -> ``pkg``.
-    file_keys share project_dir's form (both come from the same CLI arg),
-    so os.path.relpath keeps mixed absolute/relative setups consistent.
+    Core file keys are application-relative; direct builder callers may still
+    provide absolute paths, which are relativized against project_dir.
     """
     mapping: Dict[str, str] = {}
     for file_key in app.symbol_table:
-        rel = os.path.relpath(file_key, str(project_dir))
+        rel = (os.path.relpath(file_key, str(project_dir))
+               if Path(file_key).is_absolute() else file_key)
         if rel.startswith(".."):
             continue
         parts = Path(rel).with_suffix("").parts
@@ -57,7 +58,8 @@ def resolve_imports(app: PyApplication, project_dir: Union[Path, str]) -> None:
     """Stamp ``resolved_module`` on every import of every module, in place."""
     candidates = _dotted_candidates(app, project_dir)
     for file_key, module in app.symbol_table.items():
-        rel = os.path.relpath(file_key, str(project_dir))
+        rel = (os.path.relpath(file_key, str(project_dir))
+               if Path(file_key).is_absolute() else file_key)
         importer_parts = Path(rel).parts
         for im in module.imports or []:
             if not im.module:

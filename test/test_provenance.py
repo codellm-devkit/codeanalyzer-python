@@ -105,7 +105,7 @@ def _envelope(version=None):
 
     analyzer = PyAnalyzerInfo(name="codeanalyzer-python", version=version, config={}) \
         if version is not None else PyAnalyzerInfo()
-    return Analysis(analyzer=analyzer, application=PyApplication(symbol_table={}))
+    return Analysis(identity_version=2, analyzer=analyzer, application=PyApplication(symbol_table={}))
 
 
 def test_cache_analyzer_matches_none_envelope_is_false():

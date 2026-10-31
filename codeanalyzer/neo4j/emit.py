@@ -52,11 +52,17 @@ def emit_schema(output: Optional[Path]) -> None:
 def emit_neo4j(analysis: Analysis, options: AnalysisOptions) -> None:
     """Project the analysis to a graph and write it: a live Bolt push when
     ``--neo4j-uri`` is set, otherwise a self-contained ``graph.cypher`` snapshot."""
-    app_name = options.app_name or Path(options.input).resolve().name
-    # ``assign_ids`` is idempotent: it stamps every module/class/callable with its
-    # canonical ``can://`` id and returns the ``signature -> id`` map the projection
-    # keys nodes on, so the JSON and Neo4j projections agree.
-    sig_to_id = assign_ids(analysis.application, app_name)
+    app_name = options.app_name if options.app_name is not None else Path(options.input).resolve().name
+    # Ownership changes require regeneration from source: never re-key an existing
+    # analysis tree while its body/edge/artifact references still carry old IDs.
+    from codeanalyzer.schema.ids import application_id
+    expected = application_id(app_name, options.namespace)
+    app = analysis.application
+    if (analysis.identity_version != 2 or app.identity_version != 2
+            or app.id != expected or app.application_name != app_name
+            or app.identity_namespace != (app_name if options.namespace is None else options.namespace)):
+        raise ValueError("analysis identity does not match requested scope; regenerate from source")
+    sig_to_id = assign_ids(app, app_name, options.namespace)
 
     if options.neo4j_uri:
         cfg = BoltConfig(
@@ -69,7 +75,7 @@ def emit_neo4j(analysis: Analysis, options: AnalysisOptions) -> None:
         # is what permits any deletion at all (#171).
         full_run = options.file_name is None
         bolt_writer_streaming(analysis.application, app_name, sig_to_id, analysis.analyzer, cfg,
-                              full_run, eager=options.rebuild_analysis)
+                              full_run, eager=options.rebuild_analysis, namespace=options.namespace)
         return
 
     out_dir = options.output if options.output is not None else Path.cwd()
@@ -77,5 +83,5 @@ def emit_neo4j(analysis: Analysis, options: AnalysisOptions) -> None:
     target = out_dir / GRAPH_CYPHER
     with target.open("w") as fh:  # LOW-MEM PATCH: streamed, see cypher.write_cypher_streaming
         write_cypher_streaming(fh, analysis.application, app_name, sig_to_id,
-                               analyzer=analysis.analyzer)
+                               analyzer=analysis.analyzer, namespace=options.namespace)
     logger.info(f"Neo4j graph written to {target}")

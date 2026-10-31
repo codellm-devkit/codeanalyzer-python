@@ -1,18 +1,19 @@
 import re
 
-# ``can://<app>`` — the application root: scheme plus exactly one segment. The
-# language sits INSIDE it, so an old-shape ``can://python/<app>`` id fails here
-# (it has two segments) rather than flowing through as if nothing had moved.
-_APP_ID = re.compile(r"^can://[^/]+$")
+# Namespace-qualified ownership requires exactly two root segments.
+_APP_ID = re.compile(r"^can://[^/]+/[^/]+$")
 
 
 def _assert_id_grammar(app: dict) -> None:
-    """Every durable id is ``can://<app>/...`` — code under ``python/``, and the
+    """Every durable id is ``can://<namespace>/<app>/...`` — code under ``python/``, and the
     two language-neutral reserved segments ``@external`` and ``artifact`` directly
     under the app. Asserted on the payload, not on the minting functions, so a
     hand-built or cached id cannot slip past."""
+    from codeanalyzer.schema.ids import application_id
     app_id = app["id"]
-    assert _APP_ID.match(app_id), f"application id must be can://<app>, got {app_id!r}"
+    assert app["identity_version"] == 2
+    assert app_id == application_id(app["application_name"], app["identity_namespace"])
+    assert _APP_ID.match(app_id), f"application id must be can://<namespace>/<app>, got {app_id!r}"
     code = f"{app_id}/python/"
     for key, mod in app["symbol_table"].items():
         assert mod["id"].startswith(code), f"module {key} id {mod['id']!r} is not under {code!r}"
@@ -61,6 +62,7 @@ def _iter_callables(app):
 
 def assert_conformant(payload: dict, max_level: int) -> None:
     _assert_no_nulls(payload)
+    assert payload["identity_version"] == 2
     assert payload["schema_version"] == "2.0.0"
     app = payload["application"]
     _assert_id_grammar(app)

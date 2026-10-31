@@ -159,205 +159,136 @@ $ canpy --help
 
  Static Analysis on Python source code using Jedi and Tree sitter.
 
-╭─ Options ────────────────────────────────────────────────────────────────────╮
-│ --version                                                   Show the canpy   │
-│                                                             version and      │
-│                                                             exit.            │
-│ --input            -i                     <path>            Path to the      │
-│                                                             project root     │
-│                                                             directory (not   │
-│                                                             required for     │
-│                                                             --emit schema).  │
-│ --output           -o                     <path>            Output directory │
-│                                                             for artifacts.   │
-│ --emit                                    <json|neo4j|sche  Output target:   │
-│                                           ma>               json             │
-│                                                             (analysis.json,  │
-│                                                             default) | neo4j │
-│                                                             (graph.cypher or │
-│                                                             live Bolt push)  │
-│                                                             | schema (the    │
-│                                                             Neo4j            │
-│                                                             schema.json      │
-│                                                             contract).       │
-│                                                             [default: json]  │
-│ --app-name                                <str>             Logical          │
-│                                                             application name │
-│                                                             for the graph    │
-│                                                             :PyApplication   │
-│                                                             anchor (default: │
-│                                                             input dir name). │
-│ --neo4j-uri                               <str>             Push the graph   │
-│                                                             to a live Neo4j  │
-│                                                             over Bolt        │
-│                                                             (incremental);   │
-│                                                             omit to write    │
-│                                                             graph.cypher.    │
-│                                                             [env var:        │
-│                                                             NEO4J_URI]       │
-│ --neo4j-user                              <str>             Neo4j username.  │
-│                                                             [env var:        │
-│                                                             NEO4J_USERNAME]  │
-│                                                             [default: neo4j] │
-│ --neo4j-password                          <str>             Neo4j password.  │
-│                                                             Prefer the env   │
-│                                                             var over the     │
-│                                                             flag (the flag   │
-│                                                             is visible in    │
-│                                                             shell history /  │
-│                                                             process list).   │
-│                                                             [env var:        │
-│                                                             NEO4J_PASSWORD]  │
-│                                                             [default: neo4j] │
-│ --neo4j-database                          <str>             Neo4j database   │
-│                                                             name (default:   │
-│                                                             server default). │
-│                                                             [env var:        │
-│                                                             NEO4J_DATABASE]  │
-│ --analysis-level   -a                     <int range>       Analysis depth:  │
-│                                           [1<=x<=4]         1=symbol         │
-│                                                             table+Jedi call  │
-│                                                             graph,           │
-│                                                             2=+defuse-linker │
-│                                                             call graph,      │
-│                                                             3=+native        │
-│                                                             intraprocedural  │
-│                                                             dataflow         │
-│                                                             (CFG/PDG),       │
-│                                                             4=+interprocedu… │
-│                                                             SDG              │
-│                                                             (param/summary   │
-│                                                             edges,           │
-│                                                             alias-aware      │
-│                                                             DDG).            │
-│                                                             [default: (1)]   │
-│ --graphs                                  <str>             Level 3+ only:   │
-│                                                             comma-separated  │
-│                                                             program-graph    │
-│                                                             sections to emit │
-│                                                             (cfg, dfg, pdg,  │
-│                                                             sdg). Default:   │
-│                                                             cfg,dfg,pdg.     │
-│                                                             `dfg` emits the  │
-│                                                             PDG's data edges │
-│                                                             only; `sdg`      │
-│                                                             requires -a 4.   │
-│                                                             Incompatible     │
-│                                                             with --emit      │
-│                                                             neo4j (always    │
-│                                                             full-depth).     │
-│                                                             [default:        │
-│                                                             (cfg,dfg,pdg)]   │
-│ --graph-field-de…                         <int range>       Level 3 only:    │
-│                                           [x>=1]            k-limit on       │
-│                                                             access-path      │
-│                                                             depth (x.f.g.h   │
-│                                                             with k=3 becomes │
-│                                                             x.f.g.*).        │
-│                                                             Mandatory bound  │
-│                                                             — it is what     │
-│                                                             guarantees the   │
-│                                                             interprocedural  │
-│                                                             fixpoint         │
-│                                                             terminates.      │
-│                                                             [default: 3]     │
-│ --ray                  --no-ray                             Enable Ray for   │
-│                                                             distributed      │
-│                                                             analysis.        │
-│                                                             [default:        │
-│                                                             no-ray]          │
-│ --eager                --lazy                               Enable eager or  │
-│                                                             lazy analysis.   │
-│                                                             Defaults to      │
-│                                                             lazy. Also gates │
-│                                                             every            │
-│                                                             destructive step │
-│                                                             of a '--emit     │
-│                                                             neo4j' Bolt      │
-│                                                             push: a lazy     │
-│                                                             push only adds   │
-│                                                             and updates, an  │
-│                                                             eager one also   │
-│                                                             removes          │
-│                                                             declarations and │
-│                                                             edges the source │
-│                                                             no longer has.   │
-│                                                             [default: lazy]  │
-│ --skip-tests           --include-tests                      Skip test files  │
-│                                                             in analysis.     │
-│                                                             [default:        │
-│                                                             skip-tests]      │
-│ --no-venv              --venv                               Skip virtualenv  │
-│                                                             creation and     │
-│                                                             dependency       │
-│                                                             installation;    │
-│                                                             resolve imports  │
-│                                                             against the      │
-│                                                             ambient Python   │
-│                                                             environment      │
-│                                                             instead.         │
-│                                                             [default: venv]  │
-│ --resolve-instal…                                           Additionally     │
-│                                                             bind imports via │
-│                                                             the project      │
-│                                                             venv's installed │
-│                                                             metadata         │
-│                                                             (*.dist-info);   │
-│                                                             output becomes   │
-│                                                             machine-depende… │
-│                                                             (prov:           │
-│                                                             installed-metad… │
-│ --file-name                               <path>            Analyze only the │
-│                                                             specified file   │
-│                                                             (relative to     │
-│                                                             input            │
-│                                                             directory).      │
-│ --cache-dir        -c                     <path>            Directory to     │
-│                                                             store analysis   │
-│                                                             cache. Defaults  │
-│                                                             to               │
-│                                                             '.codeanalyzer'  │
-│                                                             in the input     │
-│                                                             directory.       │
-│ --clear-cache          --keep-cache                         Clear cache      │
-│                                                             after analysis.  │
-│                                                             By default,      │
-│                                                             cache is         │
-│                                                             retained.        │
-│                                                             [default:        │
-│                                                             keep-cache]      │
-│                    -v                     <int>             Increase         │
-│                                                             verbosity: -v,   │
-│                                                             -vv, -vvv        │
-│                                                             [default: 0]     │
-│ --entrypoint-rul…                         <path>            Extra entrypoint │
-│                                                             rules file       │
-│                                                             (YAML).          │
-│                                                             Repeatable;      │
-│                                                             merges with the  │
-│                                                             shipped rules. A │
-│                                                             malformed file   │
-│                                                             is an error.     │
-│ --artifact-text        --no-artifact-…                      Capture verbatim │
-│                                                             `source` text on │
-│                                                             discovered       │
-│                                                             artifacts.       │
-│                                                             `source` is the  │
-│                                                             whole file;      │
-│                                                             --no-artifact-t… │
-│                                                             empties it       │
-│                                                             everywhere       │
-│                                                             (inventory       │
-│                                                             unchanged).      │
-│                                                             sha256/size_byt… │
-│                                                             always reflect   │
-│                                                             the full file.   │
-│                                                             [default:        │
-│                                                             artifact-text]   │
-│ --help                                                      Show this        │
-│                                                             message and      │
-│                                                             exit.            │
-╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────────────────────────╮
+│ --version                                                             Show the canpy version and │
+│                                                                       exit.                      │
+│ --input              -i                        <path>                 Path to the project root   │
+│                                                                       directory (not required    │
+│                                                                       for --emit schema).        │
+│ --output             -o                        <path>                 Output directory for       │
+│                                                                       artifacts.                 │
+│ --emit                                         <json|neo4j|schema>    Output target: json        │
+│                                                                       (analysis.json, default) | │
+│                                                                       neo4j (graph.cypher or     │
+│                                                                       live Bolt push) | schema   │
+│                                                                       (the Neo4j schema.json     │
+│                                                                       contract).                 │
+│                                                                       [default: json]            │
+│ --app-name                                     <str>                  Logical application name   │
+│                                                                       for the graph              │
+│                                                                       :PyApplication anchor      │
+│                                                                       (default: input dir name). │
+│ --namespace                                    <str>                  Identity namespace         │
+│                                                                       (default: application name).│
+│ --neo4j-uri                                    <str>                  Push the graph to a live   │
+│                                                                       Neo4j over Bolt            │
+│                                                                       (incremental); omit to     │
+│                                                                       write graph.cypher.        │
+│                                                                       [env var: NEO4J_URI]       │
+│ --neo4j-user                                   <str>                  Neo4j username.            │
+│                                                                       [env var: NEO4J_USERNAME]  │
+│                                                                       [default: neo4j]           │
+│ --neo4j-password                               <str>                  Neo4j password. Prefer the │
+│                                                                       env var over the flag (the │
+│                                                                       flag is visible in shell   │
+│                                                                       history / process list).   │
+│                                                                       [env var: NEO4J_PASSWORD]  │
+│                                                                       [default: neo4j]           │
+│ --neo4j-database                               <str>                  Neo4j database name        │
+│                                                                       (default: server default). │
+│                                                                       [env var: NEO4J_DATABASE]  │
+│ --analysis-level     -a                        <int range> [1<=x<=4]  Analysis depth: 1=symbol   │
+│                                                                       table+Jedi call graph,     │
+│                                                                       2=+defuse-linker call      │
+│                                                                       graph, 3=+native           │
+│                                                                       intraprocedural dataflow   │
+│                                                                       (CFG/PDG),                 │
+│                                                                       4=+interprocedural SDG     │
+│                                                                       (param/summary edges,      │
+│                                                                       alias-aware DDG).          │
+│                                                                       [default: (1)]             │
+│ --graphs                                       <str>                  Level 3+ only:             │
+│                                                                       comma-separated            │
+│                                                                       program-graph sections to  │
+│                                                                       emit (cfg, dfg, pdg, sdg). │
+│                                                                       Default: cfg,dfg,pdg.      │
+│                                                                       `dfg` emits the PDG's data │
+│                                                                       edges only; `sdg` requires │
+│                                                                       -a 4. Incompatible with    │
+│                                                                       --emit neo4j (always       │
+│                                                                       full-depth).               │
+│                                                                       [default: (cfg,dfg,pdg)]   │
+│ --graph-field-depth                            <int range> [x>=1]     Level 3 only: k-limit on   │
+│                                                                       access-path depth (x.f.g.h │
+│                                                                       with k=3 becomes x.f.g.*). │
+│                                                                       Mandatory bound — it is    │
+│                                                                       what guarantees the        │
+│                                                                       interprocedural fixpoint   │
+│                                                                       terminates.                │
+│                                                                       [default: 3]               │
+│ --ray                    --no-ray                                     Enable Ray for distributed │
+│                                                                       analysis.                  │
+│                                                                       [default: no-ray]          │
+│ --eager                  --lazy                                       Enable eager or lazy       │
+│                                                                       analysis. Defaults to      │
+│                                                                       lazy. Also gates every     │
+│                                                                       destructive step of a      │
+│                                                                       '--emit neo4j' Bolt push:  │
+│                                                                       a lazy push only adds and  │
+│                                                                       updates, an eager one also │
+│                                                                       removes declarations and   │
+│                                                                       edges the source no longer │
+│                                                                       has.                       │
+│                                                                       [default: lazy]            │
+│ --skip-tests             --include-tests                              Skip test files in         │
+│                                                                       analysis.                  │
+│                                                                       [default: skip-tests]      │
+│ --no-venv                --venv                                       Skip virtualenv creation   │
+│                                                                       and dependency             │
+│                                                                       installation; resolve      │
+│                                                                       imports against the        │
+│                                                                       ambient Python environment │
+│                                                                       instead.                   │
+│                                                                       [default: venv]            │
+│ --resolve-installed                                                   Additionally bind imports  │
+│                                                                       via the project venv's     │
+│                                                                       installed metadata         │
+│                                                                       (*.dist-info); output      │
+│                                                                       becomes machine-dependent  │
+│                                                                       (prov:                     │
+│                                                                       installed-metadata).       │
+│ --file-name                                    <path>                 Analyze only the specified │
+│                                                                       file (relative to input    │
+│                                                                       directory).                │
+│ --cache-dir          -c                        <path>                 Directory to store         │
+│                                                                       analysis cache. Defaults   │
+│                                                                       to '.codeanalyzer' in the  │
+│                                                                       input directory.           │
+│ --clear-cache            --keep-cache                                 Clear cache after          │
+│                                                                       analysis. By default,      │
+│                                                                       cache is retained.         │
+│                                                                       [default: keep-cache]      │
+│                      -v                        <int>                  Increase verbosity: -v,    │
+│                                                                       -vv, -vvv                  │
+│                                                                       [default: 0]               │
+│ --entrypoint-rules                             <path>                 Extra entrypoint rules     │
+│                                                                       file (YAML). Repeatable;   │
+│                                                                       merges with the shipped    │
+│                                                                       rules. A malformed file is │
+│                                                                       an error.                  │
+│ --artifact-text          --no-artifact-text                           Capture verbatim `source`  │
+│                                                                       text on discovered         │
+│                                                                       artifacts. `source` is the │
+│                                                                       whole file;                │
+│                                                                       --no-artifact-text empties │
+│                                                                       it everywhere (inventory   │
+│                                                                       unchanged).                │
+│                                                                       sha256/size_bytes always   │
+│                                                                       reflect the full file.     │
+│                                                                       [default: artifact-text]   │
+│ --help                                                                Show this message and      │
+│                                                                       exit.                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
 <!-- END canpy-help -->
@@ -415,6 +346,20 @@ $ canpy --help
    `PY_PARAM_IN`/`PY_PARAM_OUT`/`PY_SUMMARY` edges — the cross-language dataflow vocabulary,
    PY_-namespaced like every other row family so multi-language databases never mingle
    analyzers' edges).
+
+8. **Namespace-qualified identity for a service inside a larger repo:**
+   ```sh
+   canpy --input ./monorepo/services/api --app-name api --namespace monorepo
+   # application id: can://monorepo/api
+   # symbol_table key: app/main.py (relative to --input)
+   ```
+   The namespace defaults to the resolved application name: `--app-name api` alone
+   produces `can://api/api`. Both segments are case-sensitive raw strings, encoded as
+   UTF-8 URI components; empty names, controls, separators, `.` and `..` are invalid.
+   JSON envelopes and graph application anchors carry `identity_version: 2`, plus raw
+   `application_name` and `identity_namespace` on the application. `schema_version`
+   remains `2.0.0`. Changing either identity segment rebuilds the cache from source;
+   regenerate legacy outputs rather than translating existing IDs.
 
 ## Analysis levels
 
@@ -479,16 +424,20 @@ just populate more of the same tree:
 ```jsonc
 {
   "schema_version": "2.0.0",
+  "identity_version": 2,
   "language": "python",
   "max_level": 4,                 // the level this run was produced at
   "k_limit": 3,                   // access-path depth bound (--graph-field-depth); L3+ only
   "analyzer": { "name": "codeanalyzer-python", "version": "1.0.0" },
   "application": {
-    "id": "can://<app>",
+    "id": "can://<namespace>/<app>",
     "kind": "application",
+    "identity_version": 2,
+    "application_name": "<app>",
+    "identity_namespace": "<namespace>",
     "symbol_table": {             // relative POSIX path → module
       "pkg/mod.py": {
-        "id": "can://<app>/python/pkg/mod.py",
+        "id": "can://<namespace>/<app>/python/pkg/mod.py",
         "kind": "module",
         "source": "…full file text, stored once per module…",
         "types":     { "<Class>": { "id": "…", "kind": "class", "callables": { /* methods */ } } },
@@ -498,8 +447,8 @@ just populate more of the same tree:
     "call_graph": [ { "src": "can://…/main(a)", "dst": "can://…/helper(x)",
                       "weight": 1, "prov": ["defuse", "jedi"] } ],
     "external_symbols": {         // imported/builtin call targets, keyed by id
-      "can://<app>/@external/os/getcwd":
-        { "id": "can://<app>/@external/os/getcwd", "kind": "external",
+      "can://<namespace>/<app>/@external/os/getcwd":
+        { "id": "can://<namespace>/<app>/@external/os/getcwd", "kind": "external",
           "name": "getcwd", "module": "os" }
     },
     "param_in":  [ { "src": "can://…/main(a)@6:4/actual_in:0", "dst": "can://…/helper(x)@formal_in:0",
@@ -536,7 +485,7 @@ The application envelope also contains three substrate sections:
 - **`artifacts`** — discovered non-code files (manifests, configs, Docker files, CI workflows,
   packaging files, scripts, docs, and legal files) with extraction status (`none`, `partial`, or
   `full`; default `none`), keyed by relative path; each artifact carries the
-  `can://<app>/artifact/<path>` id namespace. Config files carry extracted `config_keys`
+  `can://<namespace>/<app>/artifact/<path>` id namespace. Config files carry extracted `config_keys`
   (keys, values, namespaces, and references) and `DEFINES_CONFIG` Neo4j edges.
 - **`dependencies`** — declared packages with kind (`runtime`/`dev`/`optional`/`build`), spec,
   locked version, and provenance (`prov`): where each binding came from (manifest file, lock file,
@@ -547,7 +496,7 @@ The application envelope also contains three substrate sections:
 Notable properties:
 
 - **Durable `can://` ids** identify every node at callable granularity and above
-  (`can://<app>/python/<file>/<callable-sig>`); nodes below a callable use ordinal ids
+  (`can://<namespace>/<app>/python/<file>/<callable-sig>`); nodes below a callable use ordinal ids
   (`@entry`, `@exit`, `line:col`, `@formal_in:N`, `line:col/actual_in:N`).
 - **`source` lives once per module**; every node's text is the `module.source[span.bytes]` slice.
 - **Cross-function edges** — `call_graph`, `param_in`, `param_out`, `config_uses` — live at **application** scope;
@@ -593,6 +542,17 @@ inheritance, decorators, and call sites are relationships. At `-a 3`/`-a 4` the 
   content hash changed are rewritten, and on a full run modules whose source file vanished are
   pruned. Requires the `neo4j` extra. Every graph carries a `schema_version` on its `:PyApplication`
   node.
+
+  An `--eager` full run (no `--file-name`) also reconciles the application's artifacts, so a
+  deleted or renamed file or a removed dependency leaves
+  nothing stale. Python-owned artifact edges (`HAS_ARTIFACT`, `DECLARES_DEPENDENCY`/`LOCKS` to
+  `pkg:pypi/…`, `PY_PROVIDES`, `PY_USES_CONFIG`, `PY_READS_CONFIG_UNRESOLVED`,
+  `PY_UNRESOLVED_IMPORT`) are rebuilt. An `:Artifact` or
+  `:ConfigKey` the run no longer emits loses its `:PyCanNode` label. An artifact is then deleted only
+  if no other analyzer's `HAS_ARTIFACT` still points at it; a config key only if no other analyzer's
+  marker (`:JCanNode`, `:TSCanNode`) claims it. A `--lazy` push reconciles nothing, so push once
+  with `--eager` to reconcile changes within the selected namespace/application. Other
+  namespaces and legacy identity roots are outside this scope and remain untouched.
 
 Call-graph endpoints that aren't present in the symbol table (third-party / framework / RPC targets)
 are materialized as `:PyExternal` ghost nodes, mirroring the analyzer's own ghost-node behaviour.
@@ -665,7 +625,7 @@ RETURN src.id, d.var, d.prov
 
 // interprocedural flow through a parameter (level 4)
 MATCH (a:PyBodyNode)-[:PY_PARAM_IN]->(f:PyBodyNode)
-WHERE f.id STARTS WITH "can://myapp/python/src/api.py"
+WHERE f.id STARTS WITH "can://myapp/myapp/python/src/api.py"
 RETURN a.id, f.id
 ```
 
@@ -697,7 +657,7 @@ Apache 2.0 — see [LICENSE](./LICENSE).
 
 ## Polyglot applications: all languages, or none
 
-A `--emit neo4j` push is **destructive**. It sweeps everything under `can://<app>/` that this
+A `--emit neo4j` push is **destructive**. It sweeps everything under `can://<namespace>/<app>/` that this
 analyzer marked, then rewrites what it found. Since the id grammar puts the application outermost,
 every analyzer over the same `<app>` shares that prefix — so a push reclaims stale rows belonging to
 *this* analyzer and, in the shared namespaces, sweeps rows a sibling wrote.

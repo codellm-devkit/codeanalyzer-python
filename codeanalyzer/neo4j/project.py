@@ -57,7 +57,7 @@ from codeanalyzer.schema.py_schema import PyDecorator, byte_offsets
 
 def project(app: PyApplication, app_name: str, sig_to_id: dict,
             analyzer: Optional[Any] = None, builder: Optional[RowBuilder] = None,
-            *, module_scoped: bool = False) -> GraphRows:
+            *, module_scoped: bool = False, namespace: Optional[str] = None) -> GraphRows:
     """``analyzer`` is the envelope-level ``PyAnalyzerInfo`` (the keystone home
     for analyzer identity); the caller that holds the ``Analysis`` envelope
     passes it through so the :PyApplication node carries it as props."""
@@ -69,11 +69,14 @@ def project(app: PyApplication, app_name: str, sig_to_id: dict,
     app_ref = b.node(
         ["PyApplication"],
         "id",
-        application_id(app_name),
+        application_id(app_name, namespace),
         prune(
             {
-                "id": application_id(app_name),
+                "id": application_id(app_name, namespace),
                 "name": app_name,
+                "application_name": app_name,
+                "identity_namespace": app_name if namespace is None else namespace,
+                "identity_version": 2,
                 "schema_version": SCHEMA_VERSION,
                 "analyzer_name": analyzer.name if analyzer else None,
                 "analyzer_version": analyzer.version if analyzer else None,
@@ -107,16 +110,16 @@ def project(app: PyApplication, app_name: str, sig_to_id: dict,
         mod_ref = b.node(["PyModule"], "id", mod.id, _module_props(mod, file_key))
         b.edge("PY_HAS_MODULE", app_ref, mod_ref)
         _project_module_body(b, file_key, mod_ref, mod, externals, sig_to_id, module_id_by_key,
-                             application_id(app_name))
+                             application_id(app_name, namespace))
         if module_scoped:
             _project_program_graphs(
-                b, app, externals, sig_to_id, application_id(app_name),
+                b, app, externals, sig_to_id, application_id(app_name, namespace),
                 modules=((file_key, mod),), include_parameters=False,
             )
             b.end_module()
 
     # The aggregated :PY_CALLS twin.
-    app_can_id = application_id(app_name)
+    app_can_id = application_id(app_name, namespace)
     for e in app.call_graph:
         src = _call_endpoint(b, e.src, externals, sig_to_id, app_can_id)
         tgt = _call_endpoint(b, e.dst, externals, sig_to_id, app_can_id)
@@ -133,7 +136,7 @@ def project(app: PyApplication, app_name: str, sig_to_id: dict,
 
     # Neutral artifact/dependency subgraph (Task 6). L1 data — always present,
     # full-depth-always regardless of -a.
-    _project_artifacts(b, app, app_name, app_ref)
+    _project_artifacts(b, app, app_name, app_ref, namespace)
 
     # config_use (#162): the resolved-read bridge (PyBodyNode from
     # _project_program_graphs above) into the config-key subgraph
@@ -336,13 +339,13 @@ def _import_ghost(b: RowBuilder, app_can_id: str, name: str) -> NodeRef:
     )
 
 
-def _project_artifacts(b: RowBuilder, app: PyApplication, app_name: str, app_ref: NodeRef) -> None:
+def _project_artifacts(b: RowBuilder, app: PyApplication, app_name: str, app_ref: NodeRef, namespace: Optional[str] = None) -> None:
     """Non-code artifacts, declared dependencies and undeclared imports (Tasks
     1-5) -- neutral ``Artifact``/``Package`` nodes with no ``Py`` prefix
     (deliberate: cross-language merge targets, unlike everything else this
     module projects). Always emitted regardless of ``-a`` -- this section is
     L1 data, identical at every analysis level (mirrors ``analysis.json``)."""
-    app_can_id = application_id(app_name)
+    app_can_id = application_id(app_name, namespace)
 
     for path in sorted(app.artifacts or {}):
         art = app.artifacts[path]

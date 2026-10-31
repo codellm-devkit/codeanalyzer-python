@@ -31,6 +31,7 @@ class AnalysisOptions:
     output: Optional[Path] = None
     emit: EmitTarget = EmitTarget.JSON
     app_name: Optional[str] = None
+    namespace: Optional[str] = None
     neo4j_uri: Optional[str] = None
     neo4j_user: str = "neo4j"
     neo4j_password: str = "neo4j"

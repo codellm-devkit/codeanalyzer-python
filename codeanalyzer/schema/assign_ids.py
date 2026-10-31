@@ -5,10 +5,14 @@ from codeanalyzer.schema import ids
 from codeanalyzer.schema.py_schema import PyApplication, PyModule, PyClass, PyCallable
 
 
-def assign_ids(app: PyApplication, app_name: str) -> Dict[str, str]:
+def assign_ids(app: PyApplication, app_name: str, namespace: str | None = None) -> Dict[str, str]:
     """Sets `.id` on the app + every module/class/callable. Returns a
-    `signature -> can://id` map for later stages (identity layer input)."""
-    app.id = ids.application_id(app_name); app.kind = "application"
+    `signature -> can://id` map for later stages (identity layer input).
+    Namespace and application name are raw validated identity segments."""
+    app.id = ids.application_id(app_name, namespace); app.kind = "application"
+    app.application_name = app_name
+    app.identity_namespace = app_name if namespace is None else namespace
+    app.identity_version = 2
     sig_to_id: Dict[str, str] = {}
 
     def do_callable(parent_id: str, c: PyCallable) -> None:
@@ -29,7 +33,7 @@ def assign_ids(app: PyApplication, app_name: str) -> Dict[str, str]:
             do_class(cl.id, ic)
 
     for file_key, mod in app.symbol_table.items():
-        mod.id = ids.module_id(app_name, file_key); mod.kind = "module"
+        mod.id = ids.module_id(app_name, file_key, namespace); mod.kind = "module"
         for fn in (mod.functions or {}).values():
             do_callable(mod.id, fn)
         for cl in (mod.types or {}).values():
