@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-10-31
+
+### Added
+
+- Add `--namespace` and namespace-qualified application IDs with strict identity metadata.
+
+### Fixed
+
+- Scope graph writes, URI resolution and caches to one namespace/application.
+- Reject incompatible stored graph anchors before writes.
+
+Existing analyses and graphs must be regenerated from source for the new ID roots.
+
 ## [1.6.2] - 2026-10-14
 
 ### Fixed
